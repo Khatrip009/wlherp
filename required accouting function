@@ -1,0 +1,15 @@
+ Other Major Features Missing (Tally Comparison)
+Feature	Tally	Our ERP (Current)	Priority
+Balance Sheet	Yes	❌	High
+Cash/Bank Book	Yes	❌ (Ledger can show it)	High
+Day Book	Yes	❌ (journal view)	Medium
+Voucher Types (Contra, Receipt, Payment, Sales, Purchase)	Yes	Only Journal Entry	High
+Bank Reconciliation	Yes	❌	Medium
+Budgeting	Yes	❌	Low
+Cost Centres	Yes	❌	Low
+Bill‑wise Payables/Receivables	Yes	❌	Medium
+TDS (Tax Deduction)	Yes	❌	Low
+Multi‑Currency	Yes	❌	Low (not needed)
+Godowns (Warehouses)	Yes	❌ (only basic inventory)	Medium
+Stock Categories	Yes	❌	Medium
+Interest Calculation	Yes	❌	Low

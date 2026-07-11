@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+@theme {
+  /* Fonts */
+  --font-righteous: "Righteous", cursive;
+  --font-montserrat: "Montserrat", sans-serif;
+
+  /* Primary - Blue */
+  --color-primary: #0D47A1;
+  --color-primary-light: #1565C0;
+  --color-primary-dark: #0A3478;
+  --color-primary-bg: #E3F2FD;
+
+  /* Accent - Pink */
+  --color-accent: #FF1070;
+  --color-accent-light: #FF4081;
+  --color-accent-dark: #C51162;
+  --color-accent-bg: #FCE4EC;
+
+  /* Secondary - Grey */
+  --color-secondary: #9A9C9B;
+  --color-secondary-light: #BDBDBD;
+  --color-secondary-dark: #616161;
+  --color-secondary-bg: #F5F5F5;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-montserrat);
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-righteous);
+  }
+}
+/* index.css or App.css */
+.sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+@media print {
+  @page {
+    margin: 0;
+    size: A4;
+  }
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

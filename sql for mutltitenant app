@@ -1,0 +1,301 @@
+-- ============================================================================
+-- 1. ENSURE DEFAULT ORGANISATION AND BRANCH EXIST
+-- ============================================================================
+INSERT INTO public.organization (id, company_name, organization_key, is_active, domain)
+VALUES (1, 'ShreeVidhya Academy', 'shreevidhya', true, 'app.shreevidhyaerp.online')
+ON CONFLICT (id) DO UPDATE SET
+  organization_key = EXCLUDED.organization_key,
+  domain = EXCLUDED.domain;
+
+CREATE TABLE IF NOT EXISTS public.branches (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  organization_id integer NOT NULL REFERENCES public.organization(id) ON DELETE CASCADE,
+  branch_name text NOT NULL,
+  address text,
+  city text,
+  state text,
+  pincode text,
+  phone text,
+  email text,
+  is_active boolean DEFAULT true,
+  created_at timestamptz DEFAULT now(),
+  UNIQUE(organization_id, branch_name)
+);
+
+INSERT INTO public.branches (id, organization_id, branch_name)
+VALUES (1, 1, 'Main Branch')
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================================
+-- 2. ADD branch_id TO ALL ORGANISATION‑SCOPED TABLES
+--    (everything except global reference tables)
+-- ============================================================================
+DO $$
+DECLARE
+  tbl text;
+  org_scoped_tables text[] := ARRAY[
+    'abacus_levels',
+    'ai_usage_logs',
+    'attendance_sessions',
+    'bank_reconciliation',
+    'bank_statements',
+    'batch_teachers',
+    'batches',
+    'bill_wise_entries',
+    'budgets',
+    'certificates',
+    'chart_of_accounts',
+    'course_levels',
+    'courses',
+    'credit_notes',
+    'debit_notes',
+    'exams',
+    'expenses',
+    'fee_installments',
+    'fee_payments',
+    'fee_structure_components',
+    'fee_structures',
+    'fixed_assets',
+    'homework',
+    'homework_submissions',
+    'income',
+    'inquiries',
+    'inventory_categories',
+    'inventory_items',
+    'inventory_transactions',
+    'invoice_items',
+    'invoices',
+    'journal_entries',
+    'journal_entry_lines',
+    'learning_resources',
+    'leaves',
+    'notifications',
+    'online_class_attendance',
+    'online_classes',
+    'parents',
+    'purchase_invoice_items',
+    'purchase_invoices',
+    'purchase_order_items',
+    'purchase_orders',
+    'receipts',
+    'robotics_levels',
+    'salary_payments',
+    'student_attendance',
+    'student_batches',
+    'student_documents',
+    'student_fees',
+    'student_level_progress',
+    'student_levels',
+    'student_parents',
+    'student_progress',
+    'student_results',
+    'students',
+    'subjects',
+    'tax_collections',
+    'tax_rates',
+    'teacher_attendance',
+    'teacher_batches',
+    'teacher_course_levels',
+    'teacher_courses',
+    'teacher_mediums',
+    'teacher_subjects',
+    'teachers',
+    'themes',
+    'vedic_math_levels',
+    'vendors',
+    'vouchers'
+  ];
+BEGIN
+  FOREACH tbl IN ARRAY org_scoped_tables
+  LOOP
+    -- Add column if not exists
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = tbl AND column_name = 'branch_id'
+    ) THEN
+      EXECUTE format('ALTER TABLE %I ADD COLUMN branch_id bigint REFERENCES public.branches(id) ON DELETE SET NULL;', tbl);
+    END IF;
+    -- Backfill with default branch
+    EXECUTE format('UPDATE %I SET branch_id = 1 WHERE branch_id IS NULL;', tbl);
+  END LOOP;
+END;
+$$;
+
+-- ============================================================================
+-- 3. LINK PROFILES TO ORGANISATION
+-- ============================================================================
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS organization_id integer REFERENCES public.organization(id) ON DELETE SET NULL;
+UPDATE public.profiles SET organization_id = 1 WHERE organization_id IS NULL;
+
+-- ============================================================================
+-- 4. HELPER FUNCTION – GET CURRENT USER'S ORGANISATION
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.get_user_org()
+RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+  SELECT organization_id FROM public.profiles WHERE id = auth.uid();
+$$;
+
+-- ============================================================================
+-- 5. ENABLE ROW LEVEL SECURITY ON ALL PUBLIC TABLES
+-- ============================================================================
+DO $$
+DECLARE
+  tbl text;
+  all_tables text[] := ARRAY[
+    'abacus_levels','ai_usage_logs','attendance_sessions','bank_reconciliation',
+    'bank_statements','batch_teachers','batches','bill_wise_entries','budgets',
+    'certificates','chart_of_accounts','course_levels','courses','credit_notes',
+    'debit_notes','exams','expenses','fee_installments','fee_payments',
+    'fee_structure_components','fee_structures','fixed_assets','homework',
+    'homework_submissions','hsn_sac_codes','income','inquiries','inventory_categories',
+    'inventory_items','inventory_transactions','invoice_items','invoices',
+    'journal_entries','journal_entry_lines','learning_resources','leaves',
+    'mediums','notifications','online_class_attendance','online_classes',
+    'organization','organization_mediums','parents','profiles',
+    'purchase_invoice_items','purchase_invoices','purchase_order_items',
+    'purchase_orders','receipts','robotics_levels','salary_payments','states',
+    'student_attendance','student_batches','student_documents','student_fees',
+    'student_level_progress','student_levels','student_parents','student_progress',
+    'student_results','students','subjects','tax_collections','tax_rates',
+    'teacher_attendance','teacher_batches','teacher_course_levels',
+    'teacher_courses','teacher_mediums','teacher_subjects','teachers','themes',
+    'vedic_math_levels','vendors','voucher_types','vouchers'
+  ];
+BEGIN
+  FOREACH tbl IN ARRAY all_tables
+  LOOP
+    EXECUTE format('ALTER TABLE IF EXISTS %I ENABLE ROW LEVEL SECURITY;', tbl);
+  END LOOP;
+END;
+$$;
+
+-- ============================================================================
+-- 6. CREATE TENANT ISOLATION POLICIES
+-- ============================================================================
+
+-- ---------- 6a. Tables WITH branch_id (org‑scoped) ----------
+DO $$
+DECLARE
+  tbl text;
+  org_scoped_tables text[] := ARRAY[
+    'abacus_levels','ai_usage_logs','attendance_sessions','bank_reconciliation',
+    'bank_statements','batch_teachers','batches','bill_wise_entries','budgets',
+    'certificates','chart_of_accounts','course_levels','courses','credit_notes',
+    'debit_notes','exams','expenses','fee_installments','fee_payments',
+    'fee_structure_components','fee_structures','fixed_assets','homework',
+    'homework_submissions','income','inquiries','inventory_categories',
+    'inventory_items','inventory_transactions','invoice_items','invoices',
+    'journal_entries','journal_entry_lines','learning_resources','leaves',
+    'notifications','online_class_attendance','online_classes','parents',
+    'purchase_invoice_items','purchase_invoices','purchase_order_items',
+    'purchase_orders','receipts','robotics_levels','salary_payments',
+    'student_attendance','student_batches','student_documents','student_fees',
+    'student_level_progress','student_levels','student_parents','student_progress',
+    'student_results','students','subjects','tax_collections','tax_rates',
+    'teacher_attendance','teacher_batches','teacher_course_levels',
+    'teacher_courses','teacher_mediums','teacher_subjects','teachers','themes',
+    'vedic_math_levels','vendors','vouchers'
+  ];
+BEGIN
+  FOREACH tbl IN ARRAY org_scoped_tables
+  LOOP
+    -- Drop policies with our naming to avoid conflicts
+    EXECUTE format('DROP POLICY IF EXISTS "tenant_select" ON %I;', tbl);
+    EXECUTE format('DROP POLICY IF EXISTS "tenant_insert" ON %I;', tbl);
+    EXECUTE format('DROP POLICY IF EXISTS "tenant_update" ON %I;', tbl);
+    EXECUTE format('DROP POLICY IF EXISTS "tenant_delete" ON %I;', tbl);
+
+    -- SELECT
+    EXECUTE format($p$
+      CREATE POLICY "tenant_select" ON %I
+        FOR SELECT TO authenticated
+        USING (
+          branch_id IN (SELECT id FROM public.branches WHERE organization_id = public.get_user_org())
+        );
+    $p$, tbl);
+
+    -- INSERT
+    EXECUTE format($p$
+      CREATE POLICY "tenant_insert" ON %I
+        FOR INSERT TO authenticated
+        WITH CHECK (
+          branch_id IN (SELECT id FROM public.branches WHERE organization_id = public.get_user_org())
+        );
+    $p$, tbl);
+
+    -- UPDATE
+    EXECUTE format($p$
+      CREATE POLICY "tenant_update" ON %I
+        FOR UPDATE TO authenticated
+        USING (
+          branch_id IN (SELECT id FROM public.branches WHERE organization_id = public.get_user_org())
+        )
+        WITH CHECK (
+          branch_id IN (SELECT id FROM public.branches WHERE organization_id = public.get_user_org())
+        );
+    $p$, tbl);
+
+    -- DELETE
+    EXECUTE format($p$
+      CREATE POLICY "tenant_delete" ON %I
+        FOR DELETE TO authenticated
+        USING (
+          branch_id IN (SELECT id FROM public.branches WHERE organization_id = public.get_user_org())
+        );
+    $p$, tbl);
+  END LOOP;
+END;
+$$;
+
+-- ---------- 6b. Tables WITHOUT branch_id (global reference) ----------
+DO $$
+DECLARE
+  tbl text;
+  global_tables text[] := ARRAY[
+    'hsn_sac_codes','mediums','organization_mediums','states','voucher_types'
+  ];
+BEGIN
+  FOREACH tbl IN ARRAY global_tables
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS "global_read" ON %I;', tbl);
+    EXECUTE format($p$
+      CREATE POLICY "global_read" ON %I
+        FOR SELECT TO authenticated
+        USING (true);
+    $p$, tbl);
+
+    EXECUTE format('DROP POLICY IF EXISTS "admin_write" ON %I;', tbl);
+    EXECUTE format($p$
+      CREATE POLICY "admin_write" ON %I
+        FOR ALL TO authenticated
+        USING (public.is_admin())
+        WITH CHECK (public.is_admin());
+    $p$, tbl);
+  END LOOP;
+END;
+$$;
+
+-- ---------- 6c. Organization table – admin only ----------
+DROP POLICY IF EXISTS "org_admin_only" ON public.organization;
+CREATE POLICY "org_admin_only" ON public.organization
+  FOR ALL TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+-- ---------- 6d. Profiles – users see own, admins see all ----------
+DROP POLICY IF EXISTS "profiles_own" ON public.profiles;
+CREATE POLICY "profiles_own" ON public.profiles
+  FOR SELECT TO authenticated
+  USING (id = auth.uid() OR public.is_admin());
+CREATE POLICY "profiles_insert" ON public.profiles
+  FOR INSERT TO authenticated
+  WITH CHECK (true);  -- allowed for sign‑up flow
+CREATE POLICY "profiles_update" ON public.profiles
+  FOR UPDATE TO authenticated
+  USING (id = auth.uid() OR public.is_admin()); 

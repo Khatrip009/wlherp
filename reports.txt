@@ -1,0 +1,29 @@
+2.1 Install Dependencies
+bash
+npm install xlsx recharts   # Excel export and optional charts
+2.2 Create the Report Configuration File
+src/utils/reportConfig.js – This will contain one object per report.
+2.3 Report Service
+src/services/reportService.js
+2.4 Reusable Report Page Component
+src/components/ReportPage.jsx
+2.5 Export Utilities (PDF & Excel)
+src/utils/reportExport.js
+2.6 Reports Hub Page
+src/pages/Reports.jsx
+2.7 Add Routing
+In App.jsx, add:
+2.8 Sidebar Entry
+In the Admin sidebar (Sidebar.jsx), add:
+2.9 Expanding the Report List
+Now you simply add new entries to reportTypes in utils/reportConfig.js. For instance, to add an Exam Results Report:
+3. What You Get
+A single, consistent report page for all reports.
+
+Filters automatically built from the config.
+
+PDF and Excel export with one click.
+
+Charts (bar, optional) using Recharts.
+
+Extremely easy to maintain – add a new report by writing a small config object, no new React component needed.

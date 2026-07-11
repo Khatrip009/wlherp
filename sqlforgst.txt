@@ -1,0 +1,141 @@
+CREATE TABLE gst_settings (
+  id SERIAL PRIMARY KEY,
+  gst_registered BOOLEAN DEFAULT false,
+  business_legal_name TEXT,
+  trade_name TEXT,
+  gstin VARCHAR(15),
+  state_code VARCHAR(2),
+  address TEXT,
+  place_of_supply VARCHAR(2),
+  registration_type VARCHAR(20), -- Regular / Composition / Unregistered
+  fiscal_year_start DATE,
+  financial_year VARCHAR(9), -- e.g., "2025-26"
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE TABLE tax_types (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(20) UNIQUE, -- CGST, SGST, IGST, CESS
+  rate_percent DECIMAL(5,2) NOT NULL,
+  is_active BOOLEAN DEFAULT true
+);
+CREATE TABLE hsn_sac_codes (
+  id SERIAL PRIMARY KEY,
+  code VARCHAR(8) UNIQUE, -- HSN (8-digit) or SAC (service)
+  description TEXT,
+  gst_rate_id INTEGER REFERENCES tax_types(id), -- default tax rate
+  is_service BOOLEAN DEFAULT false
+);
+CREATE TABLE states (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(50),
+  code VARCHAR(2) UNIQUE -- e.g., "27" for Maharashtra
+);
+CREATE TABLE financial_years (
+  id SERIAL PRIMARY KEY,
+  year VARCHAR(9), -- "2025-26"
+  start_date DATE,
+  end_date DATE,
+  is_active BOOLEAN DEFAULT false
+);
+ALTER TABLE students
+ADD COLUMN gstin VARCHAR(15) NULL,
+ADD COLUMN legal_name TEXT,
+ADD COLUMN trade_name TEXT,
+ADD COLUMN state_code VARCHAR(2),
+ADD COLUMN place_of_supply VARCHAR(2),
+ADD COLUMN registration_type VARCHAR(20); -- Regular/Composition/Unregistered
+CREATE TABLE invoices (
+  id SERIAL PRIMARY KEY,
+  invoice_number VARCHAR(50) UNIQUE NOT NULL,
+  invoice_date DATE NOT NULL,
+  student_id INTEGER REFERENCES students(id),
+  parent_id INTEGER REFERENCES parents(id), -- optional
+  course_id INTEGER REFERENCES courses(id),
+  batch_id INTEGER REFERENCES batches(id),
+  academic_year_id INTEGER REFERENCES financial_years(id),
+  due_date DATE,
+  payment_terms TEXT,
+  gst_applicable BOOLEAN DEFAULT false,
+  gst_rate_id INTEGER REFERENCES tax_types(id), -- combined rate? better per line
+  place_of_supply VARCHAR(2),
+  reverse_charge BOOLEAN DEFAULT false,
+  total_taxable_amount DECIMAL(12,2),
+  total_gst_amount DECIMAL(12,2),
+  total_cess DECIMAL(12,2) DEFAULT 0,
+  total_amount DECIMAL(12,2),
+  round_off DECIMAL(12,2) DEFAULT 0,
+  grand_total DECIMAL(12,2),
+  status VARCHAR(20) DEFAULT 'Draft', -- Draft, Final, Cancelled
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ
+);
+CREATE TABLE invoice_items (
+  id SERIAL PRIMARY KEY,
+  invoice_id INTEGER REFERENCES invoices(id) ON DELETE CASCADE,
+  item_type VARCHAR(10), -- 'course', 'product', 'service'
+  item_id INTEGER, -- could be course_id or inventory_item_id or service_id
+  hsn_sac_code VARCHAR(8) REFERENCES hsn_sac_codes(code),
+  description TEXT,
+  quantity DECIMAL(10,2) DEFAULT 1,
+  unit_price DECIMAL(12,2),
+  taxable_amount DECIMAL(12,2),
+  gst_rate_id INTEGER REFERENCES tax_types(id),
+  cgst_amount DECIMAL(12,2) DEFAULT 0,
+  sgst_amount DECIMAL(12,2) DEFAULT 0,
+  igst_amount DECIMAL(12,2) DEFAULT 0,
+  cess_amount DECIMAL(12,2) DEFAULT 0,
+  total_amount DECIMAL(12,2)
+);
+ALTER TABLE fee_payments
+ADD COLUMN invoice_id INTEGER REFERENCES invoices(id),
+ADD COLUMN receipt_number VARCHAR(50) UNIQUE,
+ADD COLUMN utr VARCHAR(50),
+ADD COLUMN transaction_id VARCHAR(50),
+ADD COLUMN balance_due DECIMAL(12,2) DEFAULT 0;
+CREATE TABLE receipts (
+  id SERIAL PRIMARY KEY,
+  receipt_number VARCHAR(50) UNIQUE NOT NULL,
+  receipt_date DATE NOT NULL,
+  invoice_id INTEGER REFERENCES invoices(id),
+  amount_received DECIMAL(12,2),
+  payment_mode VARCHAR(20), -- Cash, Bank, UPI, etc.
+  utr VARCHAR(50),
+  transaction_id VARCHAR(50),
+  balance_due DECIMAL(12,2),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE TABLE credit_notes (
+  id SERIAL PRIMARY KEY,
+  credit_note_number VARCHAR(50) UNIQUE NOT NULL,
+  invoice_id INTEGER REFERENCES invoices(id),
+  date DATE,
+  reason TEXT,
+  amount DECIMAL(12,2),
+  gst_breakdown JSONB, -- store CGST/SGST/IGST etc.
+  status VARCHAR(20) DEFAULT 'Draft'
+);
+
+-- similar for debit_notes
+ALTER TABLE expenses
+ADD COLUMN vendor_gstin VARCHAR(15),
+ADD COLUMN invoice_number VARCHAR(50),
+ADD COLUMN invoice_date DATE,
+ADD COLUMN gst_amount DECIMAL(12,2) DEFAULT 0,
+ADD COLUMN itc_eligible BOOLEAN DEFAULT true,
+ADD COLUMN itc_claimed BOOLEAN DEFAULT false,
+ADD COLUMN tax_rate_id INTEGER REFERENCES tax_types(id);
+CREATE TABLE vendors (
+  id SERIAL PRIMARY KEY,
+  vendor_name TEXT NOT NULL,
+  gstin VARCHAR(15),
+  pan VARCHAR(10),
+  address TEXT,
+  state_code VARCHAR(2),
+  contact_person TEXT,
+  phone VARCHAR(20),
+  email VARCHAR(100),
+  bank_name TEXT,
+  account_number VARCHAR(20),
+  ifsc_code VARCHAR(15),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);

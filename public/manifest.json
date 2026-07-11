@@ -1,0 +1,28 @@
+{
+  "short_name": "ShreeVidhya",
+  "name": "ShreeVidhya Academy ERP",
+  "description": "Complete education management system",
+  "icons": [
+    {
+      "src": "./shreeVidhyaIcon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "./ShreeVidhyaDark.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "./ShreeVidhyaDark.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": "./",
+  "display": "standalone",
+  "theme_color": "#0D47A1",
+  "background_color": "#ffffff",
+  "orientation": "portrait-primary",
+  "scope": "./"
+}
