@@ -1,19 +1,13 @@
 import { useState } from "react";
 import { X, Download } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { getOrganization } from "../services/organizationService";
+import { useOrg } from "../context/OrganizationContext";
 
 export default function InstallBanner({ onInstall, onDismiss }) {
   const [visible, setVisible] = useState(true);
+  const { org } = useOrg();   // ← gets the correct org directly
 
-  // Fetch dynamic light logo
-  const { data: org } = useQuery({
-    queryKey: ["organization"],
-    queryFn: getOrganization,
-    staleTime: 10 * 60 * 1000,
-  });
-
-  const logoUrl = org?.logo_light_url || "/ShreeVidhyalight.png";
+  const appName = org?.company_name || "Academy";
+  const logoUrl = org?.logo_light_url || "/icon-192x192.png";   // existing icon as fallback
 
   if (!visible) return null;
 
@@ -32,7 +26,7 @@ export default function InstallBanner({ onInstall, onDismiss }) {
       <div className="flex items-center gap-3">
         <img src={logoUrl} alt="Logo" className="h-8 w-auto" />
         <div>
-          <p className="text-sm font-montserrat font-semibold">ShreeVidhya ERP</p>
+          <p className="text-sm font-montserrat font-semibold">{appName} ERP</p>
           <p className="text-xs text-secondary-light">Install for a better experience</p>
         </div>
       </div>
