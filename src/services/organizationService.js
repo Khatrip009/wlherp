@@ -12,11 +12,11 @@ const ORG_FIELDS = `
  */
 export async function getOrganization(orgId) {
   // Fetch organisation
-  const { data: org, error } = await supabase
-    .from("organization")
-    .select(ORG_FIELDS)
-    .eq("id", orgId)
-    .single();
+ const { data: org } = await supabase
+  .from("organization")
+  .select("*")
+  .eq("id", org?.id)      // ✅ numeric ID
+  .single();
   if (error) throw error;
 
   // Fetch theme

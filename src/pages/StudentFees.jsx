@@ -42,7 +42,7 @@ import {
   generateInvoicesForInstallments,
 } from "../services/feeService";
 import { supabase } from "../api/supabase";
-import { useOrg } from "../context/OrganizationContext"; // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function StudentFees() {
   const queryClient = useQueryClient();
@@ -196,7 +196,6 @@ export default function StudentFees() {
     staleTime: 0,
   });
 
-  // ... rest of the component (form state, helpers, etc.) unchanged ...
   const [form, setForm] = useState({
     student_id: "",
     fee_structure_id: "",
@@ -638,7 +637,7 @@ export default function StudentFees() {
         </div>
       )}
 
-      {/* Assign/Edit Modal – now with dynamic logo */}
+      {/* Assign/Edit Modal */}
       {showAssignForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto">
@@ -801,19 +800,26 @@ export default function StudentFees() {
         </div>
       )}
 
+      {/* ── Delete confirmation (default danger variant) ── */}
       {confirmDelete && (
         <ConfirmDialog
           message="Delete this fee record?"
           onConfirm={() => { deleteMutation.mutate(confirmDelete); setConfirmDelete(null); }}
           onCancel={() => setConfirmDelete(null)}
+          confirmText="Delete"
+          variant="danger"
         />
       )}
 
+      {/* ── Invoice generation confirmation (now shows "Generate" button) ── */}
       {confirmInvoice && (
         <ConfirmDialog
           message="Generate invoice(s) for this fee?"
           onConfirm={() => { generateInvoiceMutation.mutate({ feeId: confirmInvoice }); setConfirmInvoice(null); }}
           onCancel={() => setConfirmInvoice(null)}
+          confirmText="Generate"
+          cancelText="Cancel"
+          variant="primary"
         />
       )}
 
@@ -829,7 +835,7 @@ export default function StudentFees() {
         />
       )}
 
-      {/* View Payments Modal – now with dynamic logo */}
+      {/* View Payments Modal */}
       {viewPayments && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-xl shadow-xl max-h-[90vh] overflow-y-auto">

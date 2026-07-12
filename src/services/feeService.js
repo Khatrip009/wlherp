@@ -1,5 +1,6 @@
 // src/services/feeService.js
 import { supabase } from "../api/supabase";
+import { createInvoice } from "./invoiceService";   // ← now used
 
 // ========================
 // HELPERS
@@ -203,6 +204,9 @@ export async function getStudentFees({ pageParam = 0, filters = {}, branchId, fi
   if (branchId) query = query.eq("branch_id", branchId);
   if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
+  // ── EXCLUDE SOFT‑DELETED RECORDS ──
+  query = query.is("deleted_at", null);
+
   if (filters.search) {
     query = query.or(
       `students.first_name.ilike.%${filters.search}%,students.last_name.ilike.%${filters.search}%`
@@ -254,6 +258,9 @@ export async function getAllStudentFeesForExport(filters = {}, branchId, financi
   // Scoping
   if (branchId) query = query.eq("branch_id", branchId);
   if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  // ── EXCLUDE SOFT‑DELETED RECORDS ──
+  query = query.is("deleted_at", null);
 
   if (filters.search) {
     query = query.or(
@@ -637,9 +644,9 @@ export async function submitPaymentRequest({ student_fee_id, amount, transaction
   return data;
 }
 
-// ─── Generate invoice from student fee (scoped reads, context required) ──
+// ─── Generate invoice from student fee (now works with context) ──
 /**
- * Generate a single invoice for the entire student fee.
+ * Generate a single invoice for the entire student fee or a specific installment.
  * Requires context: { branchId, financialYearId }
  */
 export async function generateInvoiceFromStudentFee(studentFeeId, installmentId = null, context) {
@@ -710,16 +717,42 @@ export async function generateInvoiceFromStudentFee(studentFeeId, installmentId 
     place_of_supply: fee.students.state_code || "",
     reverse_charge: false,
     items: invoiceItems,
-    branch_id: branchId,
-    financial_year_id: financialYearId,
+    student_fee_id: studentFeeId,
+    fee_installment_id: installmentId || null,
   };
 
-  // This function requires invoiceService.createInvoice, which is expected to also accept context.
-  // Once invoiceService is fixed, uncomment the import and call below.
-  // For now, throw an error indicating the dependency.
-  throw new Error("generateInvoiceFromStudentFee requires invoiceService.createInvoice with context. Use invoiceService directly after fixing.");
+  // Use the corrected invoiceService.createInvoice
+  return await createInvoice(invoicePayload, context);
 }
 
+/**
+ * Generate invoices for each installment of a student fee.
+ * Requires context: { branchId, financialYearId }
+ */
 export async function generateInvoicesForInstallments(studentFeeId, context) {
-  throw new Error("generateInvoicesForInstallments requires invoiceService to be updated with context.");
+  // Fetch installments (scoped)
+  const { branchId, financialYearId } = context;
+  let instQuery = supabase
+    .from("fee_installments")
+    .select("id")
+    .eq("student_fee_id", studentFeeId)
+    .order("installment_number");
+
+  if (branchId) instQuery = instQuery.eq("branch_id", branchId);
+  if (financialYearId) instQuery = instQuery.eq("financial_year_id", financialYearId);
+
+  const { data: installments, error } = await instQuery;
+  if (error) throw error;
+  if (!installments || installments.length === 0) {
+    // Fall back to a single invoice
+    return await generateInvoiceFromStudentFee(studentFeeId, null, context);
+  }
+
+  // Generate an invoice for each installment
+  const results = [];
+  for (const inst of installments) {
+    const inv = await generateInvoiceFromStudentFee(studentFeeId, inst.id, context);
+    results.push(inv);
+  }
+  return results;
 }

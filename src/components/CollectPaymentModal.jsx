@@ -6,6 +6,7 @@ import {
   ChevronDown, List, Receipt,
 } from "lucide-react";
 import { collectPayment } from "../services/feeService";
+import { createInvoice } from "../services/invoiceService";
 import { supabase } from "../api/supabase";
 import { useOrgDarkLogo } from "../hooks/useOrgDarkLogo";
 import { useOrg } from "../context/OrganizationContext";
@@ -27,6 +28,7 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
   const [installments, setInstallments] = useState([]);
   const [loadingInstallments, setLoadingInstallments] = useState(true);
   const [taxInfo, setTaxInfo] = useState(null);
+  const [creatingInvoice, setCreatingInvoice] = useState(false);
 
   // Fetch installments and tax info – scoped
   useEffect(() => {
@@ -47,7 +49,7 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
       }
       setLoadingInstallments(false);
 
-      // 2. Fetch tax info from fee structure (already scoped by fee.fee_structures, but we need to scope tax rate lookup)
+      // 2. Fetch tax info from fee structure
       if (fee.fee_structures?.tax_rate_id) {
         const taxRateId = fee.fee_structures.tax_rate_id;
         const taxInclusive = fee.fee_structures.tax_inclusive !== undefined
@@ -148,12 +150,58 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
         financialYearId: financialYearId,
       };
 
+      // 1. Collect the payment
       await collectPayment(paymentPayload, fee.student_id, null, context);
-      toast.success("Payment collected, receipt generated");
+
+      // 2. Auto‑generate invoice for this payment
+     // 2. Auto‑generate invoice for this payment – with retry
+setCreatingInvoice(true);
+let invoiceCreated = false;
+let attempts = 0;
+const maxAttempts = 3;
+
+while (!invoiceCreated && attempts < maxAttempts) {
+  try {
+    const invoicePayload = {
+      student_id: fee.student_id,
+      invoice_date: form.payment_date,
+      due_date: null,
+      payment_terms: "Immediate",
+      gst_applicable: taxInfo && taxInfo.rate > 0,
+      place_of_supply: fee.students?.state_code || "",
+      reverse_charge: false,
+      items: [
+        {
+          item_type: "fee_payment",
+          description: `Fee Payment - ${fee.fee_structures?.courses?.course_name || "N/A"}`,
+          quantity: 1,
+          unit_price: baseAmount,
+          hsn_sac_code: "9992",
+          tax_rate_id: fee.fee_structures?.tax_rate_id || null,
+        },
+      ],
+      student_fee_id: fee.id,
+      fee_installment_id: form.installment_id || null,
+    };
+    await createInvoice(invoicePayload, context);
+    invoiceCreated = true;
+    toast.success("Payment collected and invoice generated");
+  } catch (err) {
+    attempts++;
+    console.error("Invoice generation error (attempt " + attempts + "):", err);
+    if (attempts >= maxAttempts) {
+      toast.error(err?.message || "Invoice generation failed. You can generate it manually from the fee list.");
+    }
+    // If duplicate key error, loop will try again with a new number automatically
+  }
+}
+setCreatingInvoice(false);
+
       if (onSuccess) onSuccess();
+      onClose();
     } catch (err) {
       console.error(err);
-      toast.error("Payment failed");
+      toast.error(err?.message || "Payment failed");
     }
   }
 
@@ -368,10 +416,11 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
           <div className="flex flex-col sm:flex-row-reverse gap-3 pt-2">
             <button
               type="submit"
+              disabled={creatingInvoice}
               className="w-full sm:w-auto bg-accent hover:bg-accent-light text-white px-6 py-2.5 rounded-lg font-montserrat transition flex items-center justify-center gap-2"
             >
               <IndianRupee size={16} />
-              Collect Payment
+              {creatingInvoice ? "Processing..." : "Collect Payment"}
             </button>
             <button
               type="button"

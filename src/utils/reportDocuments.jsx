@@ -462,7 +462,6 @@ export function FeeReceiptDocument({ data, org }) {
     </ReportWrapper>
   );
 }
-
 // ---------- INCOME RECEIPT ----------
 export function IncomeReceiptDocument({ data, org }) {
   const { primary } = useTheme(org);

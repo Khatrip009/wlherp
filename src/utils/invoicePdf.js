@@ -64,6 +64,12 @@ export function numberToWords(num) {
 }
 
 // ─── Main export ─────────────────────────────────────────
+/**
+ * Generates a PDF invoice.
+ * @param {Object} invoice - The invoice object from the database.
+ * @param {Object} org - The organisation object from useOrg() (must contain letterhead_url).
+ * @param {string} type - 'sales' or 'purchase'
+ */
 export async function generateInvoicePDF(invoice, org, type = 'sales') {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
   const pageWidth = doc.internal.pageSize.getWidth();   // 210 mm
@@ -71,11 +77,12 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
   const margin = 14;
   const topMargin = 85;   // space for letterhead header
 
-  // ── Load & draw letterhead background ──
+  // ── Load letterhead background ──
   let letterheadBase64 = null;
   if (org?.letterhead_url) {
     try {
       const response = await fetch(org.letterhead_url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const blob = await response.blob();
       letterheadBase64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -83,7 +90,11 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
         reader.onerror = reject;
         reader.readAsDataURL(blob);
       });
-    } catch (_) { /* ignore */ }
+    } catch (err) {
+      console.warn("Letterhead could not be loaded – using blank background.", err);
+    }
+  } else {
+    console.warn("No letterhead URL found in organisation object. Make sure you pass org from useOrg().");
   }
 
   const addLetterhead = () => {
@@ -91,6 +102,8 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
       doc.addImage(letterheadBase64, "PNG", 0, 0, pageWidth, pageHeight);
     }
   };
+
+  // Draw letterhead on the first page
   addLetterhead();
 
   let y = topMargin;
@@ -226,7 +239,7 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
       9: { cellWidth: 18, halign: 'right' },
     },
     margin: { left: margin, right: margin },
-    didDrawPage: () => addLetterhead(), // draw letterhead on every page
+    didDrawPage: () => addLetterhead(), // draw letterhead on every new page
     willDrawCell: (data) => {
       if ([4,5,6,7,8,9].includes(data.column.index) && typeof data.cell.raw === 'number') {
         data.cell.text = [];
@@ -307,8 +320,8 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
     y += 4.5;
   });
 
-  // ── Footer (no extra branding, letterhead covers it) ──
-  // Only a tiny page number if needed, but we can omit footer.
+  // ── Footer ──
+  // No extra branding – the letterhead already contains organisation details.
 
   return doc;
 }

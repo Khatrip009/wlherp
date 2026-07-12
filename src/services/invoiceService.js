@@ -8,6 +8,13 @@ async function generateInvoiceNumber() {
   return data;
 }
 
+// Get the current user's organization ID using the database function
+async function getCurrentUserOrgId() {
+  const { data, error } = await supabase.rpc("get_user_org");
+  if (error) throw error;
+  return data;   // integer
+}
+
 // ─── INVOICES ──────────────────────────────────────────────
 
 export async function getInvoices(filters = {}, branchId, financialYearId) {
@@ -126,8 +133,14 @@ export async function createInvoice(payload, context) {
 
   const { branchId, financialYearId } = context;
 
-  // Get org state (org-wide)
-  const { data: org } = await supabase.from("organization").select("state_code").eq("id", 1).single();
+  // Get the current user's organization state code (multi‑tenant safe)
+  const orgId = await getCurrentUserOrgId();
+  if (!orgId) throw new Error("Could not determine your organization");
+  const { data: org } = await supabase
+    .from("organization")
+    .select("state_code")
+    .eq("id", orgId)
+    .single();
   const orgState = org?.state_code || "";
   const placeOfSupply = place_of_supply || orgState;
 

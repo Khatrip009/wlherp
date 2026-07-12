@@ -8,7 +8,6 @@ import { getReportConfig } from '../utils/reportConfig';
 import { exportToExcel } from '../utils/reportExport';
 import { useAuth } from '../context/AuthContext';
 import { useOrg } from '../context/OrganizationContext';
-import { getOrganization } from '../services/organizationService';
 import { generateReportPdf } from '../utils/generateReportPdf';
 import { supabase } from '../api/supabase';
 import {
@@ -76,7 +75,6 @@ const DROPDOWN_TABLES = {
   tax_rate_id: { table: 'tax_rates', label: 'name', value: 'id' },
 };
 
-// Tables that contain branch_id and financial_year_id columns
 const BRANCH_SCOPED_TABLES = [
   'courses', 'batches', 'students', 'teachers', 'exams',
   'online_classes', 'course_levels', 'tax_rates', 'fee_structures',
@@ -133,11 +131,11 @@ function FilterDropdown({ field, filters, onChange, branchId, financialYearId })
 /* ------------------------------------------------------------------ */
 export default function ReportPage({ reportId }) {
   const { profile } = useAuth();
-  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const { org, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  // ── Updated role check – includes organization_admin and branch_admin ──
+  // ── Updated role check ──
   const adminRoles = ['admin', 'super_admin', 'organization_admin', 'branch_admin'];
   const hasReportAccess = Boolean(profile && adminRoles.includes(profile.role));
 
@@ -161,18 +159,11 @@ export default function ReportPage({ reportId }) {
     enabled: hasReportAccess && Boolean(config) && Boolean(branchId) && Boolean(financialYearId),
   });
 
-  const { data: org } = useQuery({
-    queryKey: ['organization', currentOrg?.id],
-    queryFn: () => getOrganization(currentOrg?.id),
-    staleTime: 10 * 60 * 1000,
-    enabled: hasReportAccess && Boolean(currentOrg?.id),
-  });
-
   /* ---------- Derived values ---------- */
   const rows = Array.isArray(data) ? data : [];
   const hasChart = Boolean(config?.chartConfig && rows.length > 0);
 
-  // Role guard – show loading if branch/FY not yet loaded, instead of redirecting
+  // Role guard
   if (!hasReportAccess) {
     return <Navigate to="/" replace />;
   }
@@ -185,7 +176,6 @@ export default function ReportPage({ reportId }) {
     );
   }
 
-  // Wait for branch and financial year to load
   if (!branchId || !financialYearId) {
     return (
       <div className="p-6 text-center text-secondary">
@@ -270,7 +260,7 @@ export default function ReportPage({ reportId }) {
         </div>
       </div>
 
-      {/* Filter Bar – passes branchId & financialYearId to dropdowns */}
+      {/* Filter Bar */}
       <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
         <div className="flex flex-wrap items-end gap-4">
           {config.fields.map((field) => (

@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Printer, Download, List, RotateCcw } from 'lucide-react';
 import { getReportConfig } from '../utils/reportConfig';
-import { getOrganization } from '../services/organizationService';
 import { supabase } from '../api/supabase';
 import { useOrg } from '../context/OrganizationContext';
 
@@ -64,16 +63,11 @@ function FilterDropdown({ field, filters, onChange, branchId, financialYearId })
 /* ------------------------------------------------------------------ */
 export default function DocumentReportPage({ reportId }) {
   const config = useMemo(() => getReportConfig(reportId), [reportId]);
-  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+
+  // Use organization directly from context – contains letterhead_url
+  const { org, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
-
-  // Fetch organization details (logos, name) – now uses org.id
-  const { data: org } = useQuery({
-    queryKey: ['organization', currentOrg?.id],
-    queryFn: () => getOrganization(currentOrg?.id),
-    enabled: !!currentOrg?.id,
-  });
 
   const [records, setRecords] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -115,9 +109,6 @@ export default function DocumentReportPage({ reportId }) {
     if (!previewEl) return window.print();
 
     const content = previewEl.innerHTML;
-    const orgLogo = org?.logo_dark_url || '/ShreeVidhyaDark.png';
-    const orgName = org?.company_name || 'ShreeVidhya Academy';
-
     const printWindow = window.open('', '_blank', 'width=900,height=650');
     printWindow.document.write(`
       <html>
@@ -253,7 +244,7 @@ export default function DocumentReportPage({ reportId }) {
             </div>
           </div>
 
-          {/* Document Preview */}
+          {/* Document Preview – now passes the correct org with letterhead_url */}
           <div className="document-preview bg-white shadow-xl rounded-2xl p-6 md:p-10 border">
             {currentRecord && <DocumentComponent data={currentRecord} org={org} />}
           </div>

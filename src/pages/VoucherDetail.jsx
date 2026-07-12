@@ -11,7 +11,6 @@ import {
   createVoucher,
   getVoucherTypes,
 } from "../services/voucherService";
-import { getOrganization } from "../services/organizationService";
 import { getChartOfAccounts } from "../services/accountingService";
 import { useOrg } from "../context/OrganizationContext";
 
@@ -21,18 +20,11 @@ export default function VoucherDetail() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // ── Organisation / Branch / Financial Year context ──
-  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  // ── Organisation / Branch / Financial Year from context ──
+  const { org, branch, selectedFinancialYear } = useOrg();   // org directly from context
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
-
-  // Fetch organization (unchanged, org‑wide)
-  const { data: org } = useQuery({
-    queryKey: ["organization", currentOrg?.id],
-    queryFn: () => getOrganization(currentOrg?.id),
-    enabled: !!currentOrg?.id,
-  });
 
   // Scoped chart of accounts
   const { data: accounts = [] } = useQuery({
@@ -122,7 +114,7 @@ export default function VoucherDetail() {
     setEditing(!editing);
   };
 
-  // Save handler (unchanged)
+  // Save handler
   const handleSave = () => {
     const totalDebit = form.lines.reduce(
       (s, l) => s + (parseFloat(l.debit) || 0),
@@ -151,7 +143,7 @@ export default function VoucherDetail() {
     saveMutation.mutate(payload);
   };
 
-  // Line management (unchanged)
+  // Line management
   const addLine = () =>
     setForm({
       ...form,
@@ -165,11 +157,11 @@ export default function VoucherDetail() {
     setForm({ ...form, lines: updated });
   };
 
-  // Print function (unchanged)
+  // Print function – now uses context org directly
   const handlePrint = () => {
     if (isNew || !voucher) return;
 
-    const orgName = org?.company_name || "ShreeVidhya Academy";
+    const orgName = org?.company_name || "Academy";
     const orgAddr = org?.address || "";
     const orgPhone = org?.phone || "";
     const orgEmail = org?.email || "";
@@ -197,112 +189,26 @@ export default function VoucherDetail() {
   <head>
     <title>${voucher.voucher_no}</title>
     <style>
-      @page {
-        size: 190mm 83mm;
-        margin: 4mm 5mm;
-      }
+      @page { size: 190mm 83mm; margin: 4mm 5mm; }
       * { box-sizing: border-box; }
-      body {
-        font-family: 'Montserrat', 'Segoe UI', sans-serif;
-        color: #222;
-        margin: 0;
-        padding: 0;
-        font-size: 8.5px;
-        line-height: 1.3;
-      }
-      .voucher-container {
-        width: 100%;
-        padding: 2mm 0;
-      }
-      .header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        border-bottom: 1.5px solid #0D47A1;
-        padding-bottom: 4px;
-        margin-bottom: 6px;
-      }
-      .header-left {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      .header img {
-        height: 30px;
-      }
-      .org-name {
-        font-size: 14px;
-        font-weight: 700;
-        color: #0D47A1;
-      }
-      .org-details {
-        font-size: 7px;
-        color: #555;
-        margin-top: 1px;
-      }
-      .voucher-title {
-        text-align: center;
-        font-size: 13px;
-        font-weight: 700;
-        color: #0D47A1;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        margin: 4px 0 6px;
-      }
-      .voucher-meta {
-        display: flex;
-        justify-content: space-between;
-        font-size: 8px;
-        border: 1px solid #ddd;
-        padding: 3px 8px;
-        background: #f9f9f9;
-        margin-bottom: 6px;
-      }
-      .voucher-meta span {
-        margin-right: 20px;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-bottom: 6px;
-      }
-      th {
-        background-color: #E3F2FD;
-        color: #0D47A1;
-        padding: 4px 6px;
-        border: 1px solid #ccc;
-        text-align: left;
-        font-weight: 600;
-        font-size: 8px;
-      }
-      td {
-        padding: 3px 6px;
-        border: 1px solid #ddd;
-        vertical-align: top;
-        font-size: 8px;
-      }
+      body { font-family: 'Montserrat', sans-serif; color: #222; margin: 0; padding: 0; font-size: 8.5px; line-height: 1.3; }
+      .voucher-container { width: 100%; padding: 2mm 0; }
+      .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1.5px solid #0D47A1; padding-bottom: 4px; margin-bottom: 6px; }
+      .header-left { display: flex; align-items: center; gap: 8px; }
+      .header img { height: 30px; }
+      .org-name { font-size: 14px; font-weight: 700; color: #0D47A1; }
+      .org-details { font-size: 7px; color: #555; margin-top: 1px; }
+      .voucher-title { text-align: center; font-size: 13px; font-weight: 700; color: #0D47A1; text-transform: uppercase; letter-spacing: 1px; margin: 4px 0 6px; }
+      .voucher-meta { display: flex; justify-content: space-between; font-size: 8px; border: 1px solid #ddd; padding: 3px 8px; background: #f9f9f9; margin-bottom: 6px; }
+      .voucher-meta span { margin-right: 20px; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+      th { background-color: #E3F2FD; color: #0D47A1; padding: 4px 6px; border: 1px solid #ccc; text-align: left; font-weight: 600; font-size: 8px; }
+      td { padding: 3px 6px; border: 1px solid #ddd; vertical-align: top; font-size: 8px; }
       .text-right { text-align: right; }
-      .totals {
-        margin-left: auto;
-        width: 50%;
-        font-weight: 600;
-        font-size: 8px;
-      }
-      .totals td {
-        border: none;
-        padding: 2px 6px;
-      }
-      .footer {
-        margin-top: 6px;
-        text-align: center;
-        font-size: 6.5px;
-        color: #777;
-        border-top: 1px solid #ccc;
-        padding-top: 4px;
-      }
-      @media print {
-        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      }
+      .totals { margin-left: auto; width: 50%; font-weight: 600; font-size: 8px; }
+      .totals td { border: none; padding: 2px 6px; }
+      .footer { margin-top: 6px; text-align: center; font-size: 6.5px; color: #777; border-top: 1px solid #ccc; padding-top: 4px; }
+      @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
     </style>
   </head>
   <body>
