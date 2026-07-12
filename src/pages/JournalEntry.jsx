@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Plus, Trash2 } from "lucide-react";
@@ -7,22 +7,28 @@ import {
   getChartOfAccounts,
   createJournalEntry,
 } from "../services/accountingService";
-import { useOrg } from "../context/OrganizationContext"; // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function JournalEntry() {
   const queryClient = useQueryClient();
 
   // ── Branch & Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg(); // NEW
+  const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
-  const context = { branchId, financialYearId };
+  const contextReady = !!branchId && !!financialYearId;
 
-  // Fetch accounts – now scoped to branch & FY
+  // Keep a ref that always has the current context
+  const contextRef = useRef({ branchId, financialYearId });
+  useEffect(() => {
+    contextRef.current = { branchId, financialYearId };
+  }, [branchId, financialYearId]);
+
+  // Fetch accounts – scoped to branch & FY
   const { data: accounts = [] } = useQuery({
     queryKey: ["chart-of-accounts", branchId, financialYearId],
     queryFn: () => getChartOfAccounts(branchId, financialYearId),
-    enabled: !!branchId && !!financialYearId,
+    enabled: contextReady,
     staleTime: 10 * 60 * 1000,
   });
 
@@ -43,19 +49,32 @@ export default function JournalEntry() {
     setLines(updated);
   };
 
-  // Create mutation – now passes context
+  // Create mutation – now reads latest context from ref
   const createMutation = useMutation({
-    mutationFn: (payload) => createJournalEntry(payload, context),
+    mutationFn: (payload) => {
+      // Use the latest branchId/financialYearId from the ref
+      const { branchId: bId, financialYearId: fyId } = contextRef.current;
+      if (!bId || !fyId) {
+        throw new Error("Branch or Financial Year not selected. Please refresh the page.");
+      }
+      return createJournalEntry(payload, { branchId: bId, financialYearId: fyId });
+    },
     onSuccess: () => {
       toast.success("Journal entry saved");
-      queryClient.invalidateQueries(["journal-entries"]);
+      queryClient.invalidateQueries({ queryKey: ["journal-entries"] });
       setLines([{ account_id: "", debit: "", credit: "", description: "" }]);
     },
-    onError: () => toast.error("Failed to save"),
+    onError: (err) => {
+      toast.error(err.message || "Failed to save journal entry");
+    },
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!contextReady) {
+      toast.error("Branch and Financial Year are still loading. Please wait.");
+      return;
+    }
     const totalDebit = lines.reduce((sum, l) => sum + (parseFloat(l.debit) || 0), 0);
     const totalCredit = lines.reduce((sum, l) => sum + (parseFloat(l.credit) || 0), 0);
     if (Math.abs(totalDebit - totalCredit) > 0.001) {
@@ -183,9 +202,10 @@ export default function JournalEntry() {
         <div className="flex justify-end">
           <button
             type="submit"
-            className="bg-primary text-white px-6 py-2.5 rounded-lg"
+            disabled={!contextReady || createMutation.isLoading}
+            className="bg-primary text-white px-6 py-2.5 rounded-lg disabled:opacity-50"
           >
-            Save Entry
+            {createMutation.isLoading ? "Saving..." : "Save Entry"}
           </button>
         </div>
       </form>
