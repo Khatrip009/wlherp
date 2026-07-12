@@ -26,7 +26,7 @@ export default function InstallBanner({ onInstall, onDismiss }) {
       <div className="flex items-center gap-3">
         <img src={logoUrl} alt="Logo" className="h-8 w-auto" />
         <div>
-          <p className="text-sm font-montserrat font-semibold">{appName} ERP</p>
+          <p className="text-sm font-montserrat font-semibold">Wondernest Learning Hub ERP</p>
           <p className="text-xs text-secondary-light">Install for a better experience</p>
         </div>
       </div>
