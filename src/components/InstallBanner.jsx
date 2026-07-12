@@ -4,10 +4,14 @@ import { useOrg } from "../context/OrganizationContext";
 
 export default function InstallBanner({ onInstall, onDismiss }) {
   const [visible, setVisible] = useState(true);
-  const { org } = useOrg();   // ← gets the correct org directly
+  const { org } = useOrg();
 
-  const appName = org?.company_name || "Academy";
-  const logoUrl = org?.logo_light_url || "/icon-192x192.png";   // existing icon as fallback
+  // Use the organisation name from context, then append " App"
+  const orgName = org?.company_name || "Wondernest Learning Hub";
+  const appName = `${orgName} App`;
+
+  // Fallback logo – use an existing icon
+  const logoUrl = org?.logo_light_url || "/icon-192x192.png";
 
   if (!visible) return null;
 
@@ -26,7 +30,7 @@ export default function InstallBanner({ onInstall, onDismiss }) {
       <div className="flex items-center gap-3">
         <img src={logoUrl} alt="Logo" className="h-8 w-auto" />
         <div>
-          <p className="text-sm font-montserrat font-semibold">Wondernest Learning Hub ERP</p>
+          <p className="text-sm font-montserrat font-semibold">{appName}</p>
           <p className="text-xs text-secondary-light">Install for a better experience</p>
         </div>
       </div>
