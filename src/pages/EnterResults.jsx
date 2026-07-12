@@ -22,15 +22,17 @@ import {
   getResultsByExam,
   saveResults,
 } from "../services/examService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function EnterResults() {
   const { examId } = useParams();
   const navigate = useNavigate();
 
   // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const { branch, selectedFinancialYear } = useOrg();
   const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const branchId = ctx.branchId;
+  const financialYearId = ctx.financialYearId;
 
   useEffect(() => {
     if (!examId || examId === "undefined") {
@@ -53,12 +55,12 @@ export default function EnterResults() {
     if (examId && examId !== "undefined") {
       loadData();
     }
-  }, [examId]);
+  }, [examId, branchId, financialYearId]);
 
   async function loadData() {
     setLoading(true);
     try {
-      const examData = await getExamById(examId);
+      const examData = await getExamById(examId, branchId, financialYearId);
       if (!examData) {
         toast.error("Exam not found");
         navigate("/results");
@@ -66,10 +68,10 @@ export default function EnterResults() {
       }
       setExam(examData);
 
-      const batchStudents = await getBatchStudents(examData.batch_id);
+      const batchStudents = await getBatchStudents(examData.batch_id, branchId, financialYearId);
       setAllStudents(batchStudents);
 
-      const existingResults = await getResultsByExam(examId);
+      const existingResults = await getResultsByExam(examId, branchId, financialYearId);
       const initialMarks = {};
       const initialRemarks = {};
       existingResults.forEach((r) => {

@@ -1,6 +1,11 @@
 // src/pages/StudentFees.jsx
 import React, { useState, useRef, useEffect } from "react";
-import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+  useQuery,
+} from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {
   Search,
@@ -44,13 +49,16 @@ export default function StudentFees() {
 
   // ── Get branch, financial year, and org details from context ──
   const { org, branch, selectedFinancialYear } = useOrg();
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
   const darkLogo = org?.logo_dark_url || "/ShreeVidhyaDark.png";
   const orgName = org?.company_name || "Academy";
 
   const [search, setSearch] = useState("");
   const filters = { search };
 
+  // Paginated student fees – scoped
   const {
     data,
     isLoading,
@@ -58,8 +66,9 @@ export default function StudentFees() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["studentFees", filters],
-    queryFn: ({ pageParam = 0 }) => getStudentFees({ pageParam, filters }),
+    queryKey: ["studentFees", filters, branchId, financialYearId],
+    queryFn: ({ pageParam = 0 }) =>
+      getStudentFees({ pageParam, filters, branchId, financialYearId }),
     getNextPageParam: (lastPage, allPages) => {
       const totalFetched = allPages.reduce((sum, page) => sum + page.data.length, 0);
       if (lastPage.count && totalFetched < lastPage.count) {
@@ -68,43 +77,56 @@ export default function StudentFees() {
       return undefined;
     },
     initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
   const studentFees = data?.pages.flatMap((page) => page.data) || [];
 
+  // Students dropdown – scoped
   const { data: students = [] } = useQuery({
-    queryKey: ["students-dropdown"],
+    queryKey: ["students-dropdown", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("students")
-        .select("id, first_name, last_name, admission_no");
+        .select("id, first_name, last_name, admission_no")
+        .order("first_name");
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
+  // Fee structures dropdown – scoped
   const { data: feeStructures = [] } = useQuery({
-    queryKey: ["feeStructures-dropdown"],
+    queryKey: ["feeStructures-dropdown", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("fee_structures")
-        .select(`
-          id,
+        .select(
+          `id,
           fee_amount,
           installment_allowed,
           tax_rate_id,
           tax_inclusive,
           courses(course_name),
-          tax_rates ( id, name, rate )
-        `);
+          tax_rates ( id, name, rate )`
+        )
+        .order("id");
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
   const createMutation = useMutation({
-    mutationFn: (payload) => createStudentFee(payload, ctx),   // pass context
+    mutationFn: (payload) => createStudentFee(payload, ctx),
     onSuccess: () => {
       toast.success("Fee assigned");
       queryClient.invalidateQueries({ queryKey: ["studentFees"] });
@@ -114,7 +136,7 @@ export default function StudentFees() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }) => updateStudentFee(id, payload, ctx),   // pass context
+    mutationFn: ({ id, payload }) => updateStudentFee(id, payload, ctx),
     onSuccess: () => {
       toast.success("Fee updated");
       queryClient.invalidateQueries({ queryKey: ["studentFees"] });
@@ -125,7 +147,7 @@ export default function StudentFees() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => deleteStudentFee(id, ctx),   // pass context (soft delete)
+    mutationFn: (id) => deleteStudentFee(id, ctx),
     onSuccess: () => {
       toast.success("Fee record deleted");
       queryClient.invalidateQueries({ queryKey: ["studentFees"] });
@@ -133,11 +155,8 @@ export default function StudentFees() {
     onError: () => toast.error("Delete failed"),
   });
 
-  // ─── Invoice generation mutation ──
   const generateInvoiceMutation = useMutation({
     mutationFn: async ({ feeId, installmentId }) => {
-      // Note: generateInvoiceFromStudentFee currently throws an error saying invoiceService must be updated,
-      // but we'll still pass context when calling it (if we update that service later). For now keep as-is.
       if (installmentId) {
         return await generateInvoiceFromStudentFee(feeId, installmentId, ctx);
       } else {
@@ -168,13 +187,16 @@ export default function StudentFees() {
   const [confirmInvoice, setConfirmInvoice] = useState(null);
   const fileInputRef = useRef(null);
 
+  // Payment history – scoped
   const { data: payments = [], isLoading: paymentsLoading } = useQuery({
-    queryKey: ["payments", selectedFeeForPayments?.id],
-    queryFn: () => getPayments(selectedFeeForPayments.id),
-    enabled: !!selectedFeeForPayments,
+    queryKey: ["payments", selectedFeeForPayments?.id, branchId, financialYearId],
+    queryFn: () =>
+      getPayments(selectedFeeForPayments.id, branchId, financialYearId),
+    enabled: !!selectedFeeForPayments && !!branchId && !!financialYearId,
     staleTime: 0,
   });
 
+  // ... rest of the component (form state, helpers, etc.) unchanged ...
   const [form, setForm] = useState({
     student_id: "",
     fee_structure_id: "",
@@ -193,7 +215,7 @@ export default function StudentFees() {
   const [installmentCount, setInstallmentCount] = useState(1);
   const [installments, setInstallments] = useState([]);
 
-  // ---- Recalculate tax function ----
+  // Recalculate tax function (unchanged)
   const recalculateTax = (finalFee, structureId, taxInclusive, taxRateId) => {
     if (!structureId) {
       setForm((prev) => ({
@@ -250,7 +272,6 @@ export default function StudentFees() {
     }));
   };
 
-  // ---- useEffect to recalculate tax when relevant fields change ----
   useEffect(() => {
     if (form.fee_structure_id && form.final_fee && feeStructures.length > 0) {
       recalculateTax(
@@ -260,10 +281,9 @@ export default function StudentFees() {
         form.tax_rate_id
       );
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.fee_structure_id, form.final_fee, form.tax_inclusive, form.tax_rate_id, feeStructures]);
 
-  // ---- CSV handlers ----
+  // CSV handlers (scoped)
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -282,7 +302,7 @@ export default function StudentFees() {
               final_fee: Number(row.final_fee),
               status: row.status || "Pending",
             };
-            await createStudentFee(payload, ctx);   // pass context
+            await createStudentFee(payload, ctx);
             successCount++;
           } catch (err) {
             console.error(err);
@@ -297,7 +317,11 @@ export default function StudentFees() {
 
   async function handleCSVExport() {
     try {
-      const allData = await getAllStudentFeesForExport({ search });
+      const allData = await getAllStudentFeesForExport(
+        { search },
+        branchId,
+        financialYearId
+      );
       const csv = Papa.unparse(
         allData.map((f) => ({
           student: `${f.students?.first_name} ${f.students?.last_name}`,
@@ -324,7 +348,7 @@ export default function StudentFees() {
     }
   }
 
-  // ---- Form helpers ----
+  // Form helpers (unchanged)
   function openAssign() {
     setForm({
       student_id: "",

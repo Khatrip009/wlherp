@@ -15,7 +15,10 @@ export default function AttendanceSessionForm({
   const { user, profile } = useAuth();
   const { org, branch, selectedFinancialYear } = useOrg();
 
-  const darkLogo = org?.logo_dark_url || "/ShreeVidhyaDark.png";   // fallback
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  const darkLogo = org?.logo_dark_url || "/ShreeVidhyaDark.png";
   const orgName = org?.company_name || "Academy";
 
   const [batches, setBatches] = useState([]);
@@ -28,12 +31,13 @@ export default function AttendanceSessionForm({
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    if (!branchId || !financialYearId) return;
     loadDropdowns();
-  }, []);
+  }, [branchId, financialYearId]);
 
   async function loadDropdowns() {
     try {
-      const batchData = await getBatchOptions();
+      const batchData = await getBatchOptions(branchId, financialYearId);
       setBatches(batchData);
     } catch {
       toast.error("Failed to load batches");
@@ -54,13 +58,17 @@ export default function AttendanceSessionForm({
     setSubmitting(true);
     try {
       let created_by = null;
-      const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
+      const isAdmin =
+        profile?.role === "admin" || profile?.role === "super_admin";
 
       if (!isAdmin) {
+        // Scope teacher lookup to current branch & financial year
         const { data: teacherData, error: teacherError } = await supabase
           .from("teachers")
           .select("id")
           .eq("user_id", user.id)
+          .eq("branch_id", branchId)
+          .eq("financial_year_id", financialYearId)
           .maybeSingle();
         if (teacherError) throw teacherError;
         created_by = teacherData?.id || null;
@@ -68,8 +76,8 @@ export default function AttendanceSessionForm({
 
       const payload = { ...form, created_by };
       const context = {
-        branchId: branch?.id,
-        financialYearId: selectedFinancialYear?.id,
+        branchId,
+        financialYearId,
       };
 
       await onSubmit(payload, context);
@@ -86,16 +94,15 @@ export default function AttendanceSessionForm({
         {/* Header with dynamic logo */}
         <div className="sticky top-0 bg-white border-b border-secondary-light px-6 py-4 flex items-center justify-between rounded-t-xl">
           <div className="flex items-center gap-3">
-            <img
-              src={darkLogo}
-              alt={orgName}
-              className="h-10 w-auto"
-            />
+            <img src={darkLogo} alt={orgName} className="h-10 w-auto" />
             <h2 className="text-xl font-righteous text-primary-dark">
               {initialData.id ? "Edit Session" : "New Attendance Session"}
             </h2>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-secondary-bg rounded-lg transition">
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-secondary-bg rounded-lg transition"
+          >
             <X size={20} className="text-secondary-dark" />
           </button>
         </div>

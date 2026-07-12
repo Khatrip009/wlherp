@@ -5,7 +5,12 @@ import { supabase } from "../api/supabase";
 // PAGINATED SESSIONS (for list)
 // ============================
 
-export async function getAttendanceSessions({ pageParam = 0, filters = {} } = {}) {
+export async function getAttendanceSessions({
+  pageParam = 0,
+  filters = {},
+  branchId,
+  financialYearId,
+} = {}) {
   const limit = 10;
   const from = pageParam * limit;
   const to = from + limit - 1;
@@ -19,6 +24,10 @@ export async function getAttendanceSessions({ pageParam = 0, filters = {} } = {}
     .order("attendance_date", { ascending: false })
     .range(from, to);
 
+  // Apply branch/financial year scope (safe guards)
+  if (branchId) query = query.eq("attendance_sessions.branch_id", branchId);
+  if (financialYearId) query = query.eq("attendance_sessions.financial_year_id", financialYearId);
+
   if (filters.batchId) query = query.eq("batch_id", filters.batchId);
   if (filters.search) {
     query = query.or(
@@ -27,12 +36,16 @@ export async function getAttendanceSessions({ pageParam = 0, filters = {} } = {}
   }
   if (filters.startDate) query = query.gte("attendance_date", filters.startDate);
   if (filters.endDate) query = query.lte("attendance_date", filters.endDate);
+
   if (filters.medium_id) {
-    // Filter sessions whose batch has the given medium_id
-    const { data: batchIds } = await supabase
+    // Scope the batch lookup by branch & FY
+    let mediumQuery = supabase
       .from("batches")
       .select("id")
       .eq("medium_id", filters.medium_id);
+    if (branchId) mediumQuery = mediumQuery.eq("branch_id", branchId);
+    if (financialYearId) mediumQuery = mediumQuery.eq("financial_year_id", financialYearId);
+    const { data: batchIds } = await mediumQuery;
     const ids = batchIds?.map((b) => b.id) || [];
     if (ids.length > 0) query = query.in("batch_id", ids);
     else return { data: [], count: 0 };
@@ -41,7 +54,7 @@ export async function getAttendanceSessions({ pageParam = 0, filters = {} } = {}
   const { data, error, count } = await query;
   if (error) throw error;
 
-  // Enrich with attendance counts and medium name
+  // Enrich with attendance counts (these sub‑queries inherit session scope, so no extra filters needed)
   const enriched = await Promise.all(
     data.map(async (session) => {
       const { data: presentRows } = await supabase
@@ -68,12 +81,19 @@ export async function getAttendanceSessions({ pageParam = 0, filters = {} } = {}
   return { data: enriched, count };
 }
 
-// Export for CSV (unpaginated, same filters, now includes medium)
-export async function getAllAttendanceSessionsForExport(filters = {}) {
+// Export for CSV (same scoping)
+export async function getAllAttendanceSessionsForExport({
+  filters = {},
+  branchId,
+  financialYearId,
+} = {}) {
   let query = supabase
     .from("attendance_sessions")
     .select(`id, batch_id, attendance_date, topic_covered, batches(batch_name, medium_id, mediums(name))`)
     .order("attendance_date", { ascending: false });
+
+  if (branchId) query = query.eq("attendance_sessions.branch_id", branchId);
+  if (financialYearId) query = query.eq("attendance_sessions.financial_year_id", financialYearId);
 
   if (filters.batchId) query = query.eq("batch_id", filters.batchId);
   if (filters.search) {
@@ -83,11 +103,15 @@ export async function getAllAttendanceSessionsForExport(filters = {}) {
   }
   if (filters.startDate) query = query.gte("attendance_date", filters.startDate);
   if (filters.endDate) query = query.lte("attendance_date", filters.endDate);
+
   if (filters.medium_id) {
-    const { data: batchIds } = await supabase
+    let mediumQuery = supabase
       .from("batches")
       .select("id")
       .eq("medium_id", filters.medium_id);
+    if (branchId) mediumQuery = mediumQuery.eq("branch_id", branchId);
+    if (financialYearId) mediumQuery = mediumQuery.eq("financial_year_id", financialYearId);
+    const { data: batchIds } = await mediumQuery;
     const ids = batchIds?.map((b) => b.id) || [];
     if (ids.length > 0) query = query.in("batch_id", ids);
     else return [];
@@ -123,25 +147,34 @@ export async function getAllAttendanceSessionsForExport(filters = {}) {
 }
 
 // ============================
-// CRUD (with financial_year_id)
+// CRUD (now with branchId)
 // ============================
 
-export async function createAttendanceSession(payload, financialYearId) {
+export async function createAttendanceSession(payload, branchId, financialYearId) {
   const { created_by, ...rest } = payload;
 
   const { data, error } = await supabase
     .from("attendance_sessions")
-    .insert([{ ...rest, created_by: created_by || null, financial_year_id: financialYearId }])
+    .insert([{
+      ...rest,
+      created_by: created_by || null,
+      branch_id: branchId,
+      financial_year_id: financialYearId,
+    }])
     .select()
     .single();
   if (error) throw error;
   return data;
 }
 
-export async function updateAttendanceSession(id, payload, financialYearId) {
+export async function updateAttendanceSession(id, payload, branchId, financialYearId) {
   const { data, error } = await supabase
     .from("attendance_sessions")
-    .update({ ...payload, financial_year_id: financialYearId })
+    .update({
+      ...payload,
+      branch_id: branchId,
+      financial_year_id: financialYearId,
+    })
     .eq("id", id)
     .select()
     .single();
@@ -149,11 +182,16 @@ export async function updateAttendanceSession(id, payload, financialYearId) {
   return data;
 }
 
-export async function deleteAttendanceSession(id) {
-  const { error } = await supabase
+export async function deleteAttendanceSession(id, branchId, financialYearId) {
+  let query = supabase
     .from("attendance_sessions")
     .update({ deleted_at: new Date().toISOString() })
     .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { error } = await query;
   if (error) throw error;
 }
 
@@ -161,8 +199,8 @@ export async function deleteAttendanceSession(id) {
 // MARKING ATTENDANCE HELPERS
 // ============================
 
-export async function getStudentsByBatch(batchId) {
-  const { data, error } = await supabase
+export async function getStudentsByBatch(batchId, branchId, financialYearId) {
+  let query = supabase
     .from("student_batches")
     .select(`
       student_id,
@@ -171,6 +209,10 @@ export async function getStudentsByBatch(batchId) {
     .eq("batch_id", batchId)
     .eq("status", "active");
 
+  if (branchId) query = query.eq("student_batches.branch_id", branchId);
+  if (financialYearId) query = query.eq("student_batches.financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
 
   return data.map((item) => ({
@@ -179,38 +221,44 @@ export async function getStudentsByBatch(batchId) {
   }));
 }
 
-export async function getMarkedAttendance(sessionId) {
-  const { data, error } = await supabase
+export async function getMarkedAttendance(sessionId, branchId, financialYearId) {
+  // Ensure we only fetch attendance for sessions within the current branch/FY (in case sessionId is spoofed)
+  let query = supabase
     .from("student_attendance")
     .select("*")
     .eq("session_id", sessionId);
 
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data;
 }
 
-export async function saveAttendance(sessionId, records, financialYearId) {
-  // First delete existing records (soft delete already done by service? Actually we use hard delete below)
-  const { error: deleteError } = await supabase
+export async function saveAttendance(sessionId, records, branchId, financialYearId) {
+  // Delete existing records within the same branch/FY
+  let deleteQuery = supabase
     .from("student_attendance")
     .delete()
     .eq("session_id", sessionId);
+  if (branchId) deleteQuery = deleteQuery.eq("branch_id", branchId);
+  if (financialYearId) deleteQuery = deleteQuery.eq("financial_year_id", financialYearId);
+  const { error: deleteError } = await deleteQuery;
   if (deleteError) throw deleteError;
 
   if (records.length === 0) return;
 
-  // Attach financial_year_id to each record
   const payload = records.map((r) => ({
     session_id: sessionId,
     student_id: r.student_id,
     status: r.status,
     remarks: r.remarks || "",
+    branch_id: branchId,
     financial_year_id: financialYearId,
   }));
 
-  const { error: insertError } = await supabase
-    .from("student_attendance")
-    .insert(payload);
+  const { error: insertError } = await supabase.from("student_attendance").insert(payload);
   if (insertError) throw insertError;
 }
 
@@ -218,16 +266,21 @@ export async function saveAttendance(sessionId, records, financialYearId) {
 // DROPDOWNS
 // ============================
 
-export async function getBatchOptions() {
-  const { data, error } = await supabase
+export async function getBatchOptions(branchId, financialYearId) {
+  let query = supabase
     .from("batches")
     .select("id, batch_name")
     .eq("status", "active");
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
-// NEW – get mediums for attendance filter dropdown
+// Mediums – organization‑wide, no branch/FY filter needed
 export async function getMediumOptions() {
   const { data, error } = await supabase
     .from("mediums")

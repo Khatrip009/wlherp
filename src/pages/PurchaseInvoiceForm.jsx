@@ -9,7 +9,7 @@ import {
   getPurchaseInvoice,
 } from "../services/purchaseInvoiceService";
 import { getOrganization } from "../services/organizationService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 import toast from "react-hot-toast";
 import AdminLayout from "../layouts/AdminLayout";
 import { ArrowLeft, Save, Plus, Trash2, Loader } from "lucide-react";
@@ -21,8 +21,10 @@ export default function PurchaseInvoiceForm() {
   const queryClient = useQueryClient();
 
   // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   const [form, setForm] = useState({
     vendor_id: "",
@@ -43,61 +45,77 @@ export default function PurchaseInvoiceForm() {
   ]);
   const [saving, setSaving] = useState(false);
 
-  // ── Fetch vendors ──
+  // ── Fetch vendors – scoped ──
   const { data: vendors = [] } = useQuery({
-    queryKey: ["vendors-dropdown"],
+    queryKey: ["vendors-dropdown", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase.from("vendors").select("id, vendor_name").order("vendor_name");
+      let query = supabase.from("vendors").select("id, vendor_name").order("vendor_name");
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
-  // ── Fetch purchase orders (for reference) ──
+  // ── Fetch purchase orders – scoped ──
   const { data: purchaseOrders = [] } = useQuery({
-    queryKey: ["purchase-orders-dropdown"],
+    queryKey: ["purchase-orders-dropdown", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("purchase_orders")
         .select("id, po_number")
         .eq("status", "Received")
         .order("created_at", { ascending: false });
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
-  // ── Fetch inventory items ──
+  // ── Fetch inventory items – scoped ──
   const { data: inventoryItems = [] } = useQuery({
-    queryKey: ["inventory-items-dropdown"],
+    queryKey: ["inventory-items-dropdown", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("inventory_items")
         .select("id, item_name, unit, unit_price")
         .order("item_name");
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
-  // ── Fetch tax rates ──
+  // ── Fetch tax rates – scoped ──
   const { data: taxRates = [] } = useQuery({
-    queryKey: ["tax-rates-dropdown"],
+    queryKey: ["tax-rates-dropdown", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("tax_rates")
         .select("id, name, rate")
         .eq("is_active", true);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
-  // ── Load existing invoice if editing ──
+  // ── Load existing invoice if editing – scoped ──
   const { data: invoice, isLoading: loadingInvoice } = useQuery({
-    queryKey: ["purchase-invoice", id],
-    queryFn: () => getPurchaseInvoice(id),
-    enabled: isEditing,
+    queryKey: ["purchase-invoice", id, branchId, financialYearId],
+    queryFn: () => getPurchaseInvoice(id, branchId, financialYearId),
+    enabled: isEditing && !!branchId && !!financialYearId,
   });
 
   useEffect(() => {
@@ -190,7 +208,7 @@ export default function PurchaseInvoiceForm() {
 
   const totals = computeTotals();
 
-  // ── Mutations – now pass context ──
+  // ── Mutations – already pass context ──
   const createMutation = useMutation({
     mutationFn: (payload) => createPurchaseInvoice(payload, ctx),
     onSuccess: () => {

@@ -11,13 +11,15 @@ import {
 } from "../services/homeworkService";
 import { useOrgDarkLogo } from "../hooks/useOrgDarkLogo";
 import { useAuth } from "../context/AuthContext";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 import { supabase } from "../api/supabase";
 
 export default function HomeworkForm({ onSubmit, onClose, initialData = {} }) {
   const darkLogo = useOrgDarkLogo();
   const { user, profile } = useAuth();
-  const { branch, selectedFinancialYear } = useOrg();      // NEW
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const [batches, setBatches] = useState([]);
   const [mediums, setMediums] = useState([]);
@@ -40,14 +42,16 @@ export default function HomeworkForm({ onSubmit, onClose, initialData = {} }) {
 
   const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
 
+  // Load dropdowns when branch/FY are ready
   useEffect(() => {
+    if (!branchId || !financialYearId) return;
     loadDropdowns();
     autoSetTeacher();
-  }, []);
+  }, [branchId, financialYearId]);
 
   // Fetch subjects whenever batch_id changes
   useEffect(() => {
-    if (!form.batch_id) {
+    if (!form.batch_id || !branchId || !financialYearId) {
       setSubjects([]);
       return;
     }
@@ -59,6 +63,8 @@ export default function HomeworkForm({ onSubmit, onClose, initialData = {} }) {
           .from("batches")
           .select("course_id")
           .eq("id", form.batch_id)
+          .eq("branch_id", branchId)
+          .eq("financial_year_id", financialYearId)
           .maybeSingle();
 
         if (batchError) throw batchError;
@@ -67,7 +73,12 @@ export default function HomeworkForm({ onSubmit, onClose, initialData = {} }) {
           return;
         }
 
-        const subj = await getSubjectsByCourse(batchData.course_id);
+        // Now scope subjects by branch and financial year
+        const subj = await getSubjectsByCourse(
+          batchData.course_id,
+          branchId,
+          financialYearId
+        );
         setSubjects(subj);
       } catch (err) {
         console.error("Failed to load subjects:", err);
@@ -79,16 +90,19 @@ export default function HomeworkForm({ onSubmit, onClose, initialData = {} }) {
     }
 
     fetchSubjects();
-  }, [form.batch_id]);
+  }, [form.batch_id, branchId, financialYearId]);
 
+  // Auto-set teacher for non-admin users (scoped)
   async function autoSetTeacher() {
-    if (isAdmin) return;
+    if (isAdmin || !user?.id || !branchId || !financialYearId) return;
     try {
       setLoadingTeacherId(true);
       const { data: teacherData } = await supabase
         .from("teachers")
         .select("id")
-        .eq("user_id", user?.id)
+        .eq("user_id", user.id)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .maybeSingle();
       if (teacherData?.id) {
         setForm((prev) => ({ ...prev, created_by: teacherData.id }));
@@ -103,8 +117,8 @@ export default function HomeworkForm({ onSubmit, onClose, initialData = {} }) {
   async function loadDropdowns() {
     try {
       const [batchData, teacherData, mediumData] = await Promise.all([
-        getBatchOptions(),
-        getTeacherOptions(),
+        getBatchOptions(branchId, financialYearId),
+        getTeacherOptions(branchId, financialYearId),
         getMediumOptions(),
       ]);
       setBatches(batchData);
@@ -132,8 +146,8 @@ export default function HomeworkForm({ onSubmit, onClose, initialData = {} }) {
     }
     try {
       const context = {
-        branchId: branch?.id,
-        financialYearId: selectedFinancialYear?.id,
+        branchId: branchId,
+        financialYearId: financialYearId,
       };
       await onSubmit({ ...form, created_by: form.created_by || null }, context);
     } catch (err) {

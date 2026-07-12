@@ -14,14 +14,14 @@ export default function TeacherTimetable() {
   const { profile } = useAuth();
   const [events, setEvents] = useState([]);
 
-  // 1. Get teacher ID linked to this auth user
+  // 1. Get teacher ID + branch/FY linked to this auth user
   const { data: teacherRecord, isLoading: teacherLoading } = useQuery({
-    queryKey: ["teacher-record", profile?.id],
+    queryKey: ["teacher-record-scoped", profile?.id],
     queryFn: async () => {
       if (!profile?.id) return null;
       const { data, error } = await supabase
         .from("teachers")
-        .select("id")
+        .select("id, branch_id, financial_year_id")
         .eq("user_id", profile.id)
         .maybeSingle();
       if (error) throw error;
@@ -31,16 +31,18 @@ export default function TeacherTimetable() {
   });
 
   const actualTeacherId = teacherRecord?.id;
+  const teacherBranchId = teacherRecord?.branch_id;
+  const teacherFinancialYearId = teacherRecord?.financial_year_id;
 
-  // 2. Fetch batch‑teacher assignments with batch details (now includes medium)
+  // 2. Fetch batch‑teacher assignments scoped to the teacher's branch & FY
   const {
     data: batchAssignments = [],
     isLoading: batchesLoading,
     error,
   } = useQuery({
-    queryKey: ["teacher-batch-assignments", actualTeacherId],
+    queryKey: ["teacher-batch-assignments-scoped", actualTeacherId, teacherBranchId, teacherFinancialYearId],
     queryFn: async () => {
-      if (!actualTeacherId) return [];
+      if (!actualTeacherId || !teacherBranchId || !teacherFinancialYearId) return [];
       const { data, error } = await supabase
         .from("batch_teachers")
         .select(`
@@ -57,11 +59,13 @@ export default function TeacherTimetable() {
             mediums ( name )
           )
         `)
-        .eq("teacher_id", actualTeacherId);
+        .eq("teacher_id", actualTeacherId)
+        .eq("branch_id", teacherBranchId)
+        .eq("financial_year_id", teacherFinancialYearId);
       if (error) throw error;
       return data.filter((item) => item.batches !== null);
     },
-    enabled: !!actualTeacherId,
+    enabled: !!actualTeacherId && !!teacherBranchId && !!teacherFinancialYearId,
   });
 
   // 3. Convert assignments to FullCalendar events

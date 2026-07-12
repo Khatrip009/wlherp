@@ -12,14 +12,16 @@ import {
   calculateMonthlyDepreciation,
   postDepreciation,
 } from "../services/fixedAssetService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function FixedAssets() {
   const queryClient = useQueryClient();
 
   // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -34,21 +36,23 @@ export default function FixedAssets() {
     status: "Active",
   });
 
+  // Scoped query with branchId and financialYearId
   const { data: assets = [], isLoading } = useQuery({
-    queryKey: ["fixed-assets"],
-    queryFn: getFixedAssets,
+    queryKey: ["fixed-assets", branchId, financialYearId],
+    queryFn: () => getFixedAssets(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
   const [depPreview, setDepPreview] = useState(null);
   const [posting, setPosting] = useState(false);
 
-  // Mutations – now pass context
+  // Mutations – now pass context where needed
   const createMut = useMutation({
     mutationFn: (payload) => createFixedAsset(payload, ctx),
     onSuccess: () => {
       toast.success("Asset added");
-      queryClient.invalidateQueries(["fixed-assets"]);
+      queryClient.invalidateQueries({ queryKey: ["fixed-assets"] });
       setShowForm(false);
       resetForm();
     },
@@ -59,7 +63,7 @@ export default function FixedAssets() {
     mutationFn: ({ id, payload }) => updateFixedAsset(id, payload, ctx),
     onSuccess: () => {
       toast.success("Asset updated");
-      queryClient.invalidateQueries(["fixed-assets"]);
+      queryClient.invalidateQueries({ queryKey: ["fixed-assets"] });
       setEditing(null);
       setShowForm(false);
     },
@@ -67,10 +71,10 @@ export default function FixedAssets() {
   });
 
   const deleteMut = useMutation({
-    mutationFn: deleteFixedAsset,   // no context needed
+    mutationFn: (id) => deleteFixedAsset(id, branchId, financialYearId),
     onSuccess: () => {
       toast.success("Asset deleted");
-      queryClient.invalidateQueries(["fixed-assets"]);
+      queryClient.invalidateQueries({ queryKey: ["fixed-assets"] });
     },
     onError: () => toast.error("Delete failed"),
   });
@@ -116,7 +120,11 @@ export default function FixedAssets() {
   };
 
   const handleCalculateDep = async () => {
-    const result = await calculateMonthlyDepreciation();
+    if (!branchId || !financialYearId) {
+      toast.error("Branch and financial year required");
+      return;
+    }
+    const result = await calculateMonthlyDepreciation(branchId, financialYearId);
     setDepPreview(result);
     if (result.length === 0) toast("No depreciation to calculate");
   };
@@ -125,11 +133,10 @@ export default function FixedAssets() {
     if (!depPreview || depPreview.length === 0) return;
     setPosting(true);
     try {
-      // Pass context to postDepreciation
       await postDepreciation(depPreview, ctx);
       toast.success("Depreciation posted");
       setDepPreview(null);
-      queryClient.invalidateQueries(["fixed-assets"]);
+      queryClient.invalidateQueries({ queryKey: ["fixed-assets"] });
     } catch {
       toast.error("Posting failed");
     } finally {

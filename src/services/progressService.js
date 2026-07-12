@@ -1,8 +1,8 @@
 // src/services/progressService.js
 import { supabase } from "../api/supabase";
 
-// Paginated fetch with filters – now includes medium info
-export async function getProgressEvaluations({ pageParam = 0, filters = {} } = {}) {
+// Paginated fetch with filters – now scoped to branch & FY
+export async function getProgressEvaluations({ pageParam = 0, filters = {}, branchId, financialYearId } = {}) {
   const limit = 10;
   const from = pageParam * limit;
   const to = from + limit - 1;
@@ -18,12 +18,20 @@ export async function getProgressEvaluations({ pageParam = 0, filters = {} } = {
     .order("evaluation_date", { ascending: false })
     .range(from, to);
 
+  // Scope main table
+  if (branchId) query = query.eq("student_progress.branch_id", branchId);
+  if (financialYearId) query = query.eq("student_progress.financial_year_id", financialYearId);
+
   if (filters.batchId) query = query.eq("batch_id", filters.batchId);
   if (filters.medium_id) {
-    const { data: mediumBatches } = await supabase
+    // Subquery on batches – scope it
+    let mediumSub = supabase
       .from("batches")
       .select("id")
       .eq("medium_id", filters.medium_id);
+    if (branchId) mediumSub = mediumSub.eq("branch_id", branchId);
+    if (financialYearId) mediumSub = mediumSub.eq("financial_year_id", financialYearId);
+    const { data: mediumBatches } = await mediumSub;
     const batchIds = mediumBatches?.map((b) => b.id) || [];
     if (batchIds.length > 0) query = query.in("batch_id", batchIds);
     else return { data: [], count: 0 };
@@ -48,8 +56,8 @@ export async function getProgressEvaluations({ pageParam = 0, filters = {} } = {
   return { data: enriched, count };
 }
 
-// Export all evaluations matching filters (for CSV)
-export async function getAllProgressEvaluationsForExport(filters = {}) {
+// Export all evaluations matching filters – scoped
+export async function getAllProgressEvaluationsForExport(filters = {}, branchId, financialYearId) {
   let query = supabase
     .from("student_progress")
     .select(
@@ -59,12 +67,19 @@ export async function getAllProgressEvaluationsForExport(filters = {}) {
     )
     .order("evaluation_date", { ascending: false });
 
+  // Scope
+  if (branchId) query = query.eq("student_progress.branch_id", branchId);
+  if (financialYearId) query = query.eq("student_progress.financial_year_id", financialYearId);
+
   if (filters.batchId) query = query.eq("batch_id", filters.batchId);
   if (filters.medium_id) {
-    const { data: mediumBatches } = await supabase
+    let mediumSub = supabase
       .from("batches")
       .select("id")
       .eq("medium_id", filters.medium_id);
+    if (branchId) mediumSub = mediumSub.eq("branch_id", branchId);
+    if (financialYearId) mediumSub = mediumSub.eq("financial_year_id", financialYearId);
+    const { data: mediumBatches } = await mediumSub;
     const batchIds = mediumBatches?.map((b) => b.id) || [];
     if (batchIds.length > 0) query = query.in("batch_id", batchIds);
     else return [];
@@ -99,47 +114,66 @@ export async function createProgressEvaluation(payload, context) {
 
 export async function updateProgressEvaluation(id, payload, context) {
   const { branchId, financialYearId } = context;
-  const { data, error } = await supabase
+  let query = supabase
     .from("student_progress")
     .update({ ...payload, branch_id: branchId, financial_year_id: financialYearId })
-    .eq("id", id)
-    .select()
-    .single();
+    .eq("id", id);
+
+  // Scope to prevent cross‑branch edits
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query.select().single();
   if (error) throw error;
   return data;
 }
 
-// Hard delete – RLS protects, no extra parameters needed
-export async function deleteProgressEvaluation(id) {
-  const { error } = await supabase
+// Hard delete – now scoped
+export async function deleteProgressEvaluation(id, branchId, financialYearId) {
+  let query = supabase
     .from("student_progress")
     .delete()
     .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { error } = await query;
   if (error) throw error;
 }
 
 // Dropdowns
-export async function getActiveBatches() {
-  const { data, error } = await supabase
+export async function getActiveBatches(branchId, financialYearId) {
+  let query = supabase
     .from("batches")
     .select("id, batch_name")
     .eq("status", "active")
     .order("batch_name");
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
-export async function getStudentsByBatch(batchId) {
-  const { data, error } = await supabase
+export async function getStudentsByBatch(batchId, branchId, financialYearId) {
+  let query = supabase
     .from("student_batches")
     .select("student_id, students( id, first_name, last_name, admission_no )")
     .eq("batch_id", batchId)
     .eq("status", "active");
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data.map((item) => item.students);
 }
 
-// NEW – get mediums for filter dropdown
+// Mediums – organisation‑wide (no change)
 export async function getMediumOptions() {
   const { data, error } = await supabase
     .from("mediums")

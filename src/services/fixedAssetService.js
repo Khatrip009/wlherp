@@ -1,12 +1,17 @@
 // src/services/fixedAssetService.js
 import { supabase } from "../api/supabase";
 
-// Get all assets (read – RLS filters)
-export async function getFixedAssets() {
-  const { data, error } = await supabase
+// Get all assets – scoped to branch & FY
+export async function getFixedAssets(branchId, financialYearId) {
+  let query = supabase
     .from("fixed_assets")
     .select("*")
     .order("asset_name");
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
@@ -31,11 +36,12 @@ export async function createFixedAsset(payload, context) {
   return data;
 }
 
-// Update asset
+// Update asset – scoped to prevent cross‑branch edits
 // context: { branchId, financialYearId }
 export async function updateFixedAsset(id, payload, context) {
   const { branchId, financialYearId } = context;
-  const { data, error } = await supabase
+
+  let query = supabase
     .from("fixed_assets")
     .update({
       ...payload,
@@ -43,25 +49,41 @@ export async function updateFixedAsset(id, payload, context) {
       branch_id: branchId,
       financial_year_id: financialYearId,
     })
-    .eq("id", id)
-    .select()
-    .single();
+    .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query.select().single();
   if (error) throw error;
   return data;
 }
 
-// Delete asset (hard delete – RLS protects)
-export async function deleteFixedAsset(id) {
-  const { error } = await supabase.from("fixed_assets").delete().eq("id", id);
+// Delete asset – scoped
+export async function deleteFixedAsset(id, branchId, financialYearId) {
+  let query = supabase
+    .from("fixed_assets")
+    .delete()
+    .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { error } = await query;
   if (error) throw error;
 }
 
-// Calculate monthly depreciation for all active assets (read only – RLS filters)
-export async function calculateMonthlyDepreciation() {
-  const { data: assets } = await supabase
+// Calculate monthly depreciation – scoped to branch & FY
+export async function calculateMonthlyDepreciation(branchId, financialYearId) {
+  let assetQuery = supabase
     .from("fixed_assets")
     .select("*")
     .eq("status", "Active");
+
+  if (branchId) assetQuery = assetQuery.eq("branch_id", branchId);
+  if (financialYearId) assetQuery = assetQuery.eq("financial_year_id", financialYearId);
+
+  const { data: assets } = await assetQuery;
   if (!assets) return [];
 
   const results = [];
@@ -118,19 +140,27 @@ export async function postDepreciation(monthlyDepList, context) {
     .select()
     .single();
 
-  // 2. Get Depreciation Expense account (5004)
-  const { data: depExpAccount } = await supabase
+  // 2. Get Depreciation Expense account (5004) – scoped
+  let depExpQuery = supabase
     .from("chart_of_accounts")
     .select("id")
-    .eq("account_code", "5004")
-    .maybeSingle();
+    .eq("account_code", "5004");
 
-  // 3. Get/Create Accumulated Depreciation account (1009)
-  let accDepAccount = await supabase
+  if (branchId) depExpQuery = depExpQuery.eq("branch_id", branchId);
+  if (financialYearId) depExpQuery = depExpQuery.eq("financial_year_id", financialYearId);
+
+  const { data: depExpAccount } = await depExpQuery.maybeSingle();
+
+  // 3. Get/Create Accumulated Depreciation account (1009) – scoped
+  let accQuery = supabase
     .from("chart_of_accounts")
     .select("id")
-    .eq("account_code", "1009")
-    .maybeSingle();
+    .eq("account_code", "1009");
+
+  if (branchId) accQuery = accQuery.eq("branch_id", branchId);
+  if (financialYearId) accQuery = accQuery.eq("financial_year_id", financialYearId);
+
+  let accDepAccount = await accQuery.maybeSingle();
 
   if (!accDepAccount.data) {
     // Create Accumulated Depreciation account under the current branch & FY
@@ -171,9 +201,9 @@ export async function postDepreciation(monthlyDepList, context) {
   ];
   await supabase.from("journal_entry_lines").insert(lines);
 
-  // 5. Update asset book values
+  // 5. Update asset book values – scoped
   for (const item of monthlyDepList) {
-    await supabase
+    let updateQuery = supabase
       .from("fixed_assets")
       .update({
         current_book_value: item.new_book_value,
@@ -182,6 +212,11 @@ export async function postDepreciation(monthlyDepList, context) {
         financial_year_id: financialYearId,
       })
       .eq("id", item.id);
+
+    if (branchId) updateQuery = updateQuery.eq("branch_id", branchId);
+    if (financialYearId) updateQuery = updateQuery.eq("financial_year_id", financialYearId);
+
+    await updateQuery;
   }
 
   return totalDep;

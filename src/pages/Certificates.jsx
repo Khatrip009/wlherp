@@ -30,24 +30,22 @@ import {
 } from "../services/certificateService";
 import { generateCertificatePdf } from "../utils/certificatePdf";
 import { supabase } from "../api/supabase";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function Certificates() {
   const queryClient = useQueryClient();
 
-  // ── Organisation / Branch / Financial Year context ──
+  // ── Branch & Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();
-  const ctx = {
-    branchId: branch?.id,
-    financialYearId: selectedFinancialYear?.id,
-  };
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   // Search & filters
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Infinite query for certificates (unchanged)
+  // Infinite query for certificates – now scoped
   const {
     data,
     isLoading,
@@ -55,7 +53,7 @@ export default function Certificates() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["certificates", { search }],
+    queryKey: ["certificates", { search }, branchId, financialYearId],
     queryFn: async ({ pageParam = 0 }) => {
       const limit = 20;
       const from = pageParam * limit;
@@ -70,6 +68,8 @@ export default function Certificates() {
           course_levels ( level_name )`,
           { count: "exact" }
         )
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .order("issue_date", { ascending: false })
         .range(from, to);
 
@@ -91,14 +91,15 @@ export default function Certificates() {
       return undefined;
     },
     initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
   const certificates = data?.pages.flatMap((page) => page.data) || [];
 
-  // Mutations – now accept context
+  // Mutations – already use context
   const createMutation = useMutation({
-    mutationFn: (payload) => createCertificate(payload, ctx),
+    mutationFn: (payload) => createCertificate(payload, { branchId, financialYearId }),
     onSuccess: () => {
       toast.success("Certificate issued");
       queryClient.invalidateQueries({ queryKey: ["certificates"] });
@@ -108,7 +109,7 @@ export default function Certificates() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => deleteCertificate(id, ctx),
+    mutationFn: (id) => deleteCertificate(id, { branchId, financialYearId }),
     onSuccess: () => {
       toast.success("Certificate deleted");
       queryClient.invalidateQueries({ queryKey: ["certificates"] });
@@ -116,7 +117,7 @@ export default function Certificates() {
     onError: () => toast.error("Delete failed"),
   });
 
-  // CSV Import – also pass context
+  // CSV Import – uses scoped create
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -136,7 +137,7 @@ export default function Certificates() {
               certificate_url: row.certificate_url || null,
               issued_by: 1,
             };
-            await createCertificate(payload, ctx);
+            await createCertificate(payload, { branchId, financialYearId });
             successCount++;
           } catch (err) {
             console.error(err);
@@ -149,19 +150,10 @@ export default function Certificates() {
     });
   }
 
-  // CSV Export (unchanged)
+  // CSV Export – now scoped
   async function handleCSVExport() {
     try {
-      const { data: allData } = await supabase
-        .from("certificates")
-        .select(
-          `*,
-          students ( first_name, last_name, admission_no ),
-          courses ( course_name ),
-          course_levels ( level_name )`
-        )
-        .order("issue_date", { ascending: false });
-
+      const allData = await getAllCertificatesForExport(branchId, financialYearId);
       const filtered = search
         ? allData.filter(
             (c) =>
@@ -359,7 +351,7 @@ export default function Certificates() {
         </div>
       )}
 
-      {/* Certificate Form Modal – passes context to createMutation */}
+      {/* Certificate Form Modal */}
       {showForm && (
         <CertificateForm
           onSubmit={(payload, context) => createMutation.mutate(payload)}

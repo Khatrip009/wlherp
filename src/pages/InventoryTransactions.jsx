@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Filter, Search, Box } from "lucide-react";
 import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 
 export default function InventoryTransactions() {
   const [search, setSearch] = useState("");
@@ -12,19 +13,33 @@ export default function InventoryTransactions() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  // Fetch items for dropdown
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  // Fetch items for dropdown – scoped
   const { data: items = [] } = useQuery({
-    queryKey: ["inventory-items-list"],
+    queryKey: ["inventory-items-list", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase.from("inventory_items").select("id, item_name").order("item_name");
+      let query = supabase
+        .from("inventory_items")
+        .select("id, item_name")
+        .order("item_name");
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch transactions
+  // Fetch transactions – scoped
   const { data: transactions = [], isLoading } = useQuery({
-    queryKey: ["inventory-transactions", search, itemFilter, typeFilter, startDate, endDate],
+    queryKey: ["inventory-transactions", search, itemFilter, typeFilter, startDate, endDate, branchId, financialYearId],
     queryFn: async () => {
       let query = supabase
         .from("inventory_transactions")
@@ -39,6 +54,10 @@ export default function InventoryTransactions() {
           inventory_items(item_name, unit)
         `)
         .order("created_at", { ascending: false });
+
+      // Scope to branch & FY
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
       if (search) {
         query = query.or(`reference.ilike.%${search}%,notes.ilike.%${search}%`);
@@ -60,6 +79,7 @@ export default function InventoryTransactions() {
       if (error) throw error;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 

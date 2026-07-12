@@ -5,7 +5,7 @@ import { supabase } from "../api/supabase";
 // INCOME (paginated)
 // ========================
 
-export async function getIncomes({ pageParam = 0, filters = {} } = {}) {
+export async function getIncomes({ pageParam = 0, filters = {}, branchId, financialYearId } = {}) {
   const limit = 10;
   const from = pageParam * limit;
   const to = from + limit - 1;
@@ -16,6 +16,11 @@ export async function getIncomes({ pageParam = 0, filters = {} } = {}) {
     .order("income_date", { ascending: false })
     .range(from, to);
 
+  // Scope by branch & FY
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  // Filters
   if (filters.search) {
     query = query.or(
       `category.ilike.%${filters.search}%,description.ilike.%${filters.search}%`
@@ -29,11 +34,14 @@ export async function getIncomes({ pageParam = 0, filters = {} } = {}) {
   return { data, count };
 }
 
-export async function getAllIncomesForExport(filters = {}) {
+export async function getAllIncomesForExport(filters = {}, branchId, financialYearId) {
   let query = supabase
     .from("income")
     .select("*")
     .order("income_date", { ascending: false });
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
   if (filters.search) {
     query = query.or(
@@ -63,21 +71,27 @@ export async function createIncome(payload, context) {
 // context: { branchId, financialYearId }
 export async function updateIncome(id, payload, context) {
   const { branchId, financialYearId } = context;
-  const { data, error } = await supabase
+
+  let query = supabase
     .from("income")
     .update({ ...payload, branch_id: branchId, financial_year_id: financialYearId })
-    .eq("id", id)
-    .select()
-    .single();
+    .eq("id", id);
+
+  // Scope to prevent cross‑branch updates
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query.select().single();
   if (error) throw error;
   return data;
 }
 
-// Soft delete – context required for RLS on update
+// Soft delete – now scoped
 // context: { branchId, financialYearId }
 export async function deleteIncome(id, context) {
   const { branchId, financialYearId } = context;
-  const { error } = await supabase
+
+  let query = supabase
     .from("income")
     .update({
       deleted_at: new Date().toISOString(),
@@ -85,6 +99,11 @@ export async function deleteIncome(id, context) {
       financial_year_id: financialYearId,
     })
     .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { error } = await query;
   if (error) throw error;
 }
 
@@ -92,7 +111,7 @@ export async function deleteIncome(id, context) {
 // EXPENSES (paginated)
 // ========================
 
-export async function getExpenses({ pageParam = 0, filters = {} } = {}) {
+export async function getExpenses({ pageParam = 0, filters = {}, branchId, financialYearId } = {}) {
   const limit = 10;
   const from = pageParam * limit;
   const to = from + limit - 1;
@@ -102,6 +121,9 @@ export async function getExpenses({ pageParam = 0, filters = {} } = {}) {
     .select("*", { count: "exact" })
     .order("expense_date", { ascending: false })
     .range(from, to);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
   if (filters.search) {
     query = query.or(
@@ -116,11 +138,14 @@ export async function getExpenses({ pageParam = 0, filters = {} } = {}) {
   return { data, count };
 }
 
-export async function getAllExpensesForExport(filters = {}) {
+export async function getAllExpensesForExport(filters = {}, branchId, financialYearId) {
   let query = supabase
     .from("expenses")
     .select("*")
     .order("expense_date", { ascending: false });
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
   if (filters.search) {
     query = query.or(
@@ -150,21 +175,26 @@ export async function createExpense(payload, context) {
 // context: { branchId, financialYearId }
 export async function updateExpense(id, payload, context) {
   const { branchId, financialYearId } = context;
-  const { data, error } = await supabase
+
+  let query = supabase
     .from("expenses")
     .update({ ...payload, branch_id: branchId, financial_year_id: financialYearId })
-    .eq("id", id)
-    .select()
-    .single();
+    .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query.select().single();
   if (error) throw error;
   return data;
 }
 
-// Soft delete – context required for RLS on update
+// Soft delete – scoped
 // context: { branchId, financialYearId }
 export async function deleteExpense(id, context) {
   const { branchId, financialYearId } = context;
-  const { error } = await supabase
+
+  let query = supabase
     .from("expenses")
     .update({
       deleted_at: new Date().toISOString(),
@@ -172,25 +202,38 @@ export async function deleteExpense(id, context) {
       financial_year_id: financialYearId,
     })
     .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { error } = await query;
   if (error) throw error;
 }
 
-// Profit & Loss summary – read only, RLS filters automatically
-export async function getProfitLossSummary(startDate, endDate) {
-  const { data: incomes, error: incomeError } = await supabase
+// Profit & Loss summary – now scoped
+export async function getProfitLossSummary(startDate, endDate, branchId, financialYearId) {
+  let incomeQuery = supabase
     .from("income")
     .select("amount")
     .gte("income_date", startDate)
     .lte("income_date", endDate);
 
+  if (branchId) incomeQuery = incomeQuery.eq("branch_id", branchId);
+  if (financialYearId) incomeQuery = incomeQuery.eq("financial_year_id", financialYearId);
+
+  const { data: incomes, error: incomeError } = await incomeQuery;
   if (incomeError) throw incomeError;
 
-  const { data: expenses, error: expenseError } = await supabase
+  let expenseQuery = supabase
     .from("expenses")
     .select("amount")
     .gte("expense_date", startDate)
     .lte("expense_date", endDate);
 
+  if (branchId) expenseQuery = expenseQuery.eq("branch_id", branchId);
+  if (financialYearId) expenseQuery = expenseQuery.eq("financial_year_id", financialYearId);
+
+  const { data: expenses, error: expenseError } = await expenseQuery;
   if (expenseError) throw expenseError;
 
   const totalIncome = (incomes || []).reduce((sum, r) => sum + Number(r.amount), 0);

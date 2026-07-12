@@ -16,7 +16,7 @@ function cleanPayload(payload) {
   return cleaned;
 }
 
-// ---------- Voucher Types ----------
+// ---------- Voucher Types (org-wide, no scoping) ----------
 export async function getVoucherTypes() {
   const { data, error } = await supabase.from("voucher_types").select("*").order("id");
   if (error) throw error;
@@ -24,12 +24,16 @@ export async function getVoucherTypes() {
 }
 
 // ---------- Get Vouchers ----------
-export async function getVouchers(filters = {}) {
+export async function getVouchers(filters = {}, branchId, financialYearId) {
   let query = supabase
     .from("vouchers")
     .select("*, voucher_types(name, abbreviation), journal_entries(id)")
     .order("entry_date", { ascending: false })
     .order("voucher_no", { ascending: false });
+
+  // Scope to branch and financial year
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
   if (filters.start_date) query = query.gte("entry_date", filters.start_date);
   if (filters.end_date) query = query.lte("entry_date", filters.end_date);
@@ -113,21 +117,32 @@ export async function createVoucher(payload, context) {
   return voucher;
 }
 
-// ---------- Get Voucher by ID ----------
-export async function getVoucherById(voucherId) {
-  const { data: voucher, error } = await supabase
+// ---------- Get Voucher by ID (scoped) ----------
+export async function getVoucherById(voucherId, branchId, financialYearId) {
+  let query = supabase
     .from("vouchers")
     .select("*, voucher_types(*), journal_entries(entry_date, reference, description, journal_entry_lines(*))")
-    .eq("id", voucherId)
-    .single();
+    .eq("id", voucherId);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data: voucher, error } = await query.single();
   if (error) throw error;
 
   if (voucher?.journal_entries?.journal_entry_lines) {
     const accountIds = voucher.journal_entries.journal_entry_lines.map(line => line.account_id);
-    const { data: accounts } = await supabase
+
+    let accountQuery = supabase
       .from("chart_of_accounts")
       .select("id, account_code, account_name")
       .in("id", accountIds);
+
+    // Scope account lookup to branch/FY if needed
+    if (branchId) accountQuery = accountQuery.eq("branch_id", branchId);
+    if (financialYearId) accountQuery = accountQuery.eq("financial_year_id", financialYearId);
+
+    const { data: accounts } = await accountQuery;
     const accountMap = {};
     accounts?.forEach(a => (accountMap[a.id] = a));
     voucher.journal_entries.journal_entry_lines = voucher.journal_entries.journal_entry_lines.map(line => ({
@@ -138,21 +153,25 @@ export async function getVoucherById(voucherId) {
   return voucher;
 }
 
-// ---------- Update Voucher ----------
+// ---------- Update Voucher (scoped write operations) ----------
 // context: { branchId, financialYearId }
 export async function updateVoucher(voucherId, payload, context) {
   const { entry_date, reference, description, lines } = payload;
   const { branchId, financialYearId } = context;
 
-  // Get journal_entry_id
-  const { data: voucher } = await supabase
+  // Get journal_entry_id – scoped
+  let voucherQuery = supabase
     .from("vouchers")
     .select("journal_entry_id")
-    .eq("id", voucherId)
-    .single();
+    .eq("id", voucherId);
 
-  // Update journal header
-  await supabase
+  if (branchId) voucherQuery = voucherQuery.eq("branch_id", branchId);
+  if (financialYearId) voucherQuery = voucherQuery.eq("financial_year_id", financialYearId);
+
+  const { data: voucher } = await voucherQuery.single();
+
+  // Update journal header – scoped
+  let journalUpdateQuery = supabase
     .from("journal_entries")
     .update(cleanPayload({
       entry_date,
@@ -163,13 +182,23 @@ export async function updateVoucher(voucherId, payload, context) {
     }))
     .eq("id", voucher.journal_entry_id);
 
-  // Delete old lines
-  await supabase
+  if (branchId) journalUpdateQuery = journalUpdateQuery.eq("branch_id", branchId);
+  if (financialYearId) journalUpdateQuery = journalUpdateQuery.eq("financial_year_id", financialYearId);
+
+  await journalUpdateQuery;
+
+  // Delete old journal lines – scoped
+  let deleteLinesQuery = supabase
     .from("journal_entry_lines")
     .delete()
     .eq("journal_entry_id", voucher.journal_entry_id);
 
-  // Insert new lines
+  if (branchId) deleteLinesQuery = deleteLinesQuery.eq("branch_id", branchId);
+  if (financialYearId) deleteLinesQuery = deleteLinesQuery.eq("financial_year_id", financialYearId);
+
+  await deleteLinesQuery;
+
+  // Insert new journal lines
   const lineInserts = lines.map(line => cleanPayload({
     journal_entry_id: voucher.journal_entry_id,
     account_id: line.account_id,
@@ -181,8 +210,8 @@ export async function updateVoucher(voucherId, payload, context) {
   }));
   await supabase.from("journal_entry_lines").insert(lineInserts);
 
-  // Update voucher header
-  await supabase
+  // Update voucher header – scoped
+  let voucherUpdateQuery = supabase
     .from("vouchers")
     .update(cleanPayload({
       entry_date,
@@ -192,6 +221,11 @@ export async function updateVoucher(voucherId, payload, context) {
       financial_year_id: financialYearId,
     }))
     .eq("id", voucherId);
+
+  if (branchId) voucherUpdateQuery = voucherUpdateQuery.eq("branch_id", branchId);
+  if (financialYearId) voucherUpdateQuery = voucherUpdateQuery.eq("financial_year_id", financialYearId);
+
+  await voucherUpdateQuery;
 
   return { success: true };
 }

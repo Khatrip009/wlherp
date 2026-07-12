@@ -10,6 +10,7 @@ import AdminLayout from "../layouts/AdminLayout";
 import BackButton from "../components/BackButton";
 
 import { supabase } from "../api/supabase";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 
 export default function InventoryItems() {
   const queryClient = useQueryClient();
@@ -24,35 +25,52 @@ export default function InventoryItems() {
   const [catForm, setCatForm] = useState({ name: "" });
   const fileInputRef = useRef(null);
 
-  // Fetch categories
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const context = { branchId, financialYearId };
+
+  // Fetch categories (organization-wide – no branch/FY)
   const { data: categories = [] } = useQuery({
     queryKey: ["inventory-categories"],
     queryFn: async () => {
       const { data } = await supabase.from("inventory_categories").select("*").order("name");
       return data || [];
     },
+    staleTime: 10 * 60 * 1000,
   });
 
-  // Fetch items
+  // Fetch items – now scoped to branch & FY
   const { data: items = [], isLoading } = useQuery({
-    queryKey: ["inventory-items", search, categoryFilter],
+    queryKey: ["inventory-items", search, categoryFilter, branchId, financialYearId],
     queryFn: async () => {
       let query = supabase
         .from("inventory_items")
         .select("*, inventory_categories(name)")
         .order("item_name");
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
       if (search) query = query.ilike("item_name", `%${search}%`);
       if (categoryFilter) query = query.eq("category_id", categoryFilter);
+
       const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
-  // Create item
+  // Create item – scoped
   const createItemMut = useMutation({
     mutationFn: async (payload) => {
-      const { data, error } = await supabase.from("inventory_items").insert(payload).select().single();
+      const { data, error } = await supabase
+        .from("inventory_items")
+        .insert({ ...payload, branch_id: branchId, financial_year_id: financialYearId })
+        .select()
+        .single();
       if (error) throw error;
       return data;
     },
@@ -64,10 +82,13 @@ export default function InventoryItems() {
     onError: () => toast.error("Failed to add"),
   });
 
-  // Update item
+  // Update item – scoped
   const updateItemMut = useMutation({
     mutationFn: async ({ id, payload }) => {
-      const { error } = await supabase.from("inventory_items").update(payload).eq("id", id);
+      const { error } = await supabase
+        .from("inventory_items")
+        .update({ ...payload, branch_id: branchId, financial_year_id: financialYearId })
+        .eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -79,10 +100,16 @@ export default function InventoryItems() {
     onError: () => toast.error("Failed to update"),
   });
 
-  // Delete item
+  // Delete item – scoped
   const deleteItemMut = useMutation({
     mutationFn: async (id) => {
-      const { error } = await supabase.from("inventory_items").delete().eq("id", id);
+      let query = supabase
+        .from("inventory_items")
+        .delete()
+        .eq("id", id);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { error } = await query;
       if (error) throw error;
     },
     onSuccess: () => {
@@ -92,7 +119,7 @@ export default function InventoryItems() {
     onError: () => toast.error("Delete failed"),
   });
 
-  // Category mutations
+  // Category mutations (unchanged, categories are org-wide)
   const createCatMut = useMutation({
     mutationFn: async (payload) => {
       await supabase.from("inventory_categories").insert(payload);

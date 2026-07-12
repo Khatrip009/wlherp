@@ -7,11 +7,13 @@ import {
   getLevelsByCourse,
 } from "../services/certificateService";
 import { useOrgDarkLogo } from "../hooks/useOrgDarkLogo";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function CertificateForm({ onSubmit, onClose, initialData = {} }) {
   const darkLogo = useOrgDarkLogo();
-  const { branch, selectedFinancialYear } = useOrg();      // NEW
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const [students, setStudents] = useState([]);
   const [courses, setCourses] = useState([]);
@@ -26,9 +28,11 @@ export default function CertificateForm({ onSubmit, onClose, initialData = {} })
     certificate_url: initialData.certificate_url || "",
   });
 
+  // Load students and courses only when branch/FY are ready
   useEffect(() => {
+    if (!branchId || !financialYearId) return;
     loadDropdowns();
-  }, []);
+  }, [branchId, financialYearId]);
 
   useEffect(() => {
     if (form.course_id) {
@@ -41,8 +45,8 @@ export default function CertificateForm({ onSubmit, onClose, initialData = {} })
   async function loadDropdowns() {
     try {
       const [studentData, courseData] = await Promise.all([
-        getStudentOptions(),
-        getCourseOptions(),
+        getStudentOptions(branchId, financialYearId),   // now scoped
+        getCourseOptions(),                              // org‑wide
       ]);
       setStudents(studentData);
       setCourses(courseData);
@@ -71,10 +75,9 @@ export default function CertificateForm({ onSubmit, onClose, initialData = {} })
       return;
     }
 
-    // Build context for branch & financial year
     const context = {
-      branchId: branch?.id,
-      financialYearId: selectedFinancialYear?.id,
+      branchId: branchId,
+      financialYearId: financialYearId,
     };
 
     try {
@@ -90,7 +93,7 @@ export default function CertificateForm({ onSubmit, onClose, initialData = {} })
         {/* Header with logo */}
         <div className="sticky top-0 bg-white border-b border-secondary-light px-6 py-4 flex items-center justify-between rounded-t-xl">
           <div className="flex items-center gap-3">
-           <img
+            <img
               src={darkLogo}
               alt="ShreeVidhya Academy"
               className="h-10 w-auto"

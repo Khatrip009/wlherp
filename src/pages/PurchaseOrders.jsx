@@ -16,16 +16,21 @@ export default function PurchaseOrders() {
 
   // ── Organisation / Branch / Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
+  // Fetch POs – now scoped with branch & FY
   const { data: pos = [], isLoading } = useQuery({
-    queryKey: ["purchase-orders", statusFilter],
-    queryFn: () => getPurchaseOrders({ status: statusFilter }),
+    queryKey: ["purchase-orders", statusFilter, branchId, financialYearId],
+    queryFn: () => getPurchaseOrders({ status: statusFilter }, branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
+  // Receive PO – passes context
   const receiveMut = useMutation({
-    mutationFn: (poId) => receivePO(poId, ctx),   // pass context
+    mutationFn: (poId) => receivePO(poId, ctx),
     onSuccess: () => {
       toast.success("PO received – stock updated");
       queryClient.invalidateQueries(["purchase-orders"]);
@@ -33,8 +38,9 @@ export default function PurchaseOrders() {
     onError: () => toast.error("Failed to receive PO"),
   });
 
+  // Delete PO – scoped with branch & FY
   const deleteMut = useMutation({
-    mutationFn: deletePO,   // no context needed
+    mutationFn: (poId) => deletePO(poId, branchId, financialYearId),
     onSuccess: () => {
       toast.success("PO deleted");
       queryClient.invalidateQueries(["purchase-orders"]);

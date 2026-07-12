@@ -5,11 +5,11 @@ import { Navigate, Link } from 'react-router-dom';
 import { FileDown, BarChart3, RotateCcw, Printer, ArrowLeft } from 'lucide-react';
 import { fetchReportData } from '../services/reportService';
 import { getReportConfig } from '../utils/reportConfig';
-import { exportToExcel } from '../utils/reportExport';   // Excel export kept unchanged
+import { exportToExcel } from '../utils/reportExport';
 import { useAuth } from '../context/AuthContext';
 import { useOrg } from '../context/OrganizationContext';
 import { getOrganization } from '../services/organizationService';
-import { generateReportPdf } from '../utils/generateReportPdf';   // new PDF generator with letterhead
+import { generateReportPdf } from '../utils/generateReportPdf';
 import { supabase } from '../api/supabase';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -76,19 +76,36 @@ const DROPDOWN_TABLES = {
   tax_rate_id: { table: 'tax_rates', label: 'name', value: 'id' },
 };
 
+// Tables that contain branch_id and financial_year_id columns
+const BRANCH_SCOPED_TABLES = [
+  'courses', 'batches', 'students', 'teachers', 'exams',
+  'online_classes', 'course_levels', 'tax_rates', 'fee_structures',
+];
+
 /* ------------------------------------------------------------------ */
-/*  Dropdown component                                                 */
+/*  Dropdown component (now scoped)                                    */
 /* ------------------------------------------------------------------ */
-function FilterDropdown({ field, filters, onChange }) {
+function FilterDropdown({ field, filters, onChange, branchId, financialYearId }) {
   const config = DROPDOWN_TABLES[field];
+  const shouldScope = BRANCH_SCOPED_TABLES.includes(config.table);
+
   const { data: options, isLoading } = useQuery({
-    queryKey: ['filterOptions', field],
+    queryKey: ['filterOptions', field, branchId, financialYearId],
     queryFn: async () => {
-      const { data, error } = await supabase.from(config.table).select(`${config.value}, ${config.label}`);
+      let query = supabase
+        .from(config.table)
+        .select(`${config.value}, ${config.label}`);
+      if (shouldScope && branchId && financialYearId) {
+        query = query
+          .eq('branch_id', branchId)
+          .eq('financial_year_id', financialYearId);
+      }
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
     staleTime: 5 * 60 * 1000,
+    enabled: shouldScope ? !!(branchId && financialYearId) : true,
   });
 
   return (
@@ -116,8 +133,13 @@ function FilterDropdown({ field, filters, onChange }) {
 /* ------------------------------------------------------------------ */
 export default function ReportPage({ reportId }) {
   const { profile } = useAuth();
-  const { org: currentOrg } = useOrg();
-  const hasReportAccess = Boolean(profile && ['admin', 'super_admin'].includes(profile.role));
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  // ── Updated role check – includes organization_admin and branch_admin ──
+  const adminRoles = ['admin', 'super_admin', 'organization_admin', 'branch_admin'];
+  const hasReportAccess = Boolean(profile && adminRoles.includes(profile.role));
 
   /* ---------- Config & initial filters ---------- */
   const config = useMemo(() => getReportConfig(reportId), [reportId]);
@@ -132,11 +154,11 @@ export default function ReportPage({ reportId }) {
 
   /* ---------- Data fetching ---------- */
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['report', reportId, filters],
-    queryFn: () => fetchReportData(reportId, filters),
+    queryKey: ['report', reportId, filters, branchId, financialYearId],
+    queryFn: () => fetchReportData(reportId, filters, branchId, financialYearId),
     keepPreviousData: true,
     staleTime: 30_000,
-    enabled: hasReportAccess && Boolean(config),
+    enabled: hasReportAccess && Boolean(config) && Boolean(branchId) && Boolean(financialYearId),
   });
 
   const { data: org } = useQuery({
@@ -150,6 +172,7 @@ export default function ReportPage({ reportId }) {
   const rows = Array.isArray(data) ? data : [];
   const hasChart = Boolean(config?.chartConfig && rows.length > 0);
 
+  // Role guard – show loading if branch/FY not yet loaded, instead of redirecting
   if (!hasReportAccess) {
     return <Navigate to="/" replace />;
   }
@@ -162,6 +185,15 @@ export default function ReportPage({ reportId }) {
     );
   }
 
+  // Wait for branch and financial year to load
+  if (!branchId || !financialYearId) {
+    return (
+      <div className="p-6 text-center text-secondary">
+        Loading branch & financial year…
+      </div>
+    );
+  }
+
   /* ---------- Handlers ---------- */
   const handleFilterChange = (field, value) => {
     setFilters((prev) => ({ ...prev, [field]: value }));
@@ -169,7 +201,6 @@ export default function ReportPage({ reportId }) {
 
   const resetFilters = () => setFilters(initialFilters);
 
-  // --- NEW: generate PDF with letterhead, then download or open ---
   const handleDownloadPdf = async () => {
     if (!rows.length) return;
     try {
@@ -185,7 +216,6 @@ export default function ReportPage({ reportId }) {
     if (!rows.length) return;
     try {
       const doc = await generateReportPdf(config, filters, org);
-      // Open PDF in a new tab for printing
       const blob = doc.output('blob');
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
@@ -240,7 +270,7 @@ export default function ReportPage({ reportId }) {
         </div>
       </div>
 
-      {/* Filter Bar (unchanged) */}
+      {/* Filter Bar – passes branchId & financialYearId to dropdowns */}
       <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
         <div className="flex flex-wrap items-end gap-4">
           {config.fields.map((field) => (
@@ -256,7 +286,13 @@ export default function ReportPage({ reportId }) {
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                 />
               ) : DROPDOWN_TABLES[field] ? (
-                <FilterDropdown field={field} filters={filters} onChange={handleFilterChange} />
+                <FilterDropdown
+                  field={field}
+                  filters={filters}
+                  onChange={handleFilterChange}
+                  branchId={branchId}
+                  financialYearId={financialYearId}
+                />
               ) : (
                 <input
                   type="text"

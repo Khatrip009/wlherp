@@ -25,7 +25,7 @@ import BackButton from "../components/BackButton";
 
 import { supabase } from "../api/supabase";
 import { useOrgDarkLogo } from "../hooks/useOrgDarkLogo";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function Notifications() {
   const queryClient = useQueryClient();
@@ -35,7 +35,7 @@ export default function Notifications() {
   const fileInputRef = useRef(null);
 
   // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -46,33 +46,49 @@ export default function Notifications() {
     batch_id: "",
   });
 
-  // Fetch batches for the dropdown
+  // Fetch batches for the dropdown – scoped to branch & FY
   const { data: batches = [] } = useQuery({
-    queryKey: ["batches-dropdown"],
+    queryKey: ["batches-dropdown", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("batches")
         .select("id, batch_name")
         .eq("status", "active");
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
-  // ---------- Helper: get recipients ----------
+  // ---------- Helper: get recipients (scoped) ----------
   async function getRecipients(targetType, batchId = null) {
     let candidateIds = [];
 
     switch (targetType) {
       case "All": {
-        const { data: students } = await supabase
+        // Students – scoped
+        let studentsQuery = supabase
           .from("students")
           .select("user_id")
           .not("user_id", "is", null);
-        const { data: teachers } = await supabase
+        if (branchId) studentsQuery = studentsQuery.eq("branch_id", branchId);
+        if (financialYearId) studentsQuery = studentsQuery.eq("financial_year_id", financialYearId);
+        const { data: students } = await studentsQuery;
+
+        // Teachers – scoped
+        let teachersQuery = supabase
           .from("teachers")
           .select("user_id")
           .not("user_id", "is", null);
+        if (branchId) teachersQuery = teachersQuery.eq("branch_id", branchId);
+        if (financialYearId) teachersQuery = teachersQuery.eq("financial_year_id", financialYearId);
+        const { data: teachers } = await teachersQuery;
+
         const studentIds = students?.map((s) => s.user_id) || [];
         const teacherIds = teachers?.map((t) => t.user_id) || [];
         candidateIds = [...studentIds, ...teacherIds];
@@ -80,52 +96,71 @@ export default function Notifications() {
       }
       case "Batch": {
         if (!batchId) return [];
-        // Get students in batch
-        const { data: batchStudents } = await supabase
-          .from("batch_students")
+        // Get students in batch – scoped
+        let batchStudentsQuery = supabase
+          .from("student_batches")
           .select("student_id")
-          .eq("batch_id", batchId);
+          .eq("batch_id", batchId)
+          .eq("status", "active");
+        if (branchId) batchStudentsQuery = batchStudentsQuery.eq("branch_id", branchId);
+        if (financialYearId) batchStudentsQuery = batchStudentsQuery.eq("financial_year_id", financialYearId);
+        const { data: batchStudents } = await batchStudentsQuery;
         const studentIds = batchStudents?.map((bs) => bs.student_id) || [];
         let studentUserIds = [];
         if (studentIds.length) {
-          const { data: students } = await supabase
+          let studentsQuery = supabase
             .from("students")
             .select("user_id")
             .in("id", studentIds)
             .not("user_id", "is", null);
+          if (branchId) studentsQuery = studentsQuery.eq("branch_id", branchId);
+          if (financialYearId) studentsQuery = studentsQuery.eq("financial_year_id", financialYearId);
+          const { data: students } = await studentsQuery;
           studentUserIds = students?.map((s) => s.user_id) || [];
         }
-        // Get teachers in batch
-        const { data: batchTeachers } = await supabase
+        // Get teachers in batch – scoped
+        let batchTeachersQuery = supabase
           .from("batch_teachers")
           .select("teacher_id")
           .eq("batch_id", batchId);
+        if (branchId) batchTeachersQuery = batchTeachersQuery.eq("branch_id", branchId);
+        if (financialYearId) batchTeachersQuery = batchTeachersQuery.eq("financial_year_id", financialYearId);
+        const { data: batchTeachers } = await batchTeachersQuery;
         const teacherIds = batchTeachers?.map((bt) => bt.teacher_id) || [];
         let teacherUserIds = [];
         if (teacherIds.length) {
-          const { data: teachers } = await supabase
+          let teachersQuery = supabase
             .from("teachers")
             .select("user_id")
             .in("id", teacherIds)
             .not("user_id", "is", null);
+          if (branchId) teachersQuery = teachersQuery.eq("branch_id", branchId);
+          if (financialYearId) teachersQuery = teachersQuery.eq("financial_year_id", financialYearId);
+          const { data: teachers } = await teachersQuery;
           teacherUserIds = teachers?.map((t) => t.user_id) || [];
         }
         candidateIds = [...studentUserIds, ...teacherUserIds];
         break;
       }
       case "Teachers": {
-        const { data: teachers } = await supabase
+        let teachersQuery = supabase
           .from("teachers")
           .select("user_id")
           .not("user_id", "is", null);
+        if (branchId) teachersQuery = teachersQuery.eq("branch_id", branchId);
+        if (financialYearId) teachersQuery = teachersQuery.eq("financial_year_id", financialYearId);
+        const { data: teachers } = await teachersQuery;
         candidateIds = teachers?.map((t) => t.user_id) || [];
         break;
       }
       case "Students": {
-        const { data: students } = await supabase
+        let studentsQuery = supabase
           .from("students")
           .select("user_id")
           .not("user_id", "is", null);
+        if (branchId) studentsQuery = studentsQuery.eq("branch_id", branchId);
+        if (financialYearId) studentsQuery = studentsQuery.eq("financial_year_id", financialYearId);
+        const { data: students } = await studentsQuery;
         candidateIds = students?.map((s) => s.user_id) || [];
         break;
       }
@@ -151,7 +186,7 @@ export default function Notifications() {
     return validIds || [];
   }
 
-  // ---------- Infinite query for notifications ----------
+  // ---------- Infinite query for notifications – scoped to branch & FY ----------
   const {
     data,
     isLoading,
@@ -159,7 +194,7 @@ export default function Notifications() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["notifications", { search }],
+    queryKey: ["notifications", { search }, branchId, financialYearId],
     queryFn: async ({ pageParam = 0 }) => {
       const limit = 20;
       const from = pageParam * limit;
@@ -170,6 +205,10 @@ export default function Notifications() {
         .select(`*, batches(batch_name)`, { count: "exact" })
         .order("created_at", { ascending: false })
         .range(from, to);
+
+      // Scope to branch & FY
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
       if (search) {
         query = query.or(
@@ -189,12 +228,13 @@ export default function Notifications() {
       return undefined;
     },
     initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
   const notifications = data?.pages.flatMap((page) => page.data) || [];
 
-  // ---------- Create mutation – now includes branch & FY ----------
+  // ---------- Create mutation – already includes branch & FY ----------
   const createMutation = useMutation({
     mutationFn: async (payload) => {
       const { title, message, target_type, batch_id } = payload;
@@ -204,7 +244,6 @@ export default function Notifications() {
         throw new Error("No valid recipients found for this target.");
       }
 
-      // Build rows with branch & FY
       const rows = userIds.map((user_id) => ({
         title,
         message,
@@ -217,7 +256,6 @@ export default function Notifications() {
         financial_year_id: financialYearId,
       }));
 
-      // Insert in chunks (Supabase limit ~1000 per call)
       const chunkSize = 500;
       for (let i = 0; i < rows.length; i += chunkSize) {
         const chunk = rows.slice(i, i + chunkSize);
@@ -238,7 +276,7 @@ export default function Notifications() {
     },
   });
 
-  // ---------- Mutations: Mark read, delete, mark all ----------
+  // ---------- Mutations: Mark read, delete, mark all (scoped) ----------
   const markReadMutation = useMutation({
     mutationFn: async (id) => {
       const { error } = await supabase
@@ -254,7 +292,10 @@ export default function Notifications() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id) => {
-      const { error } = await supabase.from("notifications").delete().eq("id", id);
+      let query = supabase.from("notifications").delete().eq("id", id);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { error } = await query;
       if (error) throw error;
     },
     onSuccess: () => {
@@ -266,10 +307,15 @@ export default function Notifications() {
 
   const markAllReadMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
+      let query = supabase
         .from("notifications")
         .update({ is_read: true })
         .eq("is_read", false);
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { error } = await query;
       if (error) throw error;
     },
     onSuccess: () => {
@@ -278,7 +324,7 @@ export default function Notifications() {
     },
   });
 
-  // ---------- CSV Import – now includes branch & FY ----------
+  // ---------- CSV Import – already includes branch & FY ----------
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -311,13 +357,19 @@ export default function Notifications() {
     });
   }
 
-  // ---------- CSV Export (unchanged) ----------
+  // ---------- CSV Export (scoped) ----------
   async function handleCSVExport() {
     try {
-      const { data: allData } = await supabase
+      let query = supabase
         .from("notifications")
         .select(`*, batches(batch_name)`)
         .order("created_at", { ascending: false });
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data: allData } = await query;
+
       const csv = Papa.unparse(
         (allData || []).map((n) => ({
           title: n.title,

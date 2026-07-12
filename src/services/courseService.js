@@ -1,8 +1,13 @@
 // src/services/courseService.js
 import { supabase } from "../api/supabase";
 
-// Paginated fetch with search filter – now includes medium name
-export async function getCourses({ pageParam = 0, filters = {} } = {}) {
+// Paginated fetch with search filter – now includes medium name and branch/FY scoping
+export async function getCourses({
+  pageParam = 0,
+  filters = {},
+  branchId,
+  financialYearId,
+} = {}) {
   const limit = 10;
   const from = pageParam * limit;
   const to = from + limit - 1;
@@ -12,6 +17,10 @@ export async function getCourses({ pageParam = 0, filters = {} } = {}) {
     .select("*, mediums(name)", { count: "exact" })
     .order("id", { ascending: false })
     .range(from, to);
+
+  // Safe scope filters
+  if (branchId) query = query.eq("courses.branch_id", branchId);
+  if (financialYearId) query = query.eq("courses.financial_year_id", financialYearId);
 
   if (filters.search) {
     query = query.ilike("course_name", `%${filters.search}%`);
@@ -31,12 +40,19 @@ export async function getCourses({ pageParam = 0, filters = {} } = {}) {
   return { data: enriched, count };
 }
 
-// Export all courses (unpaginated, respecting search and medium filter)
-export async function getAllCoursesForExport(filters = {}) {
+// Export all courses (unpaginated, same filters and scoping)
+export async function getAllCoursesForExport({
+  filters = {},
+  branchId,
+  financialYearId,
+} = {}) {
   let query = supabase
     .from("courses")
     .select("*, mediums(name)")
     .order("id", { ascending: false });
+
+  if (branchId) query = query.eq("courses.branch_id", branchId);
+  if (financialYearId) query = query.eq("courses.financial_year_id", financialYearId);
 
   if (filters.search) {
     query = query.ilike("course_name", `%${filters.search}%`);
@@ -94,24 +110,36 @@ export async function deleteCourse(id, context) {
   if (error) throw error;
 }
 
-export async function getCourseOptions() {
-  const { data, error } = await supabase
+// Dropdown – now scoped
+export async function getCourseOptions(branchId, financialYearId) {
+  let query = supabase
     .from("courses")
     .select("id, course_name");
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
-  return data;
+  return data || [];
 }
 
 // ========================
 // COURSE LEVELS
 // ========================
 
-export async function getCourseLevels(courseId) {
-  const { data, error } = await supabase
+export async function getCourseLevels(courseId, branchId, financialYearId) {
+  let query = supabase
     .from("course_levels")
     .select("*")
     .eq("course_id", courseId)
     .order("level_number", { ascending: true });
+
+  // Safely scope to branch/FY
+  if (branchId) query = query.eq("course_levels.branch_id", branchId);
+  if (financialYearId) query = query.eq("course_levels.financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data;
 }
@@ -141,16 +169,21 @@ export async function updateCourseLevel(id, payload, context) {
   return data;
 }
 
-// Hard delete – RLS handles access check, no payload needed
-export async function deleteCourseLevel(id) {
-  const { error } = await supabase
+// Hard delete – now scoped to prevent cross‑branch deletion
+export async function deleteCourseLevel(id, branchId, financialYearId) {
+  let query = supabase
     .from("course_levels")
     .delete()
     .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { error } = await query;
   if (error) throw error;
 }
 
-// NEW – get mediums for filter dropdowns
+// Mediums – organization‑wide, no branch/FY filter needed
 export async function getMediumOptions() {
   const { data, error } = await supabase
     .from("mediums")

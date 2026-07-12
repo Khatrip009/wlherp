@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import Papa from "papaparse";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 
 // ─── Helper: load image as base64 ────────────────────────────
 async function loadImageAsBase64(url) {
@@ -28,11 +29,16 @@ export default function TaxReport() {
     new Date().toISOString().split("T")[0]
   );
 
-  // Fetch tax_collections with tax rate name and rate
+  // ── Branch & Financial Year context ──
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  // Fetch tax_collections – scoped to branch & FY
   const { data: taxRecords = [], isLoading } = useQuery({
-    queryKey: ["tax-report", startDate, endDate],
+    queryKey: ["tax-report", startDate, endDate, branchId, financialYearId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("tax_collections")
         .select(`
           collection_date,
@@ -45,9 +51,14 @@ export default function TaxReport() {
         .lte("collection_date", endDate)
         .order("collection_date", { ascending: true });
 
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
@@ -101,11 +112,11 @@ export default function TaxReport() {
       return;
     }
 
-    // 1. Load organization (letterhead)
+    // 1. Load organization (letterhead) using current org id
     const { data: org } = await supabase
       .from("organization")
       .select("company_name, letterhead_url")
-      .eq("id", 1)
+      .eq("id", currentOrg?.id)   // use current org from context
       .single();
 
     const letterheadUrl = org?.letterhead_url || null;

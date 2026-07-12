@@ -2,16 +2,26 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
+import { useOrg } from "../context/OrganizationContext";
 
 export default function TrialBalance() {
   const [asOfDate, setAsOfDate] = useState(new Date().toISOString().split("T")[0]);
+
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
   const { data = [], isLoading } = useQuery({
-    queryKey: ["trial-balance", asOfDate],
+    queryKey: ["trial-balance", asOfDate, branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase.rpc("get_trial_balance", { as_of_date: asOfDate });
+      const { data } = await supabase.rpc("get_trial_balance", {
+        as_of_date: asOfDate,
+        p_branch_id: branchId,
+        p_financial_year_id: financialYearId,
+      });
       return data;
     },
-    enabled: !!asOfDate,
+    enabled: !!asOfDate && !!branchId && !!financialYearId,
   });
 
   return (

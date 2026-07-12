@@ -1,9 +1,14 @@
 // src/pages/DebitNotes.jsx
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getDebitNotes, createDebitNote, finalizeDebitNote, deleteDebitNote } from "../services/debitNoteService";
+import {
+  getDebitNotes,
+  createDebitNote,
+  finalizeDebitNote,
+  deleteDebitNote,
+} from "../services/debitNoteService";
 import { supabase } from "../api/supabase";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 import toast from "react-hot-toast";
 import AdminLayout from "../layouts/AdminLayout";
 import {
@@ -19,8 +24,10 @@ export default function DebitNotes() {
   const queryClient = useQueryClient();
 
   // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -42,20 +49,24 @@ export default function DebitNotes() {
   });
   const [submitting, setSubmitting] = useState(false);
 
-  // Fetch debit notes
+  // Fetch debit notes – now scoped
   const { data: notes = [], isLoading } = useQuery({
-    queryKey: ["debit-notes", statusFilter],
-    queryFn: () => getDebitNotes({ status: statusFilter }),
+    queryKey: ["debit-notes", statusFilter, branchId, financialYearId],
+    queryFn: () =>
+      getDebitNotes({ status: statusFilter }, branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
-  // Fetch students
+  // Fetch students – now scoped
   const { data: students = [] } = useQuery({
-    queryKey: ["students-debit", studentSearch],
+    queryKey: ["students-debit", studentSearch, branchId, financialYearId],
     queryFn: async () => {
       let query = supabase
         .from("students")
         .select("id, first_name, last_name, admission_no, gstin")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .order("first_name");
       if (studentSearch) {
         query = query.or(
@@ -65,14 +76,18 @@ export default function DebitNotes() {
       const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
   const handleInvoiceSelect = async (invoiceId) => {
+    // Fetch invoice scoped by branch & FY
     const { data: invoice } = await supabase
       .from("invoices")
       .select("*")
       .eq("id", invoiceId)
+      .eq("branch_id", branchId)
+      .eq("financial_year_id", financialYearId)
       .single();
 
     setSelectedInvoice(invoice);
@@ -105,13 +120,17 @@ export default function DebitNotes() {
       cgst: selectedInvoice.total_cgst * ratio,
       sgst: selectedInvoice.total_sgst * ratio,
       igst: selectedInvoice.total_igst * ratio,
-      total_tax_amount: (selectedInvoice.total_cgst + selectedInvoice.total_sgst + selectedInvoice.total_igst) * ratio,
+      total_tax_amount:
+        (selectedInvoice.total_cgst +
+          selectedInvoice.total_sgst +
+          selectedInvoice.total_igst) *
+        ratio,
     });
   };
 
-  // Mutations – only create needs context
+  // Mutations – now all pass the required scope
   const createMutation = useMutation({
-    mutationFn: (payload) => createDebitNote(payload, ctx),   // pass context
+    mutationFn: (payload) => createDebitNote(payload, ctx),
     onSuccess: () => {
       toast.success("Debit note created");
       queryClient.invalidateQueries(["debit-notes"]);
@@ -122,7 +141,7 @@ export default function DebitNotes() {
   });
 
   const finalizeMutation = useMutation({
-    mutationFn: finalizeDebitNote,   // no context needed
+    mutationFn: (id) => finalizeDebitNote(id, ctx),
     onSuccess: () => {
       toast.success("Debit note finalized");
       queryClient.invalidateQueries(["debit-notes"]);
@@ -131,7 +150,7 @@ export default function DebitNotes() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteDebitNote,
+    mutationFn: (id) => deleteDebitNote(id, branchId, financialYearId),
     onSuccess: () => {
       toast.success("Debit note deleted");
       queryClient.invalidateQueries(["debit-notes"]);
@@ -189,7 +208,11 @@ export default function DebitNotes() {
   };
 
   const handleFinalize = (id) => {
-    if (window.confirm("Finalize this debit note? This action cannot be undone.")) {
+    if (
+      window.confirm(
+        "Finalize this debit note? This action cannot be undone."
+      )
+    ) {
       finalizeMutation.mutate(id);
     }
   };
@@ -214,7 +237,9 @@ export default function DebitNotes() {
   return (
     <AdminLayout>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-        <h1 className="text-3xl font-righteous text-primary-dark">Debit Notes</h1>
+        <h1 className="text-3xl font-righteous text-primary-dark">
+          Debit Notes
+        </h1>
         <button
           onClick={() => setShowModal(true)}
           className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
@@ -226,7 +251,10 @@ export default function DebitNotes() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+          <Search
+            size={18}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary"
+          />
           <input
             type="text"
             placeholder="Search by note number, student..."
@@ -264,27 +292,58 @@ export default function DebitNotes() {
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={7} className="p-6 text-center text-secondary">Loading…</td></tr>
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="p-6 text-center text-secondary"
+                  >
+                    Loading…
+                  </td>
+                </tr>
               ) : filteredNotes.length === 0 ? (
-                <tr><td colSpan={7} className="p-6 text-center text-secondary">No debit notes found.</td></tr>
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="p-6 text-center text-secondary"
+                  >
+                    No debit notes found.
+                  </td>
+                </tr>
               ) : (
                 filteredNotes.map((note) => (
-                  <tr key={note.id} className="border-t hover:bg-gray-50 transition">
-                    <td className="p-3 text-sm font-medium">{note.debit_note_number}</td>
-                    <td className="p-3 text-sm">{note.invoices?.invoice_number || "—"}</td>
+                  <tr
+                    key={note.id}
+                    className="border-t hover:bg-gray-50 transition"
+                  >
+                    <td className="p-3 text-sm font-medium">
+                      {note.debit_note_number}
+                    </td>
                     <td className="p-3 text-sm">
-                      {note.invoices?.students?.first_name} {note.invoices?.students?.last_name}
+                      {note.invoices?.invoice_number || "—"}
+                    </td>
+                    <td className="p-3 text-sm">
+                      {note.invoices?.students?.first_name}{" "}
+                      {note.invoices?.students?.last_name}
                     </td>
                     <td className="p-3 text-right text-sm font-medium">
-                      ₹ {Number(note.total_amount).toLocaleString("en-IN")}
+                      ₹{" "}
+                      {Number(note.total_amount).toLocaleString(
+                        "en-IN"
+                      )}
                     </td>
-                    <td className="p-3 text-sm">{note.reason || "—"}</td>
                     <td className="p-3 text-sm">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        note.status === "Final" ? "bg-green-100 text-green-700" :
-                        note.status === "Draft" ? "bg-yellow-100 text-yellow-700" :
-                        "bg-red-100 text-red-700"
-                      }`}>
+                      {note.reason || "—"}
+                    </td>
+                    <td className="p-3 text-sm">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          note.status === "Final"
+                            ? "bg-green-100 text-green-700"
+                            : note.status === "Draft"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : "bg-red-100 text-red-700"
+                        }`}
+                      >
                         {note.status}
                       </span>
                     </td>
@@ -293,14 +352,18 @@ export default function DebitNotes() {
                         {note.status === "Draft" && (
                           <>
                             <button
-                              onClick={() => handleFinalize(note.id)}
+                              onClick={() =>
+                                handleFinalize(note.id)
+                              }
                               className="text-green-600 hover:underline"
                               title="Finalize"
                             >
                               <CheckCircle size={15} />
                             </button>
                             <button
-                              onClick={() => handleDelete(note.id)}
+                              onClick={() =>
+                                handleDelete(note.id)
+                              }
                               className="text-red-600 hover:underline"
                               title="Delete"
                             >
@@ -323,7 +386,9 @@ export default function DebitNotes() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-xl">
             <div className="sticky top-0 bg-white px-6 py-4 border-b flex items-center justify-between rounded-t-xl">
-              <h2 className="text-xl font-righteous text-primary-dark">New Debit Note</h2>
+              <h2 className="text-xl font-righteous text-primary-dark">
+                New Debit Note
+              </h2>
               <button
                 onClick={() => {
                   setShowModal(false);
@@ -344,24 +409,32 @@ export default function DebitNotes() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <select
                     value={form.invoice_id}
-                    onChange={(e) => handleInvoiceSelect(e.target.value)}
+                    onChange={(e) =>
+                      handleInvoiceSelect(e.target.value)
+                    }
                     className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
                     required
                   >
                     <option value="">Select Invoice</option>
                     {students.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.first_name} {s.last_name} ({s.admission_no})
+                        {s.first_name} {s.last_name} (
+                        {s.admission_no})
                       </option>
                     ))}
                   </select>
                   <div className="relative">
-                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+                    <Search
+                      size={16}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary"
+                    />
                     <input
                       type="text"
                       placeholder="Search student..."
                       value={studentSearch}
-                      onChange={(e) => setStudentSearch(e.target.value)}
+                      onChange={(e) =>
+                        setStudentSearch(e.target.value)
+                      }
                       className="w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm"
                     />
                   </div>
@@ -375,11 +448,36 @@ export default function DebitNotes() {
                     Invoice: {selectedInvoice.invoice_number}
                   </p>
                   <div className="grid grid-cols-3 gap-2 text-sm mt-1">
-                    <span>Taxable: ₹ {selectedInvoice.total_taxable_amount?.toLocaleString("en-IN")}</span>
-                    <span>CGST: ₹ {selectedInvoice.total_cgst?.toLocaleString("en-IN")}</span>
-                    <span>SGST: ₹ {selectedInvoice.total_sgst?.toLocaleString("en-IN")}</span>
-                    <span>IGST: ₹ {selectedInvoice.total_igst?.toLocaleString("en-IN")}</span>
-                    <span className="col-span-2 font-medium">Total: ₹ {selectedInvoice.grand_total?.toLocaleString("en-IN")}</span>
+                    <span>
+                      Taxable: ₹{" "}
+                      {selectedInvoice.total_taxable_amount?.toLocaleString(
+                        "en-IN"
+                      )}
+                    </span>
+                    <span>
+                      CGST: ₹{" "}
+                      {selectedInvoice.total_cgst?.toLocaleString(
+                        "en-IN"
+                      )}
+                    </span>
+                    <span>
+                      SGST: ₹{" "}
+                      {selectedInvoice.total_sgst?.toLocaleString(
+                        "en-IN"
+                      )}
+                    </span>
+                    <span>
+                      IGST: ₹{" "}
+                      {selectedInvoice.total_igst?.toLocaleString(
+                        "en-IN"
+                      )}
+                    </span>
+                    <span className="col-span-2 font-medium">
+                      Total: ₹{" "}
+                      {selectedInvoice.grand_total?.toLocaleString(
+                        "en-IN"
+                      )}
+                    </span>
                   </div>
                 </div>
               )}
@@ -393,7 +491,10 @@ export default function DebitNotes() {
                   type="number"
                   value={form.total_amount}
                   onChange={(e) => {
-                    setForm((prev) => ({ ...prev, total_amount: e.target.value }));
+                    setForm((prev) => ({
+                      ...prev,
+                      total_amount: e.target.value,
+                    }));
                     handleAmountChange(e.target.value);
                   }}
                   className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
@@ -407,32 +508,64 @@ export default function DebitNotes() {
               {/* Calculated Tax Breakdown */}
               {parseFloat(form.total_amount) > 0 && (
                 <div className="bg-gray-50 rounded-lg p-3 space-y-1 text-sm">
-                  <p className="font-medium text-secondary-dark">Tax Breakdown</p>
+                  <p className="font-medium text-secondary-dark">
+                    Tax Breakdown
+                  </p>
                   <div className="grid grid-cols-2 gap-2">
-                    <span className="text-gray-600">Taxable Amount:</span>
-                    <span className="font-medium text-right">₹ {calculatedTax.taxable_amount.toFixed(2)}</span>
+                    <span className="text-gray-600">
+                      Taxable Amount:
+                    </span>
+                    <span className="font-medium text-right">
+                      ₹ {calculatedTax.taxable_amount.toFixed(2)}
+                    </span>
                     {calculatedTax.cgst > 0 && (
                       <>
-                        <span className="text-gray-600">CGST:</span>
-                        <span className="font-medium text-right">₹ {calculatedTax.cgst.toFixed(2)}</span>
+                        <span className="text-gray-600">
+                          CGST:
+                        </span>
+                        <span className="font-medium text-right">
+                          ₹ {calculatedTax.cgst.toFixed(2)}
+                        </span>
                       </>
                     )}
                     {calculatedTax.sgst > 0 && (
                       <>
-                        <span className="text-gray-600">SGST:</span>
-                        <span className="font-medium text-right">₹ {calculatedTax.sgst.toFixed(2)}</span>
+                        <span className="text-gray-600">
+                          SGST:
+                        </span>
+                        <span className="font-medium text-right">
+                          ₹ {calculatedTax.sgst.toFixed(2)}
+                        </span>
                       </>
                     )}
                     {calculatedTax.igst > 0 && (
                       <>
-                        <span className="text-gray-600">IGST:</span>
-                        <span className="font-medium text-right">₹ {calculatedTax.igst.toFixed(2)}</span>
+                        <span className="text-gray-600">
+                          IGST:
+                        </span>
+                        <span className="font-medium text-right">
+                          ₹ {calculatedTax.igst.toFixed(2)}
+                        </span>
                       </>
                     )}
-                    <span className="text-gray-600 font-medium border-t pt-1">Total Tax:</span>
-                    <span className="font-medium text-right border-t pt-1">₹ {calculatedTax.total_tax_amount.toFixed(2)}</span>
-                    <span className="text-gray-600 font-bold border-t pt-1">Total Amount:</span>
-                    <span className="font-bold text-right border-t pt-1">₹ {Number(form.total_amount || 0).toFixed(2)}</span>
+                    <span className="text-gray-600 font-medium border-t pt-1">
+                      Total Tax:
+                    </span>
+                    <span className="font-medium text-right border-t pt-1">
+                      ₹{" "}
+                      {calculatedTax.total_tax_amount.toFixed(
+                        2
+                      )}
+                    </span>
+                    <span className="text-gray-600 font-bold border-t pt-1">
+                      Total Amount:
+                    </span>
+                    <span className="font-bold text-right border-t pt-1">
+                      ₹{" "}
+                      {Number(
+                        form.total_amount || 0
+                      ).toFixed(2)}
+                    </span>
                   </div>
                 </div>
               )}
@@ -444,7 +577,12 @@ export default function DebitNotes() {
                 </label>
                 <textarea
                   value={form.reason}
-                  onChange={(e) => setForm((prev) => ({ ...prev, reason: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      reason: e.target.value,
+                    }))
+                  }
                   rows={2}
                   className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
                   placeholder="e.g., Additional charges, Course upgrade, etc."
@@ -458,7 +596,12 @@ export default function DebitNotes() {
                 <input
                   type="date"
                   value={form.date}
-                  onChange={(e) => setForm((prev) => ({ ...prev, date: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      date: e.target.value,
+                    }))
+                  }
                   className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
                 />
               </div>
@@ -476,15 +619,21 @@ export default function DebitNotes() {
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting || createMutation.isPending}
+                  disabled={
+                    submitting || createMutation.isPending
+                  }
                   className="bg-primary hover:bg-primary-light text-white px-6 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
                 >
-                  {submitting || createMutation.isPending ? (
+                  {submitting ||
+                  createMutation.isPending ? (
                     <Loader className="w-4 h-4 animate-spin" />
                   ) : (
                     <CheckCircle size={16} />
                   )}
-                  {submitting || createMutation.isPending ? "Creating..." : "Create Draft"}
+                  {submitting ||
+                  createMutation.isPending
+                    ? "Creating..."
+                    : "Create Draft"}
                 </button>
               </div>
             </form>

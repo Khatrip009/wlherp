@@ -11,68 +11,95 @@ import {
 } from "recharts";
 import AdminLayout from "../layouts/AdminLayout";
 import { useAuth } from "../context/AuthContext";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 import { supabase } from "../api/supabase";
 
 export default function StudentDashboard() {
   const { user } = useAuth();
 
-  // 1. Student info
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  // 1. Student info – scoped to current branch & FY
   const { data: student, isLoading: studentLoading } = useQuery({
-    queryKey: ["student-info", user?.id],
+    queryKey: ["student-info", user?.id, branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("students")
         .select("*")
-        .eq("user_id", user.id)
-        .single();
+        .eq("user_id", user.id);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query.single();
       return data;
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
   const studentId = student?.id;
 
-  // 2. Batches
+  // 2. Batches – scoped
   const { data: batches = [] } = useQuery({
-    queryKey: ["student-batches", studentId],
+    queryKey: ["student-batches", studentId, branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      if (!studentId) return [];
+      let query = supabase
         .from("student_batches")
         .select(`batch_id, batches(batch_name, course_id, courses(course_name))`)
         .eq("student_id", studentId)
         .eq("status", "active");
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data || [];
     },
-    enabled: !!studentId,
+    enabled: !!studentId && !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
-  // 3. Attendance
+  // 3. Attendance – scoped
   const { data: attendance = { percentage: 0, present: 0, total: 0, trend: [] } } = useQuery({
-    queryKey: ["student-attendance", studentId],
+    queryKey: ["student-attendance", studentId, branchId, financialYearId],
     queryFn: async () => {
-      const { data: batchRows } = await supabase
+      if (!studentId) return { percentage: 0, present: 0, total: 0, trend: [] };
+
+      // Get active batch IDs for the student (scoped)
+      let batchQuery = supabase
         .from("student_batches")
         .select("batch_id")
         .eq("student_id", studentId)
         .eq("status", "active");
+      if (branchId) batchQuery = batchQuery.eq("branch_id", branchId);
+      if (financialYearId) batchQuery = batchQuery.eq("financial_year_id", financialYearId);
+      const { data: batchRows } = await batchQuery;
       const batchIds = batchRows?.map((b) => b.batch_id) || [];
       if (!batchIds.length) return { percentage: 0, present: 0, total: 0, trend: [] };
 
-      const { data: sessions } = await supabase
+      // Get recent sessions for those batches (scoped)
+      let sessionQuery = supabase
         .from("attendance_sessions")
         .select("id, attendance_date")
         .in("batch_id", batchIds)
         .order("attendance_date", { ascending: false })
         .limit(10);
-
+      if (branchId) sessionQuery = sessionQuery.eq("branch_id", branchId);
+      if (financialYearId) sessionQuery = sessionQuery.eq("financial_year_id", financialYearId);
+      const { data: sessions } = await sessionQuery;
       if (!sessions?.length) return { percentage: 0, present: 0, total: 0, trend: [] };
 
+      // Get attendance marks (scoped)
       const sessionIds = sessions.map((s) => s.id);
-      const { data: marks } = await supabase
+      let marksQuery = supabase
         .from("student_attendance")
         .select("session_id, status")
         .in("session_id", sessionIds)
         .eq("student_id", studentId);
+      if (branchId) marksQuery = marksQuery.eq("branch_id", branchId);
+      if (financialYearId) marksQuery = marksQuery.eq("financial_year_id", financialYearId);
+      const { data: marks } = await marksQuery;
 
       const total = sessionIds.length;
       const present = marks?.filter((m) => m.status === "Present").length || 0;
@@ -83,94 +110,121 @@ export default function StudentDashboard() {
 
       return { percentage: total ? ((present / total) * 100).toFixed(1) : 0, present, total, trend };
     },
-    enabled: !!studentId,
+    enabled: !!studentId && !!branchId && !!financialYearId,
+    staleTime: 2 * 60 * 1000,
   });
 
-  // 4. Fees — FIXED: single query with join, no N+1
+  // 4. Fees – scoped
   const { data: fees = { total: 0, paid: 0, pending: 0 } } = useQuery({
-    queryKey: ["student-fees", studentId],
+    queryKey: ["student-fees", studentId, branchId, financialYearId],
     queryFn: async () => {
-      const { data: feeRecords } = await supabase
+      if (!studentId) return { total: 0, paid: 0, pending: 0 };
+      let feeQuery = supabase
         .from("student_fees")
         .select("id, final_fee, fee_payments(amount)")
         .eq("student_id", studentId);
+      if (branchId) feeQuery = feeQuery.eq("branch_id", branchId);
+      if (financialYearId) feeQuery = feeQuery.eq("financial_year_id", financialYearId);
+      const { data: feeRecords } = await feeQuery;
 
       let total = 0, paid = 0;
       for (const f of feeRecords || []) {
         total += Number(f.final_fee);
+        // The fee_payments sub-query already scoped via the join, but we can also scope later if needed.
         paid += (f.fee_payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
       }
       return { total, paid, pending: total - paid };
     },
-    enabled: !!studentId,
+    enabled: !!studentId && !!branchId && !!financialYearId,
+    staleTime: 2 * 60 * 1000,
   });
 
-  // 5. Results
+  // 5. Results – scoped
   const { data: results = [] } = useQuery({
-    queryKey: ["student-results", studentId],
+    queryKey: ["student-results", studentId, branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      if (!studentId) return [];
+      let query = supabase
         .from("student_results")
         .select("marks_obtained, remarks, exams(exam_name, total_marks, exam_date, subject_id, subjects(subject_name))")
         .eq("student_id", studentId)
         .order("exam_id", { ascending: false })
         .limit(5);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data || [];
     },
-    enabled: !!studentId,
+    enabled: !!studentId && !!branchId && !!financialYearId,
   });
 
-  // 6. Homework
+  // 6. Homework – scoped via batch IDs (batches scoped, homework itself scoped if columns exist)
   const { data: homeworks = [] } = useQuery({
-    queryKey: ["student-homeworks", studentId],
+    queryKey: ["student-homeworks", studentId, branchId, financialYearId],
     queryFn: async () => {
-      const { data: batchRows } = await supabase
+      if (!studentId) return [];
+      // Get batch IDs scoped
+      let batchQuery = supabase
         .from("student_batches")
         .select("batch_id")
         .eq("student_id", studentId)
         .eq("status", "active");
+      if (branchId) batchQuery = batchQuery.eq("branch_id", branchId);
+      if (financialYearId) batchQuery = batchQuery.eq("financial_year_id", financialYearId);
+      const { data: batchRows } = await batchQuery;
       const batchIds = batchRows?.map((b) => b.batch_id) || [];
       if (!batchIds.length) return [];
 
-      const { data } = await supabase
+      let hwQuery = supabase
         .from("homework")
         .select("title, due_date, subjects(subject_name)")
         .in("batch_id", batchIds)
         .order("due_date", { ascending: true })
         .limit(3);
+      if (branchId) hwQuery = hwQuery.eq("branch_id", branchId);
+      if (financialYearId) hwQuery = hwQuery.eq("financial_year_id", financialYearId);
+      const { data } = await hwQuery;
       return data || [];
     },
-    enabled: !!studentId,
+    enabled: !!studentId && !!branchId && !!financialYearId,
   });
 
-  // 7. Certificates
+  // 7. Certificates – scoped
   const { data: certificateCount = 0 } = useQuery({
-    queryKey: ["student-certificates", studentId],
+    queryKey: ["student-certificates", studentId, branchId, financialYearId],
     queryFn: async () => {
-      const { count } = await supabase
+      if (!studentId) return 0;
+      let query = supabase
         .from("certificates")
         .select("*", { count: "exact", head: true })
         .eq("student_id", studentId);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { count } = await query;
       return count || 0;
     },
-    enabled: !!studentId,
+    enabled: !!studentId && !!branchId && !!financialYearId,
   });
 
-  // 8. Unread notifications
+  // 8. Unread notifications – scoped (if notifications table has branch/FY)
   const { data: unreadCount = 0 } = useQuery({
-    queryKey: ["student-notifications-unread", user?.id],
+    queryKey: ["student-notifications-unread", user?.id, branchId, financialYearId],
     queryFn: async () => {
-      const { count } = await supabase
+      if (!user?.id) return 0;
+      let query = supabase
         .from("notifications")
         .select("*", { count: "exact", head: true })
         .eq("user_id", user.id)
         .eq("is_read", false);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { count } = await query;
       return count || 0;
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!branchId && !!financialYearId,
   });
 
-  // Scroll logic
+  // Scroll logic (unchanged)
   const location = useLocation();
   const scrollToSection = (sectionId) => {
     const container = document.getElementById("main-content") || window;

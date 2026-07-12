@@ -1,30 +1,33 @@
 // src/components/FeeStructureForm.jsx
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../api/supabase';
-import { useOrg } from '../context/OrganizationContext';   // NEW
+import { useOrg } from '../context/OrganizationContext';
 import toast from 'react-hot-toast';
 import { X, Plus, Trash2 } from 'lucide-react';
 
 export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialData = null }) {
-  const { branch, selectedFinancialYear } = useOrg();      // NEW
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
-  const [form, setForm] = useState({ 
+  const [form, setForm] = useState({
     course_id: '',
-    installment_allowed: false
+    installment_allowed: false,
   });
 
   const [components, setComponents] = useState([
-    { component_name: '', amount: '', tax_rate_id: '' }
+    { component_name: '', amount: '', tax_rate_id: '' },
   ]);
   const [loading, setLoading] = useState(false);
   const [courses, setCourses] = useState([]);
   const [taxRates, setTaxRates] = useState([]);
 
+  // Reset form on modal open / initialData change
   useEffect(() => {
     if (initialData) {
       setForm({
         course_id: initialData.course_id || '',
-        installment_allowed: initialData.installment_allowed || false
+        installment_allowed: initialData.installment_allowed || false,
       });
       const comps = (initialData.fee_structure_components || []).map((c) => ({
         component_name: c.component_name || '',
@@ -38,17 +41,29 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
     }
   }, [initialData]);
 
+  // Fetch dropdown data when modal opens and branch/FY are ready
   useEffect(() => {
-    if (isOpen) {
-      fetchData();
-    }
-  }, [isOpen]);
+    if (!isOpen || !branchId || !financialYearId) return;
+    fetchData();
+  }, [isOpen, branchId, financialYearId]);
 
   const fetchData = async () => {
-    const [coursesRes, taxRes] = await Promise.all([
-      supabase.from('courses').select('id, course_name').eq('status', true),
-      supabase.from('tax_rates').select('id, name, rate').eq('is_active', true)
-    ]);
+    // Conditionally scope courses & tax rates to current branch & FY
+    let coursesQuery = supabase
+      .from('courses')
+      .select('id, course_name')
+      .eq('status', true);
+    if (branchId) coursesQuery = coursesQuery.eq('branch_id', branchId);
+    if (financialYearId) coursesQuery = coursesQuery.eq('financial_year_id', financialYearId);
+
+    let taxQuery = supabase
+      .from('tax_rates')
+      .select('id, name, rate')
+      .eq('is_active', true);
+    if (branchId) taxQuery = taxQuery.eq('branch_id', branchId);
+    if (financialYearId) taxQuery = taxQuery.eq('financial_year_id', financialYearId);
+
+    const [coursesRes, taxRes] = await Promise.all([coursesQuery, taxQuery]);
     setCourses(coursesRes.data || []);
     setTaxRates(taxRes.data || []);
   };
@@ -99,8 +114,6 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
     setLoading(true);
     try {
       const totalFee = components.reduce((sum, c) => sum + parseFloat(c.amount), 0);
-      const branchId = branch?.id;
-      const financialYearId = selectedFinancialYear?.id;
 
       const feeStructurePayload = {
         course_id: form.course_id,
@@ -108,8 +121,8 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
         installment_allowed: form.installment_allowed,
         tax_rate_id: null,
         tax_inclusive: false,
-        branch_id: branchId,                // NEW
-        financial_year_id: financialYearId, // NEW
+        branch_id: branchId,
+        financial_year_id: financialYearId,
       };
 
       let feeStructureId;
@@ -122,11 +135,15 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
           .single();
         if (updateError) throw updateError;
         feeStructureId = initialData.id;
-        // Delete old components (hard delete, RLS ensures only those belonging to user are deleted)
-        await supabase
+
+        // Delete old components – scoped to prevent cross-branch tampering
+        let deleteQuery = supabase
           .from('fee_structure_components')
           .delete()
           .eq('fee_structure_id', initialData.id);
+        if (branchId) deleteQuery = deleteQuery.eq('branch_id', branchId);
+        if (financialYearId) deleteQuery = deleteQuery.eq('financial_year_id', financialYearId);
+        await deleteQuery;
       } else {
         const { data: inserted, error: insertError } = await supabase
           .from('fee_structures')
@@ -144,8 +161,8 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
         amount: parseFloat(comp.amount),
         tax_rate_id: comp.tax_rate_id || null,
         sort_order: idx,
-        branch_id: branchId,                // NEW
-        financial_year_id: financialYearId, // NEW
+        branch_id: branchId,
+        financial_year_id: financialYearId,
       }));
       const { error: compError } = await supabase
         .from('fee_structure_components')
@@ -186,8 +203,10 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
               required
             >
               <option value="">Select Course</option>
-              {courses.map(c => (
-                <option key={c.id} value={c.id}>{c.course_name}</option>
+              {courses.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.course_name}
+                </option>
               ))}
             </select>
           </div>
@@ -260,7 +279,10 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
           <div className="border-t pt-3 text-right">
             <span className="text-sm font-medium text-secondary-dark">Total Fee: </span>
             <span className="text-lg font-bold text-primary">
-              ₹ {components.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0).toLocaleString('en-IN')}
+              ₹{' '}
+              {components
+                .reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0)
+                .toLocaleString('en-IN')}
             </span>
           </div>
 
@@ -270,7 +292,7 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
               disabled={loading}
               className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat transition disabled:opacity-60"
             >
-              {loading ? 'Saving...' : (initialData?.id ? 'Update' : 'Create')}
+              {loading ? 'Saving...' : initialData?.id ? 'Update' : 'Create'}
             </button>
             <button
               type="button"

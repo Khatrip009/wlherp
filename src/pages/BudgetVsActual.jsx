@@ -6,7 +6,7 @@ import { Link } from "react-router-dom";
 import AdminLayout from "../layouts/AdminLayout";
 import { getBudgetVsActual } from "../services/budgetService";
 import { getOrganization } from "../services/organizationService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function BudgetVsActual() {
   const today = new Date().toISOString().split("T")[0];
@@ -17,8 +17,10 @@ export default function BudgetVsActual() {
   const [startDate, setStartDate] = useState(firstOfMonth);
   const [endDate, setEndDate] = useState(today);
 
-  // ── Get current organisation from context ──
-  const { org: currentOrg } = useOrg();
+  // ── Get current organisation, branch, and financial year from context ──
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
@@ -26,10 +28,11 @@ export default function BudgetVsActual() {
     enabled: !!currentOrg?.id,
   });
 
+  // Budget vs Actual report – now scoped
   const { data: report = [], isLoading } = useQuery({
-    queryKey: ["budget-vs-actual", startDate, endDate],
-    queryFn: () => getBudgetVsActual(startDate, endDate),
-    enabled: !!(startDate && endDate),
+    queryKey: ["budget-vs-actual", startDate, endDate, branchId, financialYearId],
+    queryFn: () => getBudgetVsActual(startDate, endDate, branchId, financialYearId),
+    enabled: !!(startDate && endDate && branchId && financialYearId),
   });
 
   const totalBudget = report.reduce((s, r) => s + r.budgeted, 0);

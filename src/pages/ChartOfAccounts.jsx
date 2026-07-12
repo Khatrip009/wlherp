@@ -10,11 +10,12 @@ import {
   updateAccount,
   deleteAccount,
 } from "../services/accountingService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function ChartOfAccounts() {
   const queryClient = useQueryClient();
-  const { selectedFinancialYear } = useOrg();   // NEW
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
   const [showForm, setShowForm] = useState(false);
@@ -26,14 +27,19 @@ export default function ChartOfAccounts() {
     parent_id: "",
   });
 
+  // Fetch accounts – now scoped
   const { data: accounts = [], isLoading } = useQuery({
-    queryKey: ["chart-of-accounts"],
-    queryFn: getChartOfAccounts,
+    queryKey: ["chart-of-accounts", branchId, financialYearId],
+    queryFn: () => getChartOfAccounts(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
+  // Context for mutations
+  const context = { branchId, financialYearId };
+
   const createMutation = useMutation({
-    mutationFn: (payload) => createAccount(payload, financialYearId),   // pass FY
+    mutationFn: (payload) => createAccount(payload, context),
     onSuccess: () => {
       toast.success("Account created");
       queryClient.invalidateQueries(["chart-of-accounts"]);
@@ -44,7 +50,7 @@ export default function ChartOfAccounts() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }) => updateAccount(id, payload, financialYearId),   // pass FY
+    mutationFn: ({ id, payload }) => updateAccount(id, payload, context),
     onSuccess: () => {
       toast.success("Account updated");
       queryClient.invalidateQueries(["chart-of-accounts"]);
@@ -56,7 +62,7 @@ export default function ChartOfAccounts() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteAccount,   // delete doesn't need FY (RLS protects)
+    mutationFn: (id) => deleteAccount(id, branchId, financialYearId),
     onSuccess: () => {
       toast.success("Account deleted");
       queryClient.invalidateQueries(["chart-of-accounts"]);

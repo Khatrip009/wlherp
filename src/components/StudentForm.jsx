@@ -25,13 +25,16 @@ export default function StudentForm({ onSuccess, onClose, initialData = {} }) {
   const [useInquiry, setUseInquiry] = useState(false);
 
   useEffect(() => {
+    if (!branchId || !financialYearId) return;
     supabase
       .from("inquiries")
       .select("id, student_name, mobile, email, medium_id, interested_course_id, parent_name")
       .in("status", ["New", "Contacted", "Demo Scheduled", "Interested"])
+      .eq("branch_id", branchId)
+      .eq("financial_year_id", financialYearId)
       .order("created_at", { ascending: false })
       .then(({ data }) => setInquiries(data || []));
-  }, []);
+  }, [branchId, financialYearId]);
 
   useEffect(() => {
     if (!useInquiry || !selectedInquiryId) return;
@@ -84,10 +87,22 @@ export default function StudentForm({ onSuccess, onClose, initialData = {} }) {
   const [existingUsers, setExistingUsers] = useState([]);
 
   useEffect(() => {
+    if (!branchId || !financialYearId) return;
     Promise.all([
       supabase.from("mediums").select("id, name").order("name"),
-      supabase.from("batches").select("id, batch_name").eq("status", "active").order("batch_name"),
-      supabase.from("fee_structures").select("id, course_id, fee_amount, tax_rate_id, tax_inclusive, courses(course_name)").order("id"),
+      supabase
+        .from("batches")
+        .select("id, batch_name")
+        .eq("status", "active")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
+        .order("batch_name"),
+      supabase
+        .from("fee_structures")
+        .select("id, course_id, fee_amount, tax_rate_id, tax_inclusive, courses(course_name), tax_rates(rate)")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
+        .order("id"),
       supabase.from("profiles").select("id, email, full_name, role").order("email"),
     ]).then(([m, b, f, p]) => {
       setMediums(m.data || []);
@@ -95,7 +110,7 @@ export default function StudentForm({ onSuccess, onClose, initialData = {} }) {
       setFeeStructures(f.data || []);
       setExistingUsers(p.data || []);
     });
-  }, []);
+  }, [branchId, financialYearId]);
 
   // Auto‑generate admission number
   const [loadingAdmission, setLoadingAdmission] = useState(!isEdit && !initialData.admission_no);
@@ -130,20 +145,29 @@ export default function StudentForm({ onSuccess, onClose, initialData = {} }) {
   const [showAddParentModal, setShowAddParentModal] = useState(false);
 
   useEffect(() => {
-    supabase.from("parents").select("*").order("father_name").then(({ data }) => setAllParents(data || []));
-  }, []);
+    if (!branchId || !financialYearId) return;
+    supabase
+      .from("parents")
+      .select("*")
+      .eq("branch_id", branchId)
+      .eq("financial_year_id", financialYearId)
+      .order("father_name")
+      .then(({ data }) => setAllParents(data || []));
+  }, [branchId, financialYearId]);
 
   useEffect(() => {
-    if (isEdit && initialData.id) {
+    if (isEdit && initialData.id && branchId && financialYearId) {
       supabase
         .from("student_parents")
         .select("parent_id, parents(*)")
         .eq("student_id", initialData.id)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .then(({ data }) => {
           if (data) setLinkedParents(data.map((item) => item.parents).filter(Boolean));
         });
     }
-  }, [isEdit, initialData.id]);
+  }, [isEdit, initialData.id, branchId, financialYearId]);
 
   const filteredParents = allParents.filter((p) => {
     const term = parentSearch.toLowerCase();
@@ -183,7 +207,7 @@ export default function StudentForm({ onSuccess, onClose, initialData = {} }) {
     const struct = feeStructures.find((fs) => fs.id == form.fee_structure_id);
     if (!struct) return;
     const finalFee = struct.fee_amount;
-    const rate = struct.tax_rate_id ? (struct.tax_rates?.rate || 0) / 100 : 0;
+    const rate = struct.tax_rates?.rate ? struct.tax_rates.rate / 100 : 0;
     const inclusive = struct.tax_inclusive !== false;
     let base, tax;
     if (inclusive) {
@@ -215,6 +239,10 @@ export default function StudentForm({ onSuccess, onClose, initialData = {} }) {
       toast.error("Login email is required");
       return;
     }
+    if (!branchId || !financialYearId) {
+      toast.error("Branch and financial year not loaded. Please refresh.");
+      return;
+    }
 
     setUploading(true);
     try {
@@ -236,7 +264,6 @@ export default function StudentForm({ onSuccess, onClose, initialData = {} }) {
             }),
           }
         );
-
         const result = await response.json();
         if (!response.ok) {
           if (response.status === 409) {
@@ -272,8 +299,11 @@ export default function StudentForm({ onSuccess, onClose, initialData = {} }) {
         photoUrl = publicData.publicUrl;
       }
 
+      // Extract batch_id and fee_structure_id before sending to students table
+      const { batch_id, fee_structure_id, ...studentData } = form;
+
       const studentPayload = {
-        ...form,
+        ...studentData,
         photo_url: photoUrl,
         user_id: authUserId,
         branch_id: branchId,
@@ -282,7 +312,14 @@ export default function StudentForm({ onSuccess, onClose, initialData = {} }) {
 
       let studentId = initialData.id;
       if (isEdit) {
-        const { error } = await supabase.from("students").update(studentPayload).eq("id", studentId);
+        // Scoped update to prevent cross-branch modification
+        let updateQuery = supabase
+          .from("students")
+          .update(studentPayload)
+          .eq("id", studentId);
+        if (branchId) updateQuery = updateQuery.eq("branch_id", branchId);
+        if (financialYearId) updateQuery = updateQuery.eq("financial_year_id", financialYearId);
+        const { error } = await updateQuery;
         if (error) throw error;
       } else {
         const { data: newStudent, error } = await supabase
@@ -294,8 +331,79 @@ export default function StudentForm({ onSuccess, onClose, initialData = {} }) {
         studentId = newStudent.id;
       }
 
-      // Parent links, batch, fee, inquiry update (same as before, with branch/fy)
-      // … (all the parent linking, batch, fee, inquiry update code – kept exactly the same)
+      // ── Parent linking ──
+      if (isEdit) {
+        // Scoped delete of existing links
+        let deleteQuery = supabase
+          .from("student_parents")
+          .delete()
+          .eq("student_id", studentId);
+        if (branchId) deleteQuery = deleteQuery.eq("branch_id", branchId);
+        if (financialYearId) deleteQuery = deleteQuery.eq("financial_year_id", financialYearId);
+        await deleteQuery;
+      }
+      if (linkedParents.length > 0) {
+        const parentLinks = linkedParents.map((p) => ({
+          student_id: studentId,
+          parent_id: p.id,
+          relation: "Parent",
+          branch_id: branchId,
+          financial_year_id: financialYearId,
+        }));
+        const { error: linkError } = await supabase.from("student_parents").insert(parentLinks);
+        if (linkError) throw linkError;
+      }
+
+      // ── Batch assignment ──
+      if (batch_id) {
+        if (isEdit) {
+          // Scoped deactivation of old active assignments
+          let deactivateQuery = supabase
+            .from("student_batches")
+            .update({ status: "inactive" })
+            .eq("student_id", studentId)
+            .eq("status", "active");
+          if (branchId) deactivateQuery = deactivateQuery.eq("branch_id", branchId);
+          if (financialYearId) deactivateQuery = deactivateQuery.eq("financial_year_id", financialYearId);
+          await deactivateQuery;
+        }
+        const { error: batchError } = await supabase.from("student_batches").insert({
+          student_id: studentId,
+          batch_id: batch_id,
+          status: "active",
+          branch_id: branchId,
+          financial_year_id: financialYearId,
+        });
+        if (batchError) throw batchError;
+      }
+
+      // ── Fee assignment ──
+      if (fee_structure_id) {
+        const feeStruct = feeStructures.find((fs) => fs.id == fee_structure_id);
+        if (feeStruct) {
+          const { error: feeError } = await supabase.from("student_fees").insert({
+            student_id: studentId,
+            fee_structure_id: fee_structure_id,
+            total_fee: feeStruct.fee_amount,
+            final_fee: feeStruct.fee_amount,
+            status: "Pending",
+            branch_id: branchId,
+            financial_year_id: financialYearId,
+          });
+          if (feeError) throw feeError;
+        }
+      }
+
+      // ── Update inquiry status to "Joined" if applicable ──
+      if (selectedInquiryId && useInquiry) {
+        let updateInquiryQuery = supabase
+          .from("inquiries")
+          .update({ status: "Joined" })
+          .eq("id", selectedInquiryId);
+        if (branchId) updateInquiryQuery = updateInquiryQuery.eq("branch_id", branchId);
+        if (financialYearId) updateInquiryQuery = updateInquiryQuery.eq("financial_year_id", financialYearId);
+        await updateInquiryQuery;
+      }
 
       toast.success(isEdit ? "Student updated" : "Student added successfully");
       onSuccess?.();
@@ -308,6 +416,7 @@ export default function StudentForm({ onSuccess, onClose, initialData = {} }) {
     }
   }
 
+  // ─────────── RENDER ───────────
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-xl">

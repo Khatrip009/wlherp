@@ -18,11 +18,16 @@ function cleanPayload(payload) {
 }
 
 // ---------- Chart of Accounts (reads) ----------
-export async function getChartOfAccounts() {
-  const { data, error } = await supabase
+export async function getChartOfAccounts(branchId, financialYearId) {
+  let query = supabase
     .from("chart_of_accounts")
     .select("*")
     .order("account_code");
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
@@ -33,7 +38,6 @@ export async function createJournalEntry(entry, context) {
   const { date, reference, description, lines } = entry;
   const { branchId, financialYearId } = context;
 
-  // Clean and insert journal header
   const header = cleanPayload({
     entry_date: date,
     reference,
@@ -50,7 +54,6 @@ export async function createJournalEntry(entry, context) {
     .single();
   if (error) throw error;
 
-  // Insert lines
   const lineInserts = lines.map(line => cleanPayload({
     journal_entry_id: journal.id,
     account_id: line.account_id,
@@ -70,19 +73,17 @@ export async function createJournalEntry(entry, context) {
 }
 
 // ---------- Ledger ----------
-export async function getAccountLedger(accountId, startDate, endDate) {
+export async function getAccountLedger(accountId, startDate, endDate, branchId, financialYearId) {
   let query = supabase
     .from("journal_entry_lines")
     .select("debit, credit, description, journal_entries(entry_date, reference)")
     .eq("account_id", accountId)
     .order("id", { ascending: true });
 
-  if (startDate) {
-    query = query.gte("journal_entries.entry_date", startDate);
-  }
-  if (endDate) {
-    query = query.lte("journal_entries.entry_date", endDate);
-  }
+  if (startDate) query = query.gte("journal_entries.entry_date", startDate);
+  if (endDate) query = query.lte("journal_entries.entry_date", endDate);
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
   const { data, error } = await query;
   if (error) throw error;
@@ -90,9 +91,15 @@ export async function getAccountLedger(accountId, startDate, endDate) {
 }
 
 // ---------- Trial Balance ----------
-export async function getTrialBalance(asOfDate) {
+export async function getTrialBalance(asOfDate, branchId, financialYearId) {
+  // NOTE: Ensure your PostgreSQL function `get_trial_balance` accepts these parameters:
+  // p_as_of_date, p_branch_id, p_financial_year_id
   const { data, error } = await supabase
-    .rpc("get_trial_balance", { as_of_date: asOfDate });
+    .rpc("get_trial_balance", {
+      as_of_date: asOfDate,
+      p_branch_id: branchId,
+      p_financial_year_id: financialYearId,
+    });
   if (error) throw error;
   return data || [];
 }
@@ -134,11 +141,16 @@ export async function updateAccount(id, payload, context) {
   return data;
 }
 
-// ---------- Delete Account ----------
-export async function deleteAccount(id) {
-  const { error } = await supabase
+// ---------- Delete Account (now scoped) ----------
+export async function deleteAccount(id, branchId, financialYearId) {
+  let query = supabase
     .from("chart_of_accounts")
     .delete()
     .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { error } = await query;
   if (error) throw error;
 }

@@ -20,38 +20,52 @@ export default function TeacherAttendanceReport() {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth() + 1); // 1-12
 
-  // ── Get current organization from context ──
-  const { org: currentOrg } = useOrg();   // NEW
+  // ── Branch & Financial Year context ──
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();   // NEW
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
   const daysInMonth = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, "0")}-${daysInMonth}`;
 
-  // Fetch all active teachers
+  // Fetch all active teachers – scoped to branch & FY
   const { data: teachers = [] } = useQuery({
-    queryKey: ["active-teachers-list"],
+    queryKey: ["active-teachers-list", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("teachers")
         .select("id, first_name, last_name, employee_code")
         .eq("status", "active")
         .order("first_name");
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch attendance for the selected month
+  // Fetch attendance for the selected month – scoped to branch & FY
   const { data: attendance = [], isLoading } = useQuery({
-    queryKey: ["teacher-attendance-month", startDate, endDate],
+    queryKey: ["teacher-attendance-month", startDate, endDate, branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("teacher_attendance")
         .select("teacher_id, attendance_date, status")
         .gte("attendance_date", startDate)
         .lte("attendance_date", endDate);
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data } = await query;
       return data || [];
     },
-    enabled: !!startDate && !!endDate,
+    enabled: !!startDate && !!endDate && !!branchId && !!financialYearId,
   });
 
   // Build report data: each teacher has an array of day statuses
@@ -83,7 +97,7 @@ export default function TeacherAttendanceReport() {
     }
     const monthLabel = new Date(year, month - 1).toLocaleString("default", { month: "long", year: "numeric" });
 
-    // Fetch organisation info for the PDF header – now uses the current org id
+    // Fetch organisation info for the PDF header – uses the current org id
     const { data: org } = await supabase
       .from("organization")
       .select("*")

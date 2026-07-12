@@ -4,13 +4,14 @@ import {
   ChevronDown, Bell, X, Wallet, Building, Video, FileText,
   PanelLeftOpen, PanelLeftClose, BarChart3, Shield, Layers,
   Calendar, CalendarCheck, BookOpen, Award, ClipboardCheck,
-  MessageSquare, Palette,Activity,
+  MessageSquare, Palette, Activity,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
 import { supabase } from "../api/supabase";
+import ScopeSelector from "./ScopeSelector";
 
 function normaliseRole(rawRole) {
   return (rawRole || "").toLowerCase().replace(/\s+/g, "_");
@@ -70,12 +71,8 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse }) {
   const orgContext = useOrg();
   const [org, setOrg] = useState(orgContext?.org || null);
 
-  // Financial year from context
-  const {
-    financialYears,
-    selectedFinancialYear,
-    switchFinancialYear,
-  } = orgContext || {};
+  // Financial year from context (kept for any remaining usage, but selection is now via ScopeSelector)
+  const { financialYears, selectedFinancialYear, switchFinancialYear } = orgContext || {};
 
   const [academicOpen, setAcademicOpen] = useState(false);
 
@@ -200,13 +197,11 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse }) {
       <SidebarLink to="/branches" icon={Building}>Branches</SidebarLink>
       <SidebarLink to="/settings-hub" icon={Settings}>Settings</SidebarLink>
       <SidebarLink to="/activity-logs" icon={Activity}>Activity Logs</SidebarLink>
-      
     </>
   );
 
-  // ── Financial Year selector (bottom) ──
-  const isAdminOrStaff = ["admin", "super_admin", "organization_admin", "branch_admin", "teacher"].includes(role);
-  const showFYSelector = isAdminOrStaff && financialYears && financialYears.length > 0;
+  // Remove the old FY selector – we'll use the universal ScopeSelector instead
+  // (ScopeSelector already includes both branch and financial year)
 
   return (
     <aside
@@ -243,37 +238,33 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse }) {
         {(role === "admin" || role === "super_admin" || role === "organization_admin") && adminLinks}
       </nav>
 
-      {/* Financial Year Selector */}
-      {showFYSelector && (
-        <div className="px-3 py-3 border-t border-primary-dark">
-          {collapsed ? (
-            <div className="flex justify-center" title={selectedFinancialYear?.name || "Select FY"}>
-              <Calendar size={20} className="text-white/70" />
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-sm">
-              <Calendar size={16} className="text-white/60" />
-              <select
-                value={selectedFinancialYear?.id || ""}
-                onChange={(e) => {
-                  const id = Number(e.target.value);
-                  if (id && switchFinancialYear) switchFinancialYear(id);
-                }}
-                className="bg-primary-light text-white border border-primary-dark rounded px-2 py-1 text-xs w-full focus:outline-none"
-              >
-                {!selectedFinancialYear && (
-                  <option value="" disabled>Select FY</option>
-                )}
-                {financialYears.map((fy) => (
-                  <option key={fy.id} value={fy.id}>
-                    {fy.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-      )}
+      {/* ── Universal Scope Selector (Branch + Financial Year) ── */}
+      {/* It will automatically appear only when there are branches/FYs to choose */}
+      <div className="border-t border-primary-dark px-2 py-3">
+        <ScopeSelector />
+      </div>
+
+      {/* ── Custom scrollbar styles ── */}
+      <style>{`
+        .sidebar-scroll::-webkit-scrollbar {
+          width: 4px;
+        }
+        .sidebar-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .sidebar-scroll::-webkit-scrollbar-thumb {
+          background: rgba(255,255,255,0.2);
+          border-radius: 2px;
+        }
+        .sidebar-scroll::-webkit-scrollbar-thumb:hover {
+          background: rgba(255,255,255,0.4);
+        }
+        /* Firefox */
+        .sidebar-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255,255,255,0.2) transparent;
+        }
+      `}</style>
     </aside>
   );
 }

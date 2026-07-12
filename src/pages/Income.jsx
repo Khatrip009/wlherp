@@ -36,10 +36,17 @@ import {
 } from "../services/financeService";
 import { supabase } from "../api/supabase";
 import { useOrgDarkLogo } from "../hooks/useOrgDarkLogo";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 
 export default function Income() {
   const queryClient = useQueryClient();
   const darkLogo = useOrgDarkLogo();
+
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   // Filters
   const [search, setSearch] = useState("");
@@ -64,16 +71,22 @@ export default function Income() {
   });
   const fileInputRef = useRef(null);
 
-  // Fetch tax rates
+  // Fetch tax rates – scoped
   const { data: taxRates = [] } = useQuery({
-    queryKey: ["tax-rates"],
+    queryKey: ["tax-rates", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("tax_rates")
         .select("id, name, rate")
         .eq("is_active", true);
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
@@ -112,7 +125,7 @@ export default function Income() {
     }));
   }, [form.amount, form.tax_rate_id, form.tax_inclusive, taxRates]);
 
-  // Infinite query
+  // Infinite query – scoped
   const {
     data,
     isLoading,
@@ -120,8 +133,9 @@ export default function Income() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["incomes", allFilters],
-    queryFn: ({ pageParam = 0 }) => getIncomes({ pageParam, filters: allFilters }),
+    queryKey: ["incomes", allFilters, branchId, financialYearId],
+    queryFn: ({ pageParam = 0 }) =>
+      getIncomes({ pageParam, filters: allFilters, branchId, financialYearId }),
     getNextPageParam: (lastPage, allPages) => {
       const totalFetched = allPages.reduce((sum, page) => sum + page.data.length, 0);
       if (lastPage.count && totalFetched < lastPage.count) {
@@ -130,14 +144,15 @@ export default function Income() {
       return undefined;
     },
     initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
   const incomes = data?.pages.flatMap((page) => page.data) || [];
 
-  // Mutations
+  // Mutations – now pass context
   const createMutation = useMutation({
-    mutationFn: createIncome,
+    mutationFn: (payload) => createIncome(payload, ctx),
     onSuccess: () => {
       toast.success("Income added");
       queryClient.invalidateQueries({ queryKey: ["incomes"] });
@@ -147,7 +162,7 @@ export default function Income() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }) => updateIncome(id, payload),
+    mutationFn: ({ id, payload }) => updateIncome(id, payload, ctx),
     onSuccess: () => {
       toast.success("Income updated");
       queryClient.invalidateQueries({ queryKey: ["incomes"] });
@@ -157,7 +172,7 @@ export default function Income() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteIncome,
+    mutationFn: (id) => deleteIncome(id, ctx),
     onSuccess: () => {
       toast.success("Record deleted");
       queryClient.invalidateQueries({ queryKey: ["incomes"] });
@@ -165,7 +180,7 @@ export default function Income() {
     onError: () => toast.error("Delete failed"),
   });
 
-  // CSV Import (updated to handle tax fields)
+  // CSV Import (updated to use context)
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -185,8 +200,7 @@ export default function Income() {
               tax_rate_id: row.tax_rate_id ? Number(row.tax_rate_id) : null,
               tax_inclusive: row.tax_inclusive ? row.tax_inclusive === "true" : true,
             };
-            // Let the service calculate base_amount and tax_amount
-            await createIncome(payload);
+            await createIncome(payload, ctx);   // pass context
             successCount++;
           } catch (err) {
             console.error(err);
@@ -199,10 +213,10 @@ export default function Income() {
     });
   }
 
-  // CSV Export (includes tax fields)
+  // CSV Export – now scoped
   async function handleCSVExport() {
     try {
-      const allData = await getAllIncomesForExport(allFilters);
+      const allData = await getAllIncomesForExport(allFilters, branchId, financialYearId);
       const csv = Papa.unparse(allData);
       const blob = new Blob([csv], { type: "text/csv" });
       const url = URL.createObjectURL(blob);

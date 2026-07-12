@@ -6,52 +6,65 @@ import BackButton from "../components/BackButton";
 
 import { useAuth } from "../context/AuthContext";
 import { Clock } from "lucide-react";
-import { useOrg } from "../context/OrganizationContext";   // NEW (for consistency)
+import { useOrg } from "../context/OrganizationContext";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const TIME_SLOTS = Array.from({ length: 14 }, (_, i) => `${i + 7}:00`);
 
 export default function TeacherTimetable() {
   const { user } = useAuth();
-  useOrg(); 
 
-  // 1. Fetch teacher ID
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  // 1. Fetch teacher ID – scoped to current branch & FY
   const { data: teacherId, isLoading: idLoading } = useQuery({
-    queryKey: ["teacher-id", user?.id],
+    queryKey: ["teacher-id", user?.id, branchId, financialYearId],
     queryFn: async () => {
-      if (!user?.id) return null;
+      if (!user?.id || !branchId || !financialYearId) return null;
       const { data, error } = await supabase
         .from("teachers")
         .select("id")
         .eq("user_id", user.id)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .maybeSingle();
       if (error) throw error;
       return data?.id || null;
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
-  // 2. Fetch batch IDs assigned to this teacher
+  // 2. Fetch batch IDs assigned to this teacher – scoped
   const { data: assignedBatchIds = [], isLoading: idsLoading } = useQuery({
-    queryKey: ["teacher-batch-ids", teacherId],
+    queryKey: ["teacher-batch-ids", teacherId, branchId, financialYearId],
     queryFn: async () => {
-      if (!teacherId) return [];
-      const { data, error } = await supabase
+      if (!teacherId || !branchId || !financialYearId) return [];
+      let query = supabase
         .from("batch_teachers")
         .select("batch_id")
         .eq("teacher_id", teacherId);
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data, error } = await query;
       if (error) throw error;
       // Unique batch IDs
       return [...new Set(data.map((row) => row.batch_id))];
     },
-    enabled: !!teacherId,
+    enabled: !!teacherId && !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
-  // 3. Fetch full batch data (now includes medium name)
+  // 3. Fetch full batch data – scoped
   const { data: batches = [], isLoading: batchesLoading } = useQuery({
-    queryKey: ["teacher-batches-timetable", assignedBatchIds],
+    queryKey: ["teacher-batches-timetable", assignedBatchIds, branchId, financialYearId],
     queryFn: async () => {
-      if (assignedBatchIds.length === 0) return [];
+      if (assignedBatchIds.length === 0 || !branchId || !financialYearId) return [];
       const { data, error } = await supabase
         .from("batches")
         .select(`
@@ -62,11 +75,14 @@ export default function TeacherTimetable() {
         `)
         .in("id", assignedBatchIds)
         .eq("status", "active")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .order("batch_name");
       if (error) throw error;
       return data || [];
     },
-    enabled: assignedBatchIds.length > 0,
+    enabled: assignedBatchIds.length > 0 && !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
   const batchOnDay = (batch, day) =>
@@ -155,7 +171,6 @@ export default function TeacherTimetable() {
                           <div className="text-secondary">
                             {batch.courses?.course_name}
                           </div>
-                          {/* Medium name (if available) */}
                           {batch.mediums?.name && (
                             <div className="text-secondary-dark text-xs">
                               Medium: {batch.mediums.name}

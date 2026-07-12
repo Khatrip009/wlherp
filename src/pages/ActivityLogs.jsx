@@ -3,19 +3,26 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import AdminLayout from "../layouts/AdminLayout";
 import { Search, Download, Filter, X, User, Activity, Calendar } from "lucide-react";
+import { useOrg } from "../context/OrganizationContext";
 
 export default function ActivityLogs() {
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
   const [search, setSearch] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [actionFilter, setActionFilter] = useState("");
 
   const { data: logs = [], isLoading } = useQuery({
-    queryKey: ["activity-logs", search, startDate, endDate, actionFilter],
+    queryKey: ["activity-logs", search, startDate, endDate, actionFilter, branchId, financialYearId],
     queryFn: async () => {
       let query = supabase
         .from("activity_logs")
         .select("id, user_id, organization_id, branch_id, action, entity_type, entity_id, details, ip_address, user_agent, created_at")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .order("created_at", { ascending: false })
         .limit(500);
 
@@ -30,11 +37,11 @@ export default function ActivityLogs() {
       if (error) throw error;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 30 * 1000,
   });
 
   const exportCSV = () => {
-    // minimal CSV export; you can enhance later
     const rows = logs.map((l) => [
       l.created_at,
       l.action,
@@ -104,7 +111,6 @@ export default function ActivityLogs() {
           <option value="collect_payment">Collect Payment</option>
           <option value="login">Login</option>
           <option value="logout">Logout</option>
-          {/* add more as you use them */}
         </select>
       </div>
 

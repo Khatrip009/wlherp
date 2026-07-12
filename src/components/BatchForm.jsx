@@ -8,17 +8,19 @@ import { useQuery } from "@tanstack/react-query";
 import { getCourseOptions, getTeacherOptions, getMediumOptions } from "../services/batchService";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function BatchForm({ onSubmit, onClose, initialData = {} }) {
   const { profile } = useAuth();
-  const { org, branch, selectedFinancialYear } = useOrg();      // get org from context
+  const { org, branch, selectedFinancialYear } = useOrg();
 
-  // Dynamic logo and name
   const darkLogo = org?.logo_dark_url || "/ShreeVidhyaDark.png";
   const orgName = org?.company_name || "Academy";
 
   const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
+
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   // ---- Basic batch fields ----
   const [form, setForm] = useState({
@@ -39,31 +41,32 @@ export default function BatchForm({ onSubmit, onClose, initialData = {} }) {
 
   const DAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-  // Dropdown data
+  // Dropdown data – now scoped appropriately
   const { data: courses = [] } = useQuery({
     queryKey: ["courses-dropdown"],
-    queryFn: getCourseOptions,
+    queryFn: getCourseOptions,   // organisation‑wide, no parameters
     staleTime: 10 * 60 * 1000,
   });
 
   const { data: teachers = [] } = useQuery({
-    queryKey: ["teachers-dropdown"],
-    queryFn: getTeacherOptions,
+    queryKey: ["teachers-dropdown", branchId, financialYearId],
+    queryFn: () => getTeacherOptions(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediums-dropdown"],
-    queryFn: getMediumOptions,
+    queryFn: getMediumOptions,   // organisation‑wide
     staleTime: 10 * 60 * 1000,
   });
 
-  // Subjects for selected course
+  // Subjects for selected course – now scoped
   const [subjects, setSubjects] = useState([]);
   const [loadingSubjects, setLoadingSubjects] = useState(false);
 
   useEffect(() => {
-    if (!form.course_id) {
+    if (!form.course_id || !branchId || !financialYearId) {
       setSubjects([]);
       return;
     }
@@ -72,6 +75,8 @@ export default function BatchForm({ onSubmit, onClose, initialData = {} }) {
       .from("subjects")
       .select("id, subject_name")
       .eq("course_id", form.course_id)
+      .eq("branch_id", branchId)
+      .eq("financial_year_id", financialYearId)
       .order("subject_name")
       .then(({ data, error }) => {
         if (error) {
@@ -82,15 +87,17 @@ export default function BatchForm({ onSubmit, onClose, initialData = {} }) {
         }
       })
       .finally(() => setLoadingSubjects(false));
-  }, [form.course_id]);
+  }, [form.course_id, branchId, financialYearId]);
 
-  // Load existing assignments when editing
+  // Load existing assignments when editing – scoped (optional but safe)
   useEffect(() => {
-    if (initialData.id) {
+    if (initialData.id && branchId && financialYearId) {
       supabase
         .from("batch_teachers")
         .select("id, teacher_id, subject_id, day")
         .eq("batch_id", initialData.id)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .then(({ data }) => {
           if (data) {
             setAssignments(
@@ -104,7 +111,7 @@ export default function BatchForm({ onSubmit, onClose, initialData = {} }) {
           }
         });
     }
-  }, [initialData.id]);
+  }, [initialData.id, branchId, financialYearId]);
 
   // ---- Handlers ----
   function handleChange(e) {
@@ -138,7 +145,6 @@ export default function BatchForm({ onSubmit, onClose, initialData = {} }) {
       return;
     }
 
-    // Prepare payload with teacher_subjects for the batch_teachers table
     const payload = {
       ...form,
       capacity: form.capacity ? Number(form.capacity) : null,
@@ -150,14 +156,12 @@ export default function BatchForm({ onSubmit, onClose, initialData = {} }) {
       })),
     };
 
-    // Build context for branch & FY
     const context = {
       branchId: branch?.id,
       financialYearId: selectedFinancialYear?.id,
     };
 
     try {
-      // Call the parent onSubmit with payload and context
       await onSubmit(payload, context);
       toast.success("Batch saved successfully");
       onClose();

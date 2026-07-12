@@ -9,13 +9,11 @@ import {
   CertificateDocument
 } from './reportDocuments';
 
-// ======================================================
-// Crystal‑style Reporting Configuration
-// ======================================================
 export const reportTypes = {
-  // ─────────────────────────────────────────
-  // 1. STUDENT ENROLLMENT REPORT
-  // ─────────────────────────────────────────
+
+  /* =============================================================
+   * 1. STUDENT ENROLLMENT REPORT
+   * ============================================================= */
   student_enrollment: {
     id: 'student_enrollment',
     title: 'Student Enrollment Report',
@@ -26,7 +24,7 @@ export const reportTypes = {
       start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
       end_date: new Date().toISOString().slice(0, 10),
     }),
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('student_batches')
         .select(`
@@ -42,23 +40,25 @@ export const reportTypes = {
         .gte('enrollment_date', filters.start_date)
         .lte('enrollment_date', filters.end_date);
 
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
+
       if (filters.batch_id) q = q.eq('batches.id', filters.batch_id);
       if (filters.course_id) q = q.eq('batches.course_id', filters.course_id);
       if (filters.medium_id) q = q.eq('batches.medium_id', filters.medium_id);
 
       return q;
     },
-    transform: (data) =>
-      data.map(r => ({
-        enrollment_date: r.enrollment_date,
-        admission_no: r.students.admission_no,
-        name: `${r.students.first_name} ${r.students.last_name}`,
-        mobile: r.students.mobile,
-        batch: r.batches.batch_name,
-        course: r.batches.courses?.course_name || '',
-        medium: r.batches.mediums?.name || '',
-        status: r.status,
-      })),
+    transform: (data) => data.map(r => ({
+      enrollment_date: r.enrollment_date,
+      admission_no: r.students.admission_no,
+      name: `${r.students.first_name} ${r.students.last_name}`,
+      mobile: r.students.mobile,
+      batch: r.batches.batch_name,
+      course: r.batches.courses?.course_name || '',
+      medium: r.batches.mediums?.name || '',
+      status: r.status,
+    })),
     columns: [
       { header: 'Enroll Date', accessor: 'enrollment_date' },
       { header: 'Admission No', accessor: 'admission_no' },
@@ -71,20 +71,23 @@ export const reportTypes = {
     ],
   },
 
-  // ─────────────────────────────────────────
-  // 2. ACTIVE / INACTIVE STUDENT LIST
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 2. ACTIVE / INACTIVE STUDENT LIST
+   * ============================================================= */
   student_status_list: {
     id: 'student_status_list',
     title: 'Active / Inactive Student List',
     description: 'Filter students by current status (active, inactive, etc.)',
     useLetterhead: true,
     fields: ['status', 'batch_id', 'course_id'],
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('students')
         .select(`admission_no, first_name, last_name, mobile, status`)
         .order('first_name');
+
+      if (branchId) q = q.eq('branch_id', branchId);
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId);
 
       if (filters.status) q = q.eq('status', filters.status);
       if (filters.batch_id || filters.course_id) {
@@ -108,28 +111,33 @@ export const reportTypes = {
     ],
   },
 
-  // ─────────────────────────────────────────
-  // 3. BATCH CAPACITY UTILISATION
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 3. BATCH CAPACITY UTILISATION
+   * ============================================================= */
   batch_capacity: {
     id: 'batch_capacity',
     title: 'Batch Capacity Utilisation',
     description: 'Shows enrolled / capacity for each batch',
     useLetterhead: true,
     fields: ['course_id', 'batch_id'],
-    queryBuilder: () =>
-      supabase
+    queryBuilder: (filters, branchId, financialYearId) => {
+      let q = supabase
         .from('batches')
         .select(`id, batch_name, capacity, student_batches(count)`)
-        .eq('student_batches.status', 'active'),
-    transform: (data) =>
-      data.map(b => ({
-        batch: b.batch_name,
-        capacity: b.capacity,
-        enrolled: b.student_batches?.[0]?.count || 0,
-        available: b.capacity - (b.student_batches?.[0]?.count || 0),
-        utilisation: (((b.student_batches?.[0]?.count || 0) / b.capacity) * 100).toFixed(1) + '%',
-      })),
+        .eq('student_batches.status', 'active');
+
+      if (branchId) q = q.eq('branch_id', branchId);
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId);
+
+      return q;
+    },
+    transform: (data) => data.map(b => ({
+      batch: b.batch_name,
+      capacity: b.capacity,
+      enrolled: b.student_batches?.[0]?.count || 0,
+      available: b.capacity - (b.student_batches?.[0]?.count || 0),
+      utilisation: (((b.student_batches?.[0]?.count || 0) / b.capacity) * 100).toFixed(1) + '%',
+    })),
     columns: [
       { header: 'Batch', accessor: 'batch' },
       { header: 'Capacity', accessor: 'capacity' },
@@ -140,31 +148,36 @@ export const reportTypes = {
     chartConfig: { type: 'bar', dataKey: 'enrolled', labelKey: 'batch' },
   },
 
-  // ─────────────────────────────────────────
-  // 4. STUDENT‑PARENT MAPPING
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 4. STUDENT‑PARENT MAPPING
+   * ============================================================= */
   student_parents: {
     id: 'student_parents',
     title: 'Student‑Parent Mapping',
     description: 'Shows parent details for each student',
     useLetterhead: true,
     fields: ['student_name'],
-    queryBuilder: () =>
-      supabase.from('student_parents').select(`
+    queryBuilder: (filters, branchId, financialYearId) => {
+      let q = supabase.from('student_parents').select(`
         relation,
         students!inner( admission_no, first_name, last_name ),
         parents!inner( father_name, mother_name, mobile, email )
-      `),
-    transform: (data) =>
-      data.map(r => ({
-        admission_no: r.students.admission_no,
-        student: `${r.students.first_name} ${r.students.last_name}`,
-        father: r.parents.father_name,
-        mother: r.parents.mother_name,
-        mobile: r.parents.mobile,
-        email: r.parents.email,
-        relation: r.relation,
-      })),
+      `);
+
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
+
+      return q;
+    },
+    transform: (data) => data.map(r => ({
+      admission_no: r.students.admission_no,
+      student: `${r.students.first_name} ${r.students.last_name}`,
+      father: r.parents.father_name,
+      mother: r.parents.mother_name,
+      mobile: r.parents.mobile,
+      email: r.parents.email,
+      relation: r.relation,
+    })),
     columns: [
       { header: 'Admission No', accessor: 'admission_no' },
       { header: 'Student', accessor: 'student' },
@@ -176,9 +189,9 @@ export const reportTypes = {
     ],
   },
 
-  // ─────────────────────────────────────────
-  // 5. INQUIRY CONVERSION REPORT
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 5. INQUIRY CONVERSION REPORT
+   * ============================================================= */
   inquiry_conversion: {
     id: 'inquiry_conversion',
     title: 'Inquiry Conversion Report',
@@ -189,15 +202,18 @@ export const reportTypes = {
       start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
       end_date: new Date().toISOString().slice(0, 10),
     }),
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('inquiries')
         .select('*')
         .gte('created_at', filters.start_date)
         .lte('created_at', filters.end_date);
 
+      if (branchId) q = q.eq('branch_id', branchId);
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId);
       if (filters.status) q = q.eq('status', filters.status);
       if (filters.source) q = q.eq('source', filters.source);
+
       return q;
     },
     columns: [
@@ -212,16 +228,16 @@ export const reportTypes = {
     ],
   },
 
-  // ─────────────────────────────────────────
-  // 6. STUDENT DOCUMENTS REPORT
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 6. STUDENT DOCUMENTS REPORT
+   * ============================================================= */
   student_documents: {
     id: 'student_documents',
     title: 'Student Documents Report',
     description: 'Documents uploaded per student',
     useLetterhead: true,
     fields: ['document_type'],
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('student_documents')
         .select(`
@@ -232,17 +248,19 @@ export const reportTypes = {
         `)
         .order('uploaded_at', { ascending: false });
 
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
       if (filters.document_type) q = q.eq('document_type', filters.document_type);
+
       return q;
     },
-    transform: (data) =>
-      data.map(r => ({
-        admission_no: r.students?.admission_no,
-        name: r.students ? `${r.students.first_name} ${r.students.last_name}` : '',
-        document_type: r.document_type,
-        file_name: r.file_name,
-        uploaded: r.uploaded_at,
-      })),
+    transform: (data) => data.map(r => ({
+      admission_no: r.students?.admission_no,
+      name: r.students ? `${r.students.first_name} ${r.students.last_name}` : '',
+      document_type: r.document_type,
+      file_name: r.file_name,
+      uploaded: r.uploaded_at,
+    })),
     columns: [
       { header: 'Admission No', accessor: 'admission_no' },
       { header: 'Student', accessor: 'name' },
@@ -252,9 +270,9 @@ export const reportTypes = {
     ],
   },
 
-  // ─────────────────────────────────────────
-  // 7. ATTENDANCE SUMMARY (BATCH‑WISE)
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 7. ATTENDANCE SUMMARY (BATCH‑WISE)
+   * ============================================================= */
   attendance_summary: {
     id: 'attendance_summary',
     title: 'Attendance Summary (Batch)',
@@ -265,7 +283,7 @@ export const reportTypes = {
       start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
       end_date: new Date().toISOString().slice(0, 10),
     }),
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('student_attendance')
         .select(`
@@ -275,7 +293,10 @@ export const reportTypes = {
         .gte('attendance_sessions.attendance_date', filters.start_date)
         .lte('attendance_sessions.attendance_date', filters.end_date);
 
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
       if (filters.batch_id) q = q.eq('attendance_sessions.batch_id', filters.batch_id);
+
       return q;
     },
     transform: (raw) => {
@@ -304,9 +325,9 @@ export const reportTypes = {
     chartConfig: { type: 'bar', dataKey: 'percentage', labelKey: 'batch' },
   },
 
-  // ─────────────────────────────────────────
-  // 8. STUDENT ATTENDANCE PERCENTAGE
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 8. STUDENT ATTENDANCE PERCENTAGE
+   * ============================================================= */
   student_attendance_pct: {
     id: 'student_attendance_pct',
     title: 'Student Attendance Percentage',
@@ -317,7 +338,7 @@ export const reportTypes = {
       start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
       end_date: new Date().toISOString().slice(0, 10),
     }),
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('student_attendance')
         .select(`
@@ -329,7 +350,10 @@ export const reportTypes = {
         .gte('attendance_sessions.attendance_date', filters.start_date)
         .lte('attendance_sessions.attendance_date', filters.end_date);
 
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
       if (filters.batch_id) q = q.eq('attendance_sessions.batch_id', filters.batch_id);
+
       return q;
     },
     transform: (raw) => {
@@ -367,16 +391,16 @@ export const reportTypes = {
     ],
   },
 
-  // ─────────────────────────────────────────
-  // 9. HOMEWORK SUBMISSION REPORT
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 9. HOMEWORK SUBMISSION REPORT
+   * ============================================================= */
   homework_submissions: {
     id: 'homework_submissions',
     title: 'Homework Submission Report',
     description: 'Submission status per homework / student',
     useLetterhead: true,
     fields: ['batch_id', 'status', 'start_date', 'end_date'],
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('homework_submissions')
         .select(`
@@ -386,22 +410,24 @@ export const reportTypes = {
         `)
         .order('submitted_at', { ascending: false });
 
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
       if (filters.status) q = q.eq('status', filters.status);
       if (filters.batch_id) q = q.eq('homework.batch_id', filters.batch_id);
       if (filters.start_date) q = q.gte('homework.assigned_date', filters.start_date);
       if (filters.end_date) q = q.lte('homework.assigned_date', filters.end_date);
+
       return q;
     },
-    transform: (data) =>
-      data.map(r => ({
-        homework: r.homework.title,
-        assigned: r.homework.assigned_date,
-        student: `${r.students.first_name} ${r.students.last_name}`,
-        admission_no: r.students.admission_no,
-        submitted: r.submitted_at,
-        marks: r.marks,
-        status: r.status,
-      })),
+    transform: (data) => data.map(r => ({
+      homework: r.homework.title,
+      assigned: r.homework.assigned_date,
+      student: `${r.students.first_name} ${r.students.last_name}`,
+      admission_no: r.students.admission_no,
+      submitted: r.submitted_at,
+      marks: r.marks,
+      status: r.status,
+    })),
     columns: [
       { header: 'Homework', accessor: 'homework' },
       { header: 'Assigned', accessor: 'assigned' },
@@ -413,16 +439,16 @@ export const reportTypes = {
     ],
   },
 
-  // ─────────────────────────────────────────
-  // 10. EXAM RESULTS – BATCH / SUBJECT
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 10. EXAM RESULTS – BATCH / SUBJECT
+   * ============================================================= */
   exam_results: {
     id: 'exam_results',
     title: 'Exam Results',
     description: 'Marks obtained by each student per exam',
     useLetterhead: true,
     fields: ['exam_id', 'batch_id'],
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('student_results')
         .select(`
@@ -432,18 +458,20 @@ export const reportTypes = {
         `)
         .order('marks_obtained', { ascending: false });
 
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
       if (filters.exam_id) q = q.eq('exam_id', filters.exam_id);
       if (filters.batch_id) q = q.eq('exams.batch_id', filters.batch_id);
+
       return q;
     },
-    transform: (data) =>
-      data.map(r => ({
-        exam: r.exams.exam_name,
-        date: r.exams.exam_date,
-        student: `${r.students.first_name} ${r.students.last_name}`,
-        admission_no: r.students.admission_no,
-        marks: r.marks_obtained,
-      })),
+    transform: (data) => data.map(r => ({
+      exam: r.exams.exam_name,
+      date: r.exams.exam_date,
+      student: `${r.students.first_name} ${r.students.last_name}`,
+      admission_no: r.students.admission_no,
+      marks: r.marks_obtained,
+    })),
     columns: [
       { header: 'Exam', accessor: 'exam' },
       { header: 'Date', accessor: 'date' },
@@ -454,16 +482,16 @@ export const reportTypes = {
     aggregateRow: true,
   },
 
-  // ─────────────────────────────────────────
-  // 11. STUDENT PROGRESS REPORT
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 11. STUDENT PROGRESS REPORT
+   * ============================================================= */
   student_progress: {
     id: 'student_progress',
     title: 'Student Progress Report',
     description: 'Attendance & performance scores from student_progress table',
     useLetterhead: true,
     fields: ['batch_id', 'start_date', 'end_date'],
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('student_progress')
         .select(`
@@ -473,21 +501,23 @@ export const reportTypes = {
         `)
         .order('evaluation_date', { ascending: false });
 
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
       if (filters.batch_id) q = q.eq('batch_id', filters.batch_id);
       if (filters.start_date) q = q.gte('evaluation_date', filters.start_date);
       if (filters.end_date) q = q.lte('evaluation_date', filters.end_date);
+
       return q;
     },
-    transform: (data) =>
-      data.map(r => ({
-        date: r.evaluation_date,
-        student: `${r.students.first_name} ${r.students.last_name}`,
-        admission_no: r.students.admission_no,
-        batch: r.batches?.batch_name,
-        attendance_pct: r.attendance_percentage,
-        performance: r.performance_score,
-        remarks: r.teacher_remarks,
-      })),
+    transform: (data) => data.map(r => ({
+      date: r.evaluation_date,
+      student: `${r.students.first_name} ${r.students.last_name}`,
+      admission_no: r.students.admission_no,
+      batch: r.batches?.batch_name,
+      attendance_pct: r.attendance_percentage,
+      performance: r.performance_score,
+      remarks: r.teacher_remarks,
+    })),
     columns: [
       { header: 'Date', accessor: 'date' },
       { header: 'Admission No', accessor: 'admission_no' },
@@ -500,16 +530,16 @@ export const reportTypes = {
     aggregateRow: true,
   },
 
-  // ─────────────────────────────────────────
-  // 12. ONLINE CLASS ATTENDANCE
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 12. ONLINE CLASS ATTENDANCE
+   * ============================================================= */
   online_class_attendance: {
     id: 'online_class_attendance',
     title: 'Online Class Attendance',
     description: 'Who joined which online class and for how long',
     useLetterhead: true,
     fields: ['class_id', 'start_date', 'end_date'],
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('online_class_attendance')
         .select(`
@@ -519,22 +549,24 @@ export const reportTypes = {
         `)
         .order('joined_at');
 
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
       if (filters.class_id) q = q.eq('class_id', filters.class_id);
       if (filters.start_date) q = q.gte('online_classes.start_time', filters.start_date);
       if (filters.end_date) q = q.lte('online_classes.start_time', filters.end_date);
+
       return q;
     },
-    transform: (data) =>
-      data.map(r => ({
-        class: r.online_classes.title,
-        class_time: r.online_classes.start_time,
-        student: `${r.students.first_name} ${r.students.last_name}`,
-        admission_no: r.students.admission_no,
-        joined: r.joined_at,
-        left: r.left_at,
-        duration_sec: r.duration_seconds,
-        attended: r.attended ? 'Yes' : 'No',
-      })),
+    transform: (data) => data.map(r => ({
+      class: r.online_classes.title,
+      class_time: r.online_classes.start_time,
+      student: `${r.students.first_name} ${r.students.last_name}`,
+      admission_no: r.students.admission_no,
+      joined: r.joined_at,
+      left: r.left_at,
+      duration_sec: r.duration_seconds,
+      attended: r.attended ? 'Yes' : 'No',
+    })),
     columns: [
       { header: 'Class', accessor: 'class' },
       { header: 'Class Time', accessor: 'class_time' },
@@ -547,9 +579,9 @@ export const reportTypes = {
     ],
   },
 
-  // ─────────────────────────────────────────
-  // 13. FEE COLLECTION REPORT
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 13. FEE COLLECTION REPORT
+   * ============================================================= */
   fee_collection: {
     id: 'fee_collection',
     title: 'Fee Collection Report',
@@ -560,7 +592,7 @@ export const reportTypes = {
       start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
       end_date: new Date().toISOString().slice(0, 10),
     }),
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('fee_payments')
         .select(`
@@ -577,23 +609,23 @@ export const reportTypes = {
         .lte('payment_date', filters.end_date)
         .order('payment_date');
 
-      if (filters.course_id) {
-        q = q.eq('student_fees.fee_structures.course_id', filters.course_id);
-      }
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
+      if (filters.course_id) q = q.eq('student_fees.fee_structures.course_id', filters.course_id);
+
       return q;
     },
-    transform: (data) =>
-      data.map(r => ({
-        date: r.payment_date,
-        admission_no: r.student_fees.students.admission_no,
-        student: `${r.student_fees.students.first_name} ${r.student_fees.students.last_name}`,
-        course: r.student_fees.fee_structures?.courses?.course_name || '',
-        base: r.student_fees.base_amount,
-        tax: r.student_fees.tax_amount,
-        total: r.student_fees.final_fee,
-        paid: r.amount,
-        mode: r.payment_mode,
-      })),
+    transform: (data) => data.map(r => ({
+      date: r.payment_date,
+      admission_no: r.student_fees.students.admission_no,
+      student: `${r.student_fees.students.first_name} ${r.student_fees.students.last_name}`,
+      course: r.student_fees.fee_structures?.courses?.course_name || '',
+      base: r.student_fees.base_amount,
+      tax: r.student_fees.tax_amount,
+      total: r.student_fees.final_fee,
+      paid: r.amount,
+      mode: r.payment_mode,
+    })),
     columns: [
       { header: 'Date', accessor: 'date' },
       { header: 'Adm No', accessor: 'admission_no' },
@@ -609,16 +641,16 @@ export const reportTypes = {
     chartConfig: { type: 'bar', dataKey: 'paid', labelKey: 'course' },
   },
 
-  // ─────────────────────────────────────────
-  // 14. PENDING FEES REPORT
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 14. PENDING FEES REPORT
+   * ============================================================= */
   pending_fees: {
     id: 'pending_fees',
     title: 'Pending Fees Report',
     description: 'Students with outstanding balance (status != Paid)',
     useLetterhead: true,
     fields: ['course_id'],
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('student_fees')
         .select(`
@@ -631,17 +663,19 @@ export const reportTypes = {
         .neq('status', 'Paid')
         .is('deleted_at', null);
 
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
       if (filters.course_id) q = q.eq('fee_structures.course_id', filters.course_id);
+
       return q;
     },
-    transform: (data) =>
-      data.map(r => ({
-        admission_no: r.students.admission_no,
-        student: `${r.students.first_name} ${r.students.last_name}`,
-        course: r.fee_structures?.courses?.course_name || '',
-        total_fee: r.final_fee,
-        status: r.status,
-      })),
+    transform: (data) => data.map(r => ({
+      admission_no: r.students.admission_no,
+      student: `${r.students.first_name} ${r.students.last_name}`,
+      course: r.fee_structures?.courses?.course_name || '',
+      total_fee: r.final_fee,
+      status: r.status,
+    })),
     columns: [
       { header: 'Admission No', accessor: 'admission_no' },
       { header: 'Student', accessor: 'student' },
@@ -652,9 +686,9 @@ export const reportTypes = {
     aggregateRow: true,
   },
 
-  // ─────────────────────────────────────────
-  // 15. INCOME STATEMENT
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 15. INCOME STATEMENT
+   * ============================================================= */
   income_statement: {
     id: 'income_statement',
     title: 'Income Statement',
@@ -665,7 +699,7 @@ export const reportTypes = {
       start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
       end_date: new Date().toISOString().slice(0, 10),
     }),
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('income')
         .select('*')
@@ -673,7 +707,10 @@ export const reportTypes = {
         .lte('income_date', filters.end_date)
         .order('income_date');
 
+      if (branchId) q = q.eq('branch_id', branchId);
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId);
       if (filters.category) q = q.eq('category', filters.category);
+
       return q;
     },
     columns: [
@@ -689,9 +726,9 @@ export const reportTypes = {
     chartConfig: { type: 'bar', dataKey: 'amount', labelKey: 'category' },
   },
 
-  // ─────────────────────────────────────────
-  // 16. EXPENSE STATEMENT
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 16. EXPENSE STATEMENT
+   * ============================================================= */
   expense_statement: {
     id: 'expense_statement',
     title: 'Expense Statement',
@@ -702,7 +739,7 @@ export const reportTypes = {
       start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
       end_date: new Date().toISOString().slice(0, 10),
     }),
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('expenses')
         .select('*')
@@ -710,7 +747,10 @@ export const reportTypes = {
         .lte('expense_date', filters.end_date)
         .order('expense_date');
 
+      if (branchId) q = q.eq('branch_id', branchId);
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId);
       if (filters.category) q = q.eq('category', filters.category);
+
       return q;
     },
     columns: [
@@ -725,9 +765,9 @@ export const reportTypes = {
     chartConfig: { type: 'bar', dataKey: 'amount', labelKey: 'category' },
   },
 
-  // ─────────────────────────────────────────
-  // 17. PROFIT & LOSS (summary)
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 17. PROFIT & LOSS (summary)
+   * ============================================================= */
   profit_loss_summary: {
     id: 'profit_loss_summary',
     title: 'Profit & Loss Summary',
@@ -738,19 +778,29 @@ export const reportTypes = {
       start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
       end_date: new Date().toISOString().slice(0, 10),
     }),
-    queryBuilder: (filters) =>
+    queryBuilder: (filters, branchId, financialYearId) =>
       Promise.all([
         supabase
           .from('income')
           .select('amount')
           .gte('income_date', filters.start_date)
           .lte('income_date', filters.end_date)
+          .then(({ data }) => {
+            let q = supabase.from('income').select('amount');
+            if (branchId) q = q.eq('branch_id', branchId);
+            if (financialYearId) q = q.eq('financial_year_id', financialYearId);
+            return q.gte('income_date', filters.start_date).lte('income_date', filters.end_date);
+          })
           .then(({ data }) => data.reduce((s, r) => s + parseFloat(r.amount), 0)),
         supabase
           .from('expenses')
           .select('amount')
-          .gte('expense_date', filters.start_date)
-          .lte('expense_date', filters.end_date)
+          .then(({ data }) => {
+            let q = supabase.from('expenses').select('amount');
+            if (branchId) q = q.eq('branch_id', branchId);
+            if (financialYearId) q = q.eq('financial_year_id', financialYearId);
+            return q.gte('expense_date', filters.start_date).lte('expense_date', filters.end_date);
+          })
           .then(({ data }) => data.reduce((s, r) => s + parseFloat(r.amount), 0)),
       ]).then(([income, expense]) => ({
         income,
@@ -765,9 +815,9 @@ export const reportTypes = {
     ],
   },
 
-  // ─────────────────────────────────────────
-  // 18. TAX COLLECTED REPORT
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 18. TAX COLLECTED REPORT
+   * ============================================================= */
   tax_collected: {
     id: 'tax_collected',
     title: 'Tax Collected Report',
@@ -778,27 +828,31 @@ export const reportTypes = {
       start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
       end_date: new Date().toISOString().slice(0, 10),
     }),
-    queryBuilder: (filters) => {
-      return supabase
+    queryBuilder: (filters, branchId, financialYearId) => {
+      let q = supabase
         .from('tax_collections')
         .select('amount, category')
         .gte('collection_date', filters.start_date)
-        .lte('collection_date', filters.end_date)
-        .then(({ data, error }) => {
-          if (error) throw error;
-          const feeTax = (data || [])
-            .filter(r => r.category === 'fee_payment')
-            .reduce((s, r) => s + Number(r.amount), 0);
-          const otherTax = (data || [])
-            .filter(r => r.category === 'income')
-            .reduce((s, r) => s + Number(r.amount), 0);
-          return {
-            fee_tax: feeTax,
-            other_tax: otherTax,
-            total_tax: feeTax + otherTax,
-            period: `${filters.start_date} to ${filters.end_date}`,
-          };
-        });
+        .lte('collection_date', filters.end_date);
+
+      if (branchId) q = q.eq('branch_id', branchId);
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId);
+
+      return q.then(({ data, error }) => {
+        if (error) throw error;
+        const feeTax = (data || [])
+          .filter(r => r.category === 'fee_payment')
+          .reduce((s, r) => s + Number(r.amount), 0);
+        const otherTax = (data || [])
+          .filter(r => r.category === 'income')
+          .reduce((s, r) => s + Number(r.amount), 0);
+        return {
+          fee_tax: feeTax,
+          other_tax: otherTax,
+          total_tax: feeTax + otherTax,
+          period: `${filters.start_date} to ${filters.end_date}`,
+        };
+      });
     },
     transform: (data) => [data],
     columns: [
@@ -809,9 +863,9 @@ export const reportTypes = {
     ],
   },
 
-  // ─────────────────────────────────────────
-  // 19. RECEIPTS JOURNAL
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 19. RECEIPTS JOURNAL
+   * ============================================================= */
   receipts_journal: {
     id: 'receipts_journal',
     title: 'Receipts Journal',
@@ -822,7 +876,7 @@ export const reportTypes = {
       start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
       end_date: new Date().toISOString().slice(0, 10),
     }),
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('receipts')
         .select(`
@@ -833,17 +887,19 @@ export const reportTypes = {
         .lte('receipt_date', filters.end_date)
         .order('receipt_date');
 
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
       if (filters.student_id) q = q.eq('student_id', filters.student_id);
+
       return q;
     },
-    transform: (data) =>
-      data.map(r => ({
-        receipt_no: r.receipt_no,
-        date: r.receipt_date,
-        admission_no: r.students.admission_no,
-        student: `${r.students.first_name} ${r.students.last_name}`,
-        amount: r.amount,
-      })),
+    transform: (data) => data.map(r => ({
+      receipt_no: r.receipt_no,
+      date: r.receipt_date,
+      admission_no: r.students.admission_no,
+      student: `${r.students.first_name} ${r.students.last_name}`,
+      amount: r.amount,
+    })),
     columns: [
       { header: 'Receipt No', accessor: 'receipt_no' },
       { header: 'Date', accessor: 'date' },
@@ -854,16 +910,16 @@ export const reportTypes = {
     aggregateRow: true,
   },
 
-  // ─────────────────────────────────────────
-  // 20. FEE INSTALMENT TRACKING
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 20. FEE INSTALMENT TRACKING
+   * ============================================================= */
   fee_instalments: {
     id: 'fee_instalments',
     title: 'Fee Instalment Tracking',
     description: 'Status of all fee instalments with due dates',
     useLetterhead: true,
     fields: ['status', 'due_date_from', 'due_date_to'],
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('fee_installments')
         .select(`
@@ -875,21 +931,23 @@ export const reportTypes = {
         `)
         .order('due_date');
 
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
       if (filters.status) q = q.eq('status', filters.status);
       if (filters.due_date_from) q = q.gte('due_date', filters.due_date_from);
       if (filters.due_date_to) q = q.lte('due_date', filters.due_date_to);
+
       return q;
     },
-    transform: (data) =>
-      data.map(r => ({
-        student: `${r.student_fees.students.first_name} ${r.student_fees.students.last_name}`,
-        admission_no: r.student_fees.students.admission_no,
-        total_fee: r.student_fees.final_fee,
-        inst_no: r.installment_number,
-        inst_amount: r.amount,
-        due_date: r.due_date,
-        status: r.status,
-      })),
+    transform: (data) => data.map(r => ({
+      student: `${r.student_fees.students.first_name} ${r.student_fees.students.last_name}`,
+      admission_no: r.student_fees.students.admission_no,
+      total_fee: r.student_fees.final_fee,
+      inst_no: r.installment_number,
+      inst_amount: r.amount,
+      due_date: r.due_date,
+      status: r.status,
+    })),
     columns: [
       { header: 'Admission No', accessor: 'admission_no' },
       { header: 'Student', accessor: 'student' },
@@ -901,9 +959,9 @@ export const reportTypes = {
     ],
   },
 
-  // ─────────────────────────────────────────
-  // 21. TEACHER SALARY REPORT
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 21. TEACHER SALARY REPORT
+   * ============================================================= */
   teacher_salary: {
     id: 'teacher_salary',
     title: 'Teacher Salary Report',
@@ -914,7 +972,7 @@ export const reportTypes = {
       start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
       end_date: new Date().toISOString().slice(0, 10),
     }),
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('salary_payments')
         .select(`
@@ -925,18 +983,20 @@ export const reportTypes = {
         .lte('payment_date', filters.end_date)
         .order('payment_date');
 
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
       if (filters.teacher_id) q = q.eq('teacher_id', filters.teacher_id);
+
       return q;
     },
-    transform: (data) =>
-      data.map(r => ({
-        date: r.payment_date,
-        employee_code: r.teachers.employee_code,
-        teacher: `${r.teachers.first_name} ${r.teachers.last_name}`,
-        amount: r.amount,
-        mode: r.payment_mode,
-        remarks: r.remarks,
-      })),
+    transform: (data) => data.map(r => ({
+      date: r.payment_date,
+      employee_code: r.teachers.employee_code,
+      teacher: `${r.teachers.first_name} ${r.teachers.last_name}`,
+      amount: r.amount,
+      mode: r.payment_mode,
+      remarks: r.remarks,
+    })),
     columns: [
       { header: 'Date', accessor: 'date' },
       { header: 'Emp Code', accessor: 'employee_code' },
@@ -949,32 +1009,37 @@ export const reportTypes = {
     chartConfig: { type: 'bar', dataKey: 'amount', labelKey: 'teacher' },
   },
 
-  // ─────────────────────────────────────────
-  // 22. TEACHER WORKLOAD REPORT
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 22. TEACHER WORKLOAD REPORT
+   * ============================================================= */
   teacher_workload: {
     id: 'teacher_workload',
     title: 'Teacher Workload Report',
     description: 'How many batches, courses, levels, and subjects each teacher handles',
     useLetterhead: true,
     fields: [],
-    queryBuilder: () =>
-      supabase.from('teachers').select(`
+    queryBuilder: (filters, branchId, financialYearId) => {
+      let q = supabase.from('teachers').select(`
         employee_code, first_name, last_name,
         teacher_batches ( batch_id ),
         teacher_courses ( course_id ),
         teacher_course_levels ( course_level_id ),
         teacher_subjects ( subject_id )
-      `),
-    transform: (data) =>
-      data.map(t => ({
-        name: `${t.first_name} ${t.last_name}`,
-        emp_code: t.employee_code,
-        batches: t.teacher_batches.length,
-        courses: t.teacher_courses.length,
-        levels: t.teacher_course_levels.length,
-        subjects: t.teacher_subjects.length,
-      })),
+      `);
+
+      if (branchId) q = q.eq('branch_id', branchId);
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId);
+
+      return q;
+    },
+    transform: (data) => data.map(t => ({
+      name: `${t.first_name} ${t.last_name}`,
+      emp_code: t.employee_code,
+      batches: t.teacher_batches.length,
+      courses: t.teacher_courses.length,
+      levels: t.teacher_course_levels.length,
+      subjects: t.teacher_subjects.length,
+    })),
     columns: [
       { header: 'Employee Code', accessor: 'emp_code' },
       { header: 'Teacher', accessor: 'name' },
@@ -985,9 +1050,9 @@ export const reportTypes = {
     ],
   },
 
-  // ─────────────────────────────────────────
-  // 23. CERTIFICATE ISSUED REPORT
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 23. CERTIFICATE ISSUED REPORT
+   * ============================================================= */
   certificates_issued: {
     id: 'certificates_issued',
     title: 'Certificate Issued Report',
@@ -998,7 +1063,7 @@ export const reportTypes = {
       start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
       end_date: new Date().toISOString().slice(0, 10),
     }),
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('certificates')
         .select(`
@@ -1011,19 +1076,21 @@ export const reportTypes = {
         .lte('issue_date', filters.end_date)
         .order('issue_date');
 
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
       if (filters.course_id) q = q.eq('course_id', filters.course_id);
+
       return q;
     },
-    transform: (data) =>
-      data.map(r => ({
-        cert_no: r.certificate_no,
-        date: r.issue_date,
-        admission_no: r.students.admission_no,
-        student: `${r.students.first_name} ${r.students.last_name}`,
-        course: r.courses.course_name,
-        level: r.course_levels?.level_name,
-        url: r.certificate_url,
-      })),
+    transform: (data) => data.map(r => ({
+      cert_no: r.certificate_no,
+      date: r.issue_date,
+      admission_no: r.students.admission_no,
+      student: `${r.students.first_name} ${r.students.last_name}`,
+      course: r.courses.course_name,
+      level: r.course_levels?.level_name,
+      url: r.certificate_url,
+    })),
     columns: [
       { header: 'Certificate No', accessor: 'cert_no' },
       { header: 'Issue Date', accessor: 'date' },
@@ -1035,16 +1102,16 @@ export const reportTypes = {
     ],
   },
 
-  // ─────────────────────────────────────────
-  // 24. STUDENT LEVEL COMPLETION REPORT
-  // ─────────────────────────────────────────
+  /* =============================================================
+   * 24. STUDENT LEVEL COMPLETION REPORT
+   * ============================================================= */
   student_level_completion: {
     id: 'student_level_completion',
     title: 'Student Level Completion',
     description: 'Progress through course levels with grades',
     useLetterhead: true,
     fields: ['course_id', 'level_id'],
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('student_level_progress')
         .select(`
@@ -1055,22 +1122,24 @@ export const reportTypes = {
         `)
         .order('completion_date', { ascending: false });
 
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
       if (filters.course_id) q = q.eq('course_id', filters.course_id);
       if (filters.level_id) q = q.eq('level_id', filters.level_id);
+
       return q;
     },
-    transform: (data) =>
-      data.map(r => ({
-        admission_no: r.students.admission_no,
-        student: `${r.students.first_name} ${r.students.last_name}`,
-        course: r.courses.course_name,
-        level: r.course_levels.level_name,
-        start: r.start_date,
-        completed: r.completion_date,
-        marks: r.marks,
-        grade: r.grade,
-        result: r.result,
-      })),
+    transform: (data) => data.map(r => ({
+      admission_no: r.students.admission_no,
+      student: `${r.students.first_name} ${r.students.last_name}`,
+      course: r.courses.course_name,
+      level: r.course_levels.level_name,
+      start: r.start_date,
+      completed: r.completion_date,
+      marks: r.marks,
+      grade: r.grade,
+      result: r.result,
+    })),
     columns: [
       { header: 'Admission No', accessor: 'admission_no' },
       { header: 'Student', accessor: 'student' },
@@ -1084,14 +1153,16 @@ export const reportTypes = {
     ],
   },
 
-  // 25. STUDENT CONTACT DIRECTORY
+  /* =============================================================
+   * 25. STUDENT CONTACT DIRECTORY
+   * ============================================================= */
   student_contact_directory: {
     id: 'student_contact_directory',
     title: 'Student Contact Directory',
     description: 'Professional contact list with admission, guardian, medium and status details',
     useLetterhead: true,
     fields: ['status', 'medium_id'],
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('students')
         .select(`
@@ -1101,25 +1172,27 @@ export const reportTypes = {
         `)
         .order('first_name');
 
+      if (branchId) q = q.eq('branch_id', branchId);
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId);
       if (filters.status) q = q.eq('status', filters.status);
       if (filters.medium_id) q = q.eq('medium_id', filters.medium_id);
+
       return q;
     },
-    transform: (data) =>
-      data.map((s) => {
-        const parent = s.student_parents?.[0]?.parents || {};
-        return {
-          admission_no: s.admission_no,
-          student: `${s.first_name || ''} ${s.last_name || ''}`.trim(),
-          gender: s.gender || '',
-          mobile: s.mobile || '',
-          email: s.email || '',
-          guardian: parent.father_name || parent.mother_name || '',
-          guardian_mobile: parent.mobile || '',
-          medium: s.mediums?.name || '',
-          status: s.status || '',
-        };
-      }),
+    transform: (data) => data.map((s) => {
+      const parent = s.student_parents?.[0]?.parents || {};
+      return {
+        admission_no: s.admission_no,
+        student: `${s.first_name || ''} ${s.last_name || ''}`.trim(),
+        gender: s.gender || '',
+        mobile: s.mobile || '',
+        email: s.email || '',
+        guardian: parent.father_name || parent.mother_name || '',
+        guardian_mobile: parent.mobile || '',
+        medium: s.mediums?.name || '',
+        status: s.status || '',
+      };
+    }),
     columns: [
       { header: 'Admission No', accessor: 'admission_no' },
       { header: 'Student', accessor: 'student' },
@@ -1133,7 +1206,9 @@ export const reportTypes = {
     ],
   },
 
-  // 26. ADMISSION PIPELINE
+  /* =============================================================
+   * 26. ADMISSION PIPELINE
+   * ============================================================= */
   admission_pipeline: {
     id: 'admission_pipeline',
     title: 'Admission Pipeline',
@@ -1144,7 +1219,7 @@ export const reportTypes = {
       start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
       end_date: new Date().toISOString().slice(0, 10),
     }),
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('inquiries')
         .select(`
@@ -1156,22 +1231,24 @@ export const reportTypes = {
         .lte('created_at', filters.end_date)
         .order('followup_date', { ascending: true });
 
+      if (branchId) q = q.eq('branch_id', branchId);
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId);
       if (filters.status) q = q.eq('status', filters.status);
       if (filters.source) q = q.eq('source', filters.source);
+
       return q;
     },
-    transform: (data) =>
-      data.map((r) => ({
-        inquiry_no: r.inquiry_no,
-        created: r.created_at?.slice(0, 10) || '',
-        student: r.student_name,
-        parent: r.parent_name,
-        mobile: r.mobile,
-        course: r.courses?.course_name || '',
-        source: r.source,
-        status: r.status,
-        followup: r.followup_date,
-      })),
+    transform: (data) => data.map((r) => ({
+      inquiry_no: r.inquiry_no,
+      created: r.created_at?.slice(0, 10) || '',
+      student: r.student_name,
+      parent: r.parent_name,
+      mobile: r.mobile,
+      course: r.courses?.course_name || '',
+      source: r.source,
+      status: r.status,
+      followup: r.followup_date,
+    })),
     columns: [
       { header: 'Inquiry No', accessor: 'inquiry_no' },
       { header: 'Created', accessor: 'created' },
@@ -1185,14 +1262,16 @@ export const reportTypes = {
     ],
   },
 
-  // 27. FEE AGING ANALYSIS
+  /* =============================================================
+   * 27. FEE AGING ANALYSIS
+   * ============================================================= */
   fee_aging_analysis: {
     id: 'fee_aging_analysis',
     title: 'Fee Aging Analysis',
     description: 'Outstanding student balances grouped by age since fee creation',
     useLetterhead: true,
     fields: ['status', 'course_id', 'medium_id'],
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('student_fees')
         .select(`
@@ -1204,9 +1283,12 @@ export const reportTypes = {
         .is('deleted_at', null)
         .order('created_at', { ascending: true });
 
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
       if (filters.status) q = q.eq('status', filters.status);
       if (filters.course_id) q = q.eq('fee_structures.courses.id', filters.course_id);
       if (filters.medium_id) q = q.eq('fee_structures.courses.medium_id', filters.medium_id);
+
       return q;
     },
     transform: (data) => {
@@ -1251,7 +1333,9 @@ export const reportTypes = {
     chartConfig: { type: 'bar', dataKey: 'balance', labelKey: 'student' },
   },
 
-  // 28. PAYMENT MODE SUMMARY
+  /* =============================================================
+   * 28. PAYMENT MODE SUMMARY
+   * ============================================================= */
   payment_mode_summary: {
     id: 'payment_mode_summary',
     title: 'Payment Mode Summary',
@@ -1262,12 +1346,18 @@ export const reportTypes = {
       start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
       end_date: new Date().toISOString().slice(0, 10),
     }),
-    queryBuilder: (filters) =>
-      supabase
+    queryBuilder: (filters, branchId, financialYearId) => {
+      let q = supabase
         .from('fee_payments')
         .select('payment_date, payment_mode, amount, status')
         .gte('payment_date', filters.start_date)
-        .lte('payment_date', filters.end_date),
+        .lte('payment_date', filters.end_date);
+
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
+
+      return q;
+    },
     transform: (data) => {
       const map = {};
       data.forEach((p) => {
@@ -1289,7 +1379,9 @@ export const reportTypes = {
     chartConfig: { type: 'bar', dataKey: 'amount', labelKey: 'mode' },
   },
 
-  // 29. DAILY CASHBOOK
+  /* =============================================================
+   * 29. DAILY CASHBOOK
+   * ============================================================= */
   daily_cashbook: {
     id: 'daily_cashbook',
     title: 'Daily Cashbook',
@@ -1300,36 +1392,24 @@ export const reportTypes = {
       start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
       end_date: new Date().toISOString().slice(0, 10),
     }),
-    queryBuilder: (filters) => {
-      const incomes = supabase
-        .from('income')
-        .select('income_date, amount')
-        .gte('income_date', filters.start_date)
-        .lte('income_date', filters.end_date)
-        .then(({ data, error }) => {
-          if (error) throw error;
-          return (data || []).map((r) => ({ date: r.income_date, inflow: Number(r.amount || 0), outflow: 0 }));
-        });
+    queryBuilder: (filters, branchId, financialYearId) => {
+      const buildQuery = (table, dateCol, amountCol) => {
+        let q = supabase.from(table).select(`${dateCol}, ${amountCol}`)
+          .gte(dateCol, filters.start_date)
+          .lte(dateCol, filters.end_date);
+        if (branchId) q = q.eq('branch_id', branchId);
+        if (financialYearId) q = q.eq('financial_year_id', financialYearId);
+        return q;
+      };
 
-      const fees = supabase
-        .from('fee_payments')
-        .select('payment_date, amount')
-        .gte('payment_date', filters.start_date)
-        .lte('payment_date', filters.end_date)
-        .then(({ data, error }) => {
-          if (error) throw error;
-          return (data || []).map((r) => ({ date: r.payment_date, inflow: Number(r.amount || 0), outflow: 0 }));
-        });
+      const incomes = buildQuery('income', 'income_date', 'amount')
+        .then(({ data }) => (data || []).map(r => ({ date: r.income_date, inflow: Number(r.amount || 0), outflow: 0 })));
 
-      const expenses = supabase
-        .from('expenses')
-        .select('expense_date, amount')
-        .gte('expense_date', filters.start_date)
-        .lte('expense_date', filters.end_date)
-        .then(({ data, error }) => {
-          if (error) throw error;
-          return (data || []).map((r) => ({ date: r.expense_date, inflow: 0, outflow: Number(r.amount || 0) }));
-        });
+      const fees = buildQuery('fee_payments', 'payment_date', 'amount')
+        .then(({ data }) => (data || []).map(r => ({ date: r.payment_date, inflow: Number(r.amount || 0), outflow: 0 })));
+
+      const expenses = buildQuery('expenses', 'expense_date', 'amount')
+        .then(({ data }) => (data || []).map(r => ({ date: r.expense_date, inflow: 0, outflow: Number(r.amount || 0) })));
 
       return Promise.all([incomes, fees, expenses]).then((parts) => parts.flat());
     },
@@ -1354,7 +1434,9 @@ export const reportTypes = {
     chartConfig: { type: 'bar', dataKey: 'net', labelKey: 'date' },
   },
 
-  // 30. EXPENSE CATEGORY SUMMARY
+  /* =============================================================
+   * 30. EXPENSE CATEGORY SUMMARY
+   * ============================================================= */
   expense_category_summary: {
     id: 'expense_category_summary',
     title: 'Expense Category Summary',
@@ -1365,13 +1447,17 @@ export const reportTypes = {
       start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
       end_date: new Date().toISOString().slice(0, 10),
     }),
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('expenses')
         .select('expense_date, category, amount')
         .gte('expense_date', filters.start_date)
         .lte('expense_date', filters.end_date);
+
+      if (branchId) q = q.eq('branch_id', branchId);
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId);
       if (filters.category) q = q.eq('category', filters.category);
+
       return q;
     },
     transform: (data) => {
@@ -1393,7 +1479,9 @@ export const reportTypes = {
     chartConfig: { type: 'bar', dataKey: 'amount', labelKey: 'category' },
   },
 
-  // 31. TEACHER LEAVE SUMMARY
+  /* =============================================================
+   * 31. TEACHER LEAVE SUMMARY
+   * ============================================================= */
   teacher_leave_summary: {
     id: 'teacher_leave_summary',
     title: 'Teacher Leave Summary',
@@ -1404,7 +1492,7 @@ export const reportTypes = {
       start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
       end_date: new Date().toISOString().slice(0, 10),
     }),
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('leaves')
         .select(`
@@ -1415,25 +1503,27 @@ export const reportTypes = {
         .lte('start_date', filters.end_date)
         .order('start_date', { ascending: false });
 
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
       if (filters.teacher_id) q = q.eq('teacher_id', filters.teacher_id);
       if (filters.status) q = q.eq('status', filters.status);
+
       return q;
     },
-    transform: (data) =>
-      data.map((l) => {
-        const start = l.start_date ? new Date(l.start_date) : null;
-        const end = l.end_date ? new Date(l.end_date) : start;
-        const days = start && end ? Math.max(1, Math.floor((end - start) / 86400000) + 1) : 0;
-        return {
-          employee_code: l.teachers?.employee_code || '',
-          teacher: `${l.teachers?.first_name || ''} ${l.teachers?.last_name || ''}`.trim(),
-          start_date: l.start_date,
-          end_date: l.end_date,
-          days,
-          status: l.status,
-          reason: l.reason,
-        };
-      }),
+    transform: (data) => data.map((l) => {
+      const start = l.start_date ? new Date(l.start_date) : null;
+      const end = l.end_date ? new Date(l.end_date) : start;
+      const days = start && end ? Math.max(1, Math.floor((end - start) / 86400000) + 1) : 0;
+      return {
+        employee_code: l.teachers?.employee_code || '',
+        teacher: `${l.teachers?.first_name || ''} ${l.teachers?.last_name || ''}`.trim(),
+        start_date: l.start_date,
+        end_date: l.end_date,
+        days,
+        status: l.status,
+        reason: l.reason,
+      };
+    }),
     columns: [
       { header: 'Emp Code', accessor: 'employee_code' },
       { header: 'Teacher', accessor: 'teacher' },
@@ -1446,14 +1536,16 @@ export const reportTypes = {
     aggregateRow: true,
   },
 
-  // 32. BATCH SCHEDULE REPORT
+  /* =============================================================
+   * 32. BATCH SCHEDULE REPORT
+   * ============================================================= */
   batch_schedule_report: {
     id: 'batch_schedule_report',
     title: 'Batch Schedule Report',
     description: 'Batch timings, course, medium and assigned teachers',
     useLetterhead: true,
     fields: ['course_id', 'medium_id', 'batch_id'],
-    queryBuilder: (filters) => {
+    queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('batches')
         .select(`
@@ -1464,25 +1556,27 @@ export const reportTypes = {
         `)
         .order('batch_name');
 
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
       if (filters.batch_id) q = q.eq('id', filters.batch_id);
       if (filters.course_id) q = q.eq('course_id', filters.course_id);
       if (filters.medium_id) q = q.eq('medium_id', filters.medium_id);
+
       return q;
     },
-    transform: (data) =>
-      data.map((b) => ({
-        batch: b.batch_name,
-        course: b.courses?.course_name || '',
-        medium: b.mediums?.name || '',
-        days: b.days || '',
-        time: `${b.start_time || ''} - ${b.end_time || ''}`,
-        capacity: b.capacity || '',
-        teachers: (b.batch_teachers || [])
-          .map((bt) => `${bt.teachers?.first_name || ''} ${bt.teachers?.last_name || ''}`.trim())
-          .filter(Boolean)
-          .join(', '),
-        status: b.status || '',
-      })),
+    transform: (data) => data.map((b) => ({
+      batch: b.batch_name,
+      course: b.courses?.course_name || '',
+      medium: b.mediums?.name || '',
+      days: b.days || '',
+      time: `${b.start_time || ''} - ${b.end_time || ''}`,
+      capacity: b.capacity || '',
+      teachers: (b.batch_teachers || [])
+        .map((bt) => `${bt.teachers?.first_name || ''} ${bt.teachers?.last_name || ''}`.trim())
+        .filter(Boolean)
+        .join(', '),
+      status: b.status || '',
+    })),
     columns: [
       { header: 'Batch', accessor: 'batch' },
       { header: 'Course', accessor: 'course' },
@@ -1495,6 +1589,57 @@ export const reportTypes = {
     ],
   },
 
+  // ─────────────────────────────────────────
+  // STUDENT‑WISE ATTENDANCE REPORT
+  // ─────────────────────────────────────────
+  student_attendance_detail: {
+    id: 'student_attendance_detail',
+    title: 'Student‑wise Attendance Report',
+    description: 'Detailed attendance records per student over a chosen period',
+    useLetterhead: true,
+    fields: ['student_id', 'batch_id', 'start_date', 'end_date'],
+    defaultFilters: () => ({
+      start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
+      end_date: new Date().toISOString().slice(0, 10),
+    }),
+    queryBuilder: (filters, branchId, financialYearId) => {
+      let q = supabase
+        .from('student_attendance')
+        .select(`
+          status,
+          remarks,
+          attendance_sessions!inner( attendance_date, batch_id ),
+          students!inner( admission_no, first_name, last_name )
+        `)
+        .gte('attendance_sessions.attendance_date', filters.start_date)
+        .lte('attendance_sessions.attendance_date', filters.end_date);
+
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
+      if (filters.student_id) q = q.eq('student_id', filters.student_id);
+      if (filters.batch_id) q = q.eq('attendance_sessions.batch_id', filters.batch_id);
+
+      return q;
+    },
+    transform: (data) =>
+      data
+        .map(r => ({
+          date: r.attendance_sessions.attendance_date,
+          student: `${r.students.first_name} ${r.students.last_name}`,
+          admission_no: r.students.admission_no,
+          status: r.status,
+          remarks: r.remarks || '—',
+        }))
+        .sort((a, b) => b.date.localeCompare(a.date)),
+    columns: [
+      { header: 'Date', accessor: 'date' },
+      { header: 'Student', accessor: 'student' },
+      { header: 'Admission No', accessor: 'admission_no' },
+      { header: 'Status', accessor: 'status' },
+      { header: 'Remarks', accessor: 'remarks' },
+    ],
+  },
+
   // ========== DOCUMENT REPORTS ==========
   admission_form: {
     id: 'admission_form',
@@ -1503,7 +1648,7 @@ export const reportTypes = {
     reportType: 'document',
     documentComponent: AdmissionFormDocument,
     fields: ['course_id', 'batch_id', 'medium_id', 'student_id'],
-    recordQuery: async (filters) => {
+    recordQuery: async (filters, branchId, financialYearId) => {
       let q = supabase
         .from('students')
         .select(`
@@ -1515,6 +1660,8 @@ export const reportTypes = {
         `);
 
       if (filters.student_id) q = q.eq('id', filters.student_id);
+      if (branchId) q = q.eq('branch_id', branchId);
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId);
 
       if (filters.batch_id || filters.course_id || filters.medium_id) {
         let studentIds = null;
@@ -1600,7 +1747,7 @@ export const reportTypes = {
     reportType: 'document',
     documentComponent: FeeReceiptDocument,
     fields: ['student_id', 'start_date', 'end_date'],
-    recordQuery: (filters) => {
+    recordQuery: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('fee_payments')
         .select(`
@@ -1617,9 +1764,13 @@ export const reportTypes = {
             students( admission_no, first_name, last_name )
           )
         `);
+
       if (filters.student_id) q = q.eq('student_fees.student_id', filters.student_id);
       if (filters.start_date) q = q.gte('payment_date', filters.start_date);
       if (filters.end_date) q = q.lte('payment_date', filters.end_date);
+      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
+
       return q.order('payment_date');
     },
     recordTransform: (row) => ({
@@ -1642,11 +1793,13 @@ export const reportTypes = {
     reportType: 'document',
     documentComponent: ExpenseReceiptDocument,
     fields: ['category', 'start_date', 'end_date'],
-    recordQuery: (filters) => {
+    recordQuery: (filters, branchId, financialYearId) => {
       let q = supabase.from('expenses').select('*');
       if (filters.category) q = q.eq('category', filters.category);
       if (filters.start_date) q = q.gte('expense_date', filters.start_date);
       if (filters.end_date) q = q.lte('expense_date', filters.end_date);
+      if (branchId) q = q.eq('branch_id', branchId);
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId);
       return q.order('expense_date');
     },
     recordTransform: (row) => row,
@@ -1659,11 +1812,13 @@ export const reportTypes = {
     reportType: 'document',
     documentComponent: IncomeReceiptDocument,
     fields: ['category', 'start_date', 'end_date'],
-    recordQuery: (filters) => {
+    recordQuery: (filters, branchId, financialYearId) => {
       let q = supabase.from('income').select('*');
       if (filters.category) q = q.eq('category', filters.category);
       if (filters.start_date) q = q.gte('income_date', filters.start_date);
       if (filters.end_date) q = q.lte('income_date', filters.end_date);
+      if (branchId) q = q.eq('branch_id', branchId);
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId);
       return q.order('income_date');
     },
     recordTransform: (row) => row,
@@ -1676,7 +1831,7 @@ export const reportTypes = {
     reportType: 'document',
     documentComponent: SalarySlipDocument,
     fields: ['teacher_id', 'start_date', 'end_date'],
-    recordQuery: (filters) => {
+    recordQuery: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('salary_payments')
         .select(`
@@ -1686,6 +1841,8 @@ export const reportTypes = {
       if (filters.teacher_id) q = q.eq('teacher_id', filters.teacher_id);
       if (filters.start_date) q = q.gte('payment_date', filters.start_date);
       if (filters.end_date) q = q.lte('payment_date', filters.end_date);
+      if (branchId) q = q.eq('branch_id', branchId);
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId);
       return q.order('payment_date');
     },
     recordTransform: (row) => ({
@@ -1702,7 +1859,7 @@ export const reportTypes = {
     reportType: 'document',
     documentComponent: CertificateDocument,
     fields: ['student_id', 'start_date', 'end_date'],
-    recordQuery: (filters) => {
+    recordQuery: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('certificates')
         .select(`
@@ -1713,6 +1870,8 @@ export const reportTypes = {
       if (filters.student_id) q = q.eq('student_id', filters.student_id);
       if (filters.start_date) q = q.gte('issue_date', filters.start_date);
       if (filters.end_date) q = q.lte('issue_date', filters.end_date);
+      if (branchId) q = q.eq('branch_id', branchId);
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId);
       return q.order('issue_date');
     },
     recordTransform: (row) => ({
@@ -1721,55 +1880,6 @@ export const reportTypes = {
       admission_no: row.students.admission_no,
       course_name: row.courses.course_name,
     }),
-  },
-
-  // ─────────────────────────────────────────
-  // STUDENT‑WISE ATTENDANCE REPORT
-  // ─────────────────────────────────────────
-  student_attendance_detail: {
-    id: 'student_attendance_detail',
-    title: 'Student‑wise Attendance Report',
-    description: 'Detailed attendance records per student over a chosen period',
-    useLetterhead: true,
-    fields: ['student_id', 'batch_id', 'start_date', 'end_date'],
-    defaultFilters: () => ({
-      start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
-      end_date: new Date().toISOString().slice(0, 10),
-    }),
-    queryBuilder: (filters) => {
-      let q = supabase
-        .from('student_attendance')
-        .select(`
-          status,
-          remarks,
-          attendance_sessions!inner( attendance_date, batch_id ),
-          students!inner( admission_no, first_name, last_name )
-        `)
-        .gte('attendance_sessions.attendance_date', filters.start_date)
-        .lte('attendance_sessions.attendance_date', filters.end_date);
-
-      if (filters.student_id) q = q.eq('student_id', filters.student_id);
-      if (filters.batch_id) q = q.eq('attendance_sessions.batch_id', filters.batch_id);
-
-      return q;
-    },
-    transform: (data) =>
-      data
-        .map(r => ({
-          date: r.attendance_sessions.attendance_date,
-          student: `${r.students.first_name} ${r.students.last_name}`,
-          admission_no: r.students.admission_no,
-          status: r.status,
-          remarks: r.remarks || '—',
-        }))
-        .sort((a, b) => b.date.localeCompare(a.date)),
-    columns: [
-      { header: 'Date', accessor: 'date' },
-      { header: 'Student', accessor: 'student' },
-      { header: 'Admission No', accessor: 'admission_no' },
-      { header: 'Status', accessor: 'status' },
-      { header: 'Remarks', accessor: 'remarks' },
-    ],
   },
 };
 

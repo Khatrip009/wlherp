@@ -5,37 +5,59 @@ import BackButton from "../components/BackButton";
 
 import { useStudentId } from "../hooks/useStudentId";
 import { supabase } from "../api/supabase";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 
 export default function StudentAttendancePage() {
   const { studentId, isLoading: idLoading } = useStudentId();
 
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
   const { data: sessions = [], isLoading } = useQuery({
-    queryKey: ["student-attendance-detail", studentId],
+    queryKey: ["student-attendance-detail", studentId, branchId, financialYearId],
     queryFn: async () => {
       if (!studentId) return [];
-      // Get all attendance sessions for batches this student is active in
-      const { data: batchRows } = await supabase
+
+      // Get active batch IDs for this student – scoped to branch & FY
+      let batchQuery = supabase
         .from("student_batches")
         .select("batch_id")
         .eq("student_id", studentId)
         .eq("status", "active");
+
+      if (branchId) batchQuery = batchQuery.eq("branch_id", branchId);
+      if (financialYearId) batchQuery = batchQuery.eq("financial_year_id", financialYearId);
+
+      const { data: batchRows } = await batchQuery;
       const batchIds = batchRows?.map((b) => b.batch_id) || [];
       if (!batchIds.length) return [];
 
-      // Fetch sessions including batch and its medium
-      const { data: attendanceSessions } = await supabase
+      // Fetch sessions for those batches – also scoped
+      let sessionQuery = supabase
         .from("attendance_sessions")
         .select(`id, attendance_date, topic_covered, batches(batch_name, medium_id, mediums(name))`)
         .in("batch_id", batchIds)
         .order("attendance_date", { ascending: false });
 
-      // Get the student's attendance status for each session
+      if (branchId) sessionQuery = sessionQuery.eq("branch_id", branchId);
+      if (financialYearId) sessionQuery = sessionQuery.eq("financial_year_id", financialYearId);
+
+      const { data: attendanceSessions } = await sessionQuery;
+
+      // Get attendance marks – scoped
       const sessionIds = attendanceSessions?.map((s) => s.id) || [];
-      const { data: marks } = await supabase
+      let marksQuery = supabase
         .from("student_attendance")
         .select("session_id, status")
         .eq("student_id", studentId)
         .in("session_id", sessionIds);
+
+      if (branchId) marksQuery = marksQuery.eq("branch_id", branchId);
+      if (financialYearId) marksQuery = marksQuery.eq("financial_year_id", financialYearId);
+
+      const { data: marks } = await marksQuery;
 
       const markMap = {};
       marks?.forEach((m) => {
@@ -46,12 +68,13 @@ export default function StudentAttendancePage() {
         attendanceSessions?.map((s) => ({
           ...s,
           batch_name: s.batches?.batch_name,
-          medium_name: s.batches?.mediums?.name || "", // flattened medium name
+          medium_name: s.batches?.mediums?.name || "",
           status: markMap[s.id] || "Absent",
         })) || []
       );
     },
-    enabled: !!studentId,
+    enabled: !!studentId && !!branchId && !!financialYearId,
+    staleTime: 2 * 60 * 1000,
   });
 
   // Overall percentage
@@ -101,7 +124,7 @@ export default function StudentAttendancePage() {
               <tr>
                 <th className="p-3 text-left">Date</th>
                 <th className="text-left">Batch</th>
-                <th className="text-left">Medium</th> {/* NEW */}
+                <th className="text-left">Medium</th>
                 <th className="text-left">Topic</th>
                 <th className="text-left">Status</th>
               </tr>
@@ -118,7 +141,7 @@ export default function StudentAttendancePage() {
                   <tr key={s.id} className="border-t">
                     <td className="p-3">{s.attendance_date}</td>
                     <td>{s.batch_name || "—"}</td>
-                    <td>{s.medium_name || "—"}</td> {/* NEW */}
+                    <td>{s.medium_name || "—"}</td>
                     <td>{s.topic_covered || "—"}</td>
                     <td>
                       {s.status === "Present" ? (

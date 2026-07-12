@@ -34,7 +34,9 @@ export default function Subjects() {
 
   // ── Organisation / Branch / Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   // Search
   const [search, setSearch] = useState("");
@@ -46,7 +48,7 @@ export default function Subjects() {
   const [form, setForm] = useState({ course_id: "", subject_name: "" });
   const fileInputRef = useRef(null);
 
-  // Infinite query for subjects
+  // Infinite query for subjects – now scoped with branch & FY
   const {
     data,
     isLoading,
@@ -54,8 +56,9 @@ export default function Subjects() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["subjects", filters],
-    queryFn: ({ pageParam = 0 }) => getSubjects({ pageParam, filters }),
+    queryKey: ["subjects", filters, branchId, financialYearId],
+    queryFn: ({ pageParam = 0 }) =>
+      getSubjects({ pageParam, filters, branchId, financialYearId }),
     getNextPageParam: (lastPage, allPages) => {
       const totalFetched = allPages.reduce((sum, page) => sum + page.data.length, 0);
       if (lastPage.count && totalFetched < lastPage.count) {
@@ -64,19 +67,20 @@ export default function Subjects() {
       return undefined;
     },
     initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
   const subjects = data?.pages.flatMap((page) => page.data) || [];
 
-  // Course dropdown
+  // Course dropdown (organisation‑wide, no scoping needed)
   const { data: courses = [] } = useQuery({
     queryKey: ["courses-dropdown"],
     queryFn: getCoursesForDropdown,
     staleTime: 10 * 60 * 1000,
   });
 
-  // Mutations – now pass context
+  // Mutations – now pass context where needed
   const createMutation = useMutation({
     mutationFn: (payload) => createSubject(payload, ctx),
     onSuccess: () => {
@@ -98,7 +102,7 @@ export default function Subjects() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteSubject,   // hard delete, RLS protects
+    mutationFn: (id) => deleteSubject(id, branchId, financialYearId),   // scoped delete
     onSuccess: () => {
       toast.success("Subject deleted");
       queryClient.invalidateQueries({ queryKey: ["subjects"] });
@@ -134,10 +138,14 @@ export default function Subjects() {
     });
   }
 
-  // CSV Export (unchanged)
+  // CSV Export – now scoped with branch & FY
   async function handleCSVExport() {
     try {
-      const allData = await getAllSubjectsForExport(filters);
+      const allData = await getAllSubjectsForExport(
+        filters,
+        branchId,
+        financialYearId
+      );
       const csv = Papa.unparse(
         allData.map((s) => ({
           course: s.courses?.course_name,

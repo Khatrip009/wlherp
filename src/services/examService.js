@@ -2,10 +2,10 @@
 import { supabase } from "../api/supabase";
 
 // ============================
-// EXAMS LIST (paginated, filters) – now includes medium
+// EXAMS LIST (paginated, filters) – now includes medium & scoping
 // ============================
 
-export async function getExams({ pageParam = 0, filters = {} } = {}) {
+export async function getExams({ pageParam = 0, filters = {}, branchId, financialYearId } = {}) {
   const limit = 10;
   const from = pageParam * limit;
   const to = from + limit - 1;
@@ -19,6 +19,11 @@ export async function getExams({ pageParam = 0, filters = {} } = {}) {
     .order("exam_date", { ascending: false })
     .range(from, to);
 
+  // Scope by branch & FY (main table)
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  // Filters
   if (filters.search) {
     query = query.or(
       `exam_name.ilike.%${filters.search}%,batches.batch_name.ilike.%${filters.search}%`
@@ -26,20 +31,26 @@ export async function getExams({ pageParam = 0, filters = {} } = {}) {
   }
   if (filters.batchId) query = query.eq("batch_id", filters.batchId);
   if (filters.courseId) {
-    const { data: courseBatches } = await supabase
+    // Subquery on batches – scope it
+    let batchSub = supabase
       .from("batches")
       .select("id")
       .eq("course_id", filters.courseId);
+    if (branchId) batchSub = batchSub.eq("branch_id", branchId);
+    if (financialYearId) batchSub = batchSub.eq("financial_year_id", financialYearId);
+    const { data: courseBatches } = await batchSub;
     const batchIds = courseBatches?.map(b => b.id) || [];
     if (batchIds.length > 0) query = query.in("batch_id", batchIds);
     else return { data: [], count: 0 };
   }
   if (filters.medium_id) {
-    // Filter exams whose batch has the specified medium
-    const { data: mediumBatches } = await supabase
+    let mediumSub = supabase
       .from("batches")
       .select("id")
       .eq("medium_id", filters.medium_id);
+    if (branchId) mediumSub = mediumSub.eq("branch_id", branchId);
+    if (financialYearId) mediumSub = mediumSub.eq("financial_year_id", financialYearId);
+    const { data: mediumBatches } = await mediumSub;
     const batchIds = mediumBatches?.map(b => b.id) || [];
     if (batchIds.length > 0) query = query.in("batch_id", batchIds);
     else return { data: [], count: 0 };
@@ -59,11 +70,18 @@ export async function getExams({ pageParam = 0, filters = {} } = {}) {
   return { data: enriched, count };
 }
 
-export async function getAllExamsForExport(filters = {}) {
+// ============================
+// EXPORT (unpaginated) – scoped
+// ============================
+export async function getAllExamsForExport(filters = {}, branchId, financialYearId) {
   let query = supabase
     .from("exams")
     .select(`*, batches(batch_name, course_id, medium_id, mediums(name), courses(course_name))`)
     .order("exam_date", { ascending: false });
+
+  // Scope
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
   if (filters.search) {
     query = query.or(
@@ -72,19 +90,25 @@ export async function getAllExamsForExport(filters = {}) {
   }
   if (filters.batchId) query = query.eq("batch_id", filters.batchId);
   if (filters.courseId) {
-    const { data: courseBatches } = await supabase
+    let batchSub = supabase
       .from("batches")
       .select("id")
       .eq("course_id", filters.courseId);
+    if (branchId) batchSub = batchSub.eq("branch_id", branchId);
+    if (financialYearId) batchSub = batchSub.eq("financial_year_id", financialYearId);
+    const { data: courseBatches } = await batchSub;
     const batchIds = courseBatches?.map(b => b.id) || [];
     if (batchIds.length > 0) query = query.in("batch_id", batchIds);
     else return [];
   }
   if (filters.medium_id) {
-    const { data: mediumBatches } = await supabase
+    let mediumSub = supabase
       .from("batches")
       .select("id")
       .eq("medium_id", filters.medium_id);
+    if (branchId) mediumSub = mediumSub.eq("branch_id", branchId);
+    if (financialYearId) mediumSub = mediumSub.eq("financial_year_id", financialYearId);
+    const { data: mediumBatches } = await mediumSub;
     const batchIds = mediumBatches?.map(b => b.id) || [];
     if (batchIds.length > 0) query = query.in("batch_id", batchIds);
     else return [];
@@ -101,7 +125,9 @@ export async function getAllExamsForExport(filters = {}) {
   }));
 }
 
-// CRUD – context = { branchId, financialYearId }
+// ============================
+// CRUD – already uses context, adds scope to delete
+// ============================
 export async function createExam(payload, context) {
   const { branchId, financialYearId } = context;
   const { data, error } = await supabase
@@ -125,10 +151,11 @@ export async function updateExam(id, payload, context) {
   return data;
 }
 
-// Soft delete – context required for RLS on update
+// Soft delete – now scoped to prevent cross‑branch deletion
 export async function deleteExam(id, context) {
   const { branchId, financialYearId } = context;
-  const { error } = await supabase
+
+  let query = supabase
     .from("exams")
     .update({
       deleted_at: new Date().toISOString(),
@@ -136,43 +163,64 @@ export async function deleteExam(id, context) {
       financial_year_id: financialYearId,
     })
     .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { error } = await query;
   if (error) throw error;
 }
 
 // ============================
-// RESULTS & MARKING HELPERS
+// RESULTS & MARKING HELPERS – scoped
 // ============================
 
-export async function getBatchStudents(batchId) {
-  const { data, error } = await supabase
+export async function getBatchStudents(batchId, branchId, financialYearId) {
+  let query = supabase
     .from("student_batches")
     .select("student_id, students(id, first_name, last_name, admission_no)")
     .eq("batch_id", batchId)
     .eq("status", "active");
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data.map((item) => item.students);
 }
 
-export async function getResultsByExam(examId) {
+export async function getResultsByExam(examId, branchId, financialYearId) {
   if (!examId) return [];
-  const { data, error } = await supabase
+
+  let query = supabase
     .from("student_results")
     .select(`*, students(first_name, last_name, admission_no)`)
     .eq("exam_id", examId)
     .order("marks_obtained", { ascending: false });
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
-// Save results – context for inserting student_results
+// Save results – delete old marks now scoped; insert already includes branch & FY
 export async function saveResults(examId, resultsPayload, context) {
   const { branchId, financialYearId } = context;
 
-  // Delete existing marks for this exam
-  const { error: deleteError } = await supabase
+  // Delete existing marks for this exam – scoped
+  let deleteQuery = supabase
     .from("student_results")
     .delete()
     .eq("exam_id", examId);
+
+  if (branchId) deleteQuery = deleteQuery.eq("branch_id", branchId);
+  if (financialYearId) deleteQuery = deleteQuery.eq("financial_year_id", financialYearId);
+
+  const { error: deleteError } = await deleteQuery;
   if (deleteError) throw deleteError;
 
   if (resultsPayload.length === 0) return;
@@ -192,30 +240,41 @@ export async function saveResults(examId, resultsPayload, context) {
   if (insertError) throw insertError;
 }
 
-export async function getExamById(id) {
+export async function getExamById(id, branchId, financialYearId) {
   if (!id) throw new Error("Exam ID is required");
-  const { data, error } = await supabase
+
+  let query = supabase
     .from("exams")
     .select(`*, batches(batch_name, course_id, courses(course_name))`)
-    .eq("id", id)
-    .single();
+    .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query.single();
   if (error) throw error;
   return data;
 }
 
 // ============================
-// DROPDOWNS
+// DROPDOWNS – scoped where needed
 // ============================
 
-export async function getBatchOptions() {
-  const { data, error } = await supabase
+export async function getBatchOptions(branchId, financialYearId) {
+  let query = supabase
     .from("batches")
     .select("id, batch_name")
     .eq("status", "active");
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
+// Organisation‑wide – no change
 export async function getCourseOptions() {
   const { data, error } = await supabase
     .from("courses")
@@ -225,7 +284,6 @@ export async function getCourseOptions() {
   return data || [];
 }
 
-// NEW – get mediums for filter dropdown
 export async function getMediumOptions() {
   const { data, error } = await supabase
     .from("mediums")
@@ -235,17 +293,22 @@ export async function getMediumOptions() {
   return data || [];
 }
 
-export async function getAllExams() {
-  const { data, error } = await supabase
+export async function getAllExams(branchId, financialYearId) {
+  let query = supabase
     .from("exams")
     .select(`*, batches(batch_name, course_id, courses(course_name))`)
     .order("exam_date", { ascending: false });
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
-export async function getStudentProgress(studentId) {
-  const { data: results, error } = await supabase
+export async function getStudentProgress(studentId, branchId, financialYearId) {
+  let query = supabase
     .from("student_results")
     .select(
       `marks_obtained,
@@ -260,6 +323,17 @@ export async function getStudentProgress(studentId) {
     .eq("student_id", studentId)
     .order("exam_date", { ascending: true, foreignTable: "exams" });
 
+  // Scope both tables
+  if (branchId) {
+    query = query.eq("branch_id", branchId);
+    query = query.eq("exams.branch_id", branchId);
+  }
+  if (financialYearId) {
+    query = query.eq("financial_year_id", financialYearId);
+    query = query.eq("exams.financial_year_id", financialYearId);
+  }
+
+  const { data: results, error } = await query;
   if (error) throw error;
 
   const grouped = {};

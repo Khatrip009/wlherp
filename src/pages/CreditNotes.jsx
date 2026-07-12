@@ -1,9 +1,14 @@
 // src/pages/CreditNotes.jsx
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getCreditNotes, createCreditNote, finalizeCreditNote, deleteCreditNote } from "../services/creditNoteService";
+import {
+  getCreditNotes,
+  createCreditNote,
+  finalizeCreditNote,
+  deleteCreditNote,
+} from "../services/creditNoteService";
 import { supabase } from "../api/supabase";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 import toast from "react-hot-toast";
 import AdminLayout from "../layouts/AdminLayout";
 import {
@@ -19,8 +24,10 @@ export default function CreditNotes() {
   const queryClient = useQueryClient();
 
   // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -43,20 +50,24 @@ export default function CreditNotes() {
   });
   const [submitting, setSubmitting] = useState(false);
 
-  // Fetch credit notes
+  // Fetch credit notes – scoped to branch & FY
   const { data: notes = [], isLoading } = useQuery({
-    queryKey: ["credit-notes", statusFilter],
-    queryFn: () => getCreditNotes({ status: statusFilter }),
+    queryKey: ["credit-notes", statusFilter, branchId, financialYearId],
+    queryFn: () =>
+      getCreditNotes({ status: statusFilter }, branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
-  // Fetch students with search
+  // Fetch students with search – scoped to branch & FY
   const { data: students = [] } = useQuery({
-    queryKey: ["students-credit", studentSearch],
+    queryKey: ["students-credit", studentSearch, branchId, financialYearId],
     queryFn: async () => {
       let query = supabase
         .from("students")
         .select("id, first_name, last_name, admission_no, gstin")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .order("first_name");
       if (studentSearch) {
         query = query.or(
@@ -66,37 +77,42 @@ export default function CreditNotes() {
       const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch invoices for the selected student
+  // Fetch invoices for the selected student – scoped to branch & FY
   const { data: studentInvoices = [], refetch: refetchInvoices } = useQuery({
-    queryKey: ["student-invoices", selectedStudent?.id],
+    queryKey: ["student-invoices", selectedStudent?.id, branchId, financialYearId],
     queryFn: async () => {
       if (!selectedStudent?.id) return [];
       const { data } = await supabase
         .from("invoices")
-        .select("id, invoice_number, invoice_date, grand_total, total_taxable_amount, total_cgst, total_sgst, total_igst, status")
+        .select(
+          "id, invoice_number, invoice_date, grand_total, total_taxable_amount, total_cgst, total_sgst, total_igst, status"
+        )
         .eq("student_id", selectedStudent.id)
         .eq("status", "Final")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .order("invoice_date", { ascending: false });
       return data || [];
     },
-    enabled: !!selectedStudent?.id,
+    enabled: !!selectedStudent?.id && !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
   const handleStudentSelect = (studentId) => {
-    const student = students.find(s => s.id === Number(studentId));
+    const student = students.find((s) => s.id === Number(studentId));
     setSelectedStudent(student || null);
-    setForm(prev => ({ ...prev, invoice_id: "" }));
+    setForm((prev) => ({ ...prev, invoice_id: "" }));
     setSelectedInvoice(null);
   };
 
   const handleInvoiceSelect = (invoiceId) => {
-    const invoice = studentInvoices.find(inv => inv.id === Number(invoiceId));
+    const invoice = studentInvoices.find((inv) => inv.id === Number(invoiceId));
     setSelectedInvoice(invoice || null);
-    setForm(prev => ({ ...prev, invoice_id: invoiceId }));
+    setForm((prev) => ({ ...prev, invoice_id: invoiceId }));
     setCalculatedTax({
       taxable_amount: 0,
       cgst: 0,
@@ -125,13 +141,17 @@ export default function CreditNotes() {
       cgst: selectedInvoice.total_cgst * ratio,
       sgst: selectedInvoice.total_sgst * ratio,
       igst: selectedInvoice.total_igst * ratio,
-      total_tax_amount: (selectedInvoice.total_cgst + selectedInvoice.total_sgst + selectedInvoice.total_igst) * ratio,
+      total_tax_amount:
+        (selectedInvoice.total_cgst +
+          selectedInvoice.total_sgst +
+          selectedInvoice.total_igst) *
+        ratio,
     });
   };
 
-  // Mutations – only create needs context
+  // Mutations – pass context/branch/FY as needed
   const createMutation = useMutation({
-    mutationFn: (payload) => createCreditNote(payload, ctx),   // pass context
+    mutationFn: (payload) => createCreditNote(payload, ctx),
     onSuccess: () => {
       toast.success("Credit note created");
       queryClient.invalidateQueries(["credit-notes"]);
@@ -142,7 +162,7 @@ export default function CreditNotes() {
   });
 
   const finalizeMutation = useMutation({
-    mutationFn: finalizeCreditNote,   // no context needed
+    mutationFn: (id) => finalizeCreditNote(id, ctx),
     onSuccess: () => {
       toast.success("Credit note finalized");
       queryClient.invalidateQueries(["credit-notes"]);
@@ -151,7 +171,7 @@ export default function CreditNotes() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteCreditNote,
+    mutationFn: (id) => deleteCreditNote(id, branchId, financialYearId),
     onSuccess: () => {
       toast.success("Credit note deleted");
       queryClient.invalidateQueries(["credit-notes"]);
@@ -187,7 +207,10 @@ export default function CreditNotes() {
       toast.error("Please enter a valid amount");
       return;
     }
-    if (selectedInvoice && parseFloat(form.total_amount) > selectedInvoice.grand_total) {
+    if (
+      selectedInvoice &&
+      parseFloat(form.total_amount) > selectedInvoice.grand_total
+    ) {
       toast.error("Credit note amount cannot exceed invoice total");
       return;
     }
@@ -214,7 +237,11 @@ export default function CreditNotes() {
   };
 
   const handleFinalize = (id) => {
-    if (window.confirm("Finalize this credit note? This action cannot be undone.")) {
+    if (
+      window.confirm(
+        "Finalize this credit note? This action cannot be undone."
+      )
+    ) {
       finalizeMutation.mutate(id);
     }
   };
@@ -239,7 +266,9 @@ export default function CreditNotes() {
   return (
     <AdminLayout>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-        <h1 className="text-3xl font-righteous text-primary-dark">Credit Notes</h1>
+        <h1 className="text-3xl font-righteous text-primary-dark">
+          Credit Notes
+        </h1>
         <button
           onClick={() => setShowModal(true)}
           className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
@@ -251,7 +280,10 @@ export default function CreditNotes() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+          <Search
+            size={18}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary"
+          />
           <input
             type="text"
             placeholder="Search by note number, student..."
@@ -289,27 +321,58 @@ export default function CreditNotes() {
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={7} className="p-6 text-center text-secondary">Loading…</td></tr>
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="p-6 text-center text-secondary"
+                  >
+                    Loading…
+                  </td>
+                </tr>
               ) : filteredNotes.length === 0 ? (
-                <tr><td colSpan={7} className="p-6 text-center text-secondary">No credit notes found.</td></tr>
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="p-6 text-center text-secondary"
+                  >
+                    No credit notes found.
+                  </td>
+                </tr>
               ) : (
                 filteredNotes.map((note) => (
-                  <tr key={note.id} className="border-t hover:bg-gray-50 transition">
-                    <td className="p-3 text-sm font-medium">{note.credit_note_number}</td>
-                    <td className="p-3 text-sm">{note.invoices?.invoice_number || "—"}</td>
+                  <tr
+                    key={note.id}
+                    className="border-t hover:bg-gray-50 transition"
+                  >
+                    <td className="p-3 text-sm font-medium">
+                      {note.credit_note_number}
+                    </td>
                     <td className="p-3 text-sm">
-                      {note.invoices?.students?.first_name} {note.invoices?.students?.last_name}
+                      {note.invoices?.invoice_number || "—"}
+                    </td>
+                    <td className="p-3 text-sm">
+                      {note.invoices?.students?.first_name}{" "}
+                      {note.invoices?.students?.last_name}
                     </td>
                     <td className="p-3 text-right text-sm font-medium">
-                      ₹ {Number(note.total_amount).toLocaleString("en-IN")}
+                      ₹{" "}
+                      {Number(note.total_amount).toLocaleString(
+                        "en-IN"
+                      )}
                     </td>
-                    <td className="p-3 text-sm">{note.reason || "—"}</td>
                     <td className="p-3 text-sm">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        note.status === "Final" ? "bg-green-100 text-green-700" :
-                        note.status === "Draft" ? "bg-yellow-100 text-yellow-700" :
-                        "bg-red-100 text-red-700"
-                      }`}>
+                      {note.reason || "—"}
+                    </td>
+                    <td className="p-3 text-sm">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          note.status === "Final"
+                            ? "bg-green-100 text-green-700"
+                            : note.status === "Draft"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : "bg-red-100 text-red-700"
+                        }`}
+                      >
                         {note.status}
                       </span>
                     </td>
@@ -318,14 +381,18 @@ export default function CreditNotes() {
                         {note.status === "Draft" && (
                           <>
                             <button
-                              onClick={() => handleFinalize(note.id)}
+                              onClick={() =>
+                                handleFinalize(note.id)
+                              }
                               className="text-green-600 hover:underline"
                               title="Finalize"
                             >
                               <CheckCircle size={15} />
                             </button>
                             <button
-                              onClick={() => handleDelete(note.id)}
+                              onClick={() =>
+                                handleDelete(note.id)
+                              }
                               className="text-red-600 hover:underline"
                               title="Delete"
                             >
@@ -348,7 +415,9 @@ export default function CreditNotes() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-xl">
             <div className="sticky top-0 bg-white px-6 py-4 border-b flex items-center justify-between rounded-t-xl">
-              <h2 className="text-xl font-righteous text-primary-dark">New Credit Note</h2>
+              <h2 className="text-xl font-righteous text-primary-dark">
+                New Credit Note
+              </h2>
               <button
                 onClick={() => {
                   setShowModal(false);
@@ -369,24 +438,32 @@ export default function CreditNotes() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <select
                     value={selectedStudent?.id || ""}
-                    onChange={(e) => handleStudentSelect(e.target.value)}
+                    onChange={(e) =>
+                      handleStudentSelect(e.target.value)
+                    }
                     className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
                     required
                   >
                     <option value="">Select Student</option>
                     {students.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.first_name} {s.last_name} ({s.admission_no})
+                        {s.first_name} {s.last_name} (
+                        {s.admission_no})
                       </option>
                     ))}
                   </select>
                   <div className="relative">
-                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+                    <Search
+                      size={16}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary"
+                    />
                     <input
                       type="text"
                       placeholder="Search student..."
                       value={studentSearch}
-                      onChange={(e) => setStudentSearch(e.target.value)}
+                      onChange={(e) =>
+                        setStudentSearch(e.target.value)
+                      }
                       className="w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm"
                     />
                   </div>
@@ -401,19 +478,28 @@ export default function CreditNotes() {
                   </label>
                   <select
                     value={form.invoice_id}
-                    onChange={(e) => handleInvoiceSelect(e.target.value)}
+                    onChange={(e) =>
+                      handleInvoiceSelect(e.target.value)
+                    }
                     className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
                     required
                   >
                     <option value="">Select Invoice</option>
                     {studentInvoices.map((inv) => (
                       <option key={inv.id} value={inv.id}>
-                        {inv.invoice_number} (₹ {inv.grand_total.toLocaleString("en-IN")} - {inv.invoice_date})
+                        {inv.invoice_number} (₹{" "}
+                        {inv.grand_total.toLocaleString(
+                          "en-IN"
+                        )}{" "}
+                        - {inv.invoice_date})
                       </option>
                     ))}
                   </select>
                   {studentInvoices.length === 0 && (
-                    <p className="text-xs text-amber-600 mt-1">No finalized invoices found for this student.</p>
+                    <p className="text-xs text-amber-600 mt-1">
+                      No finalized invoices found for this
+                      student.
+                    </p>
                   )}
                 </div>
               )}
@@ -425,11 +511,36 @@ export default function CreditNotes() {
                     Invoice: {selectedInvoice.invoice_number}
                   </p>
                   <div className="grid grid-cols-3 gap-2 text-sm mt-1">
-                    <span>Taxable: ₹ {selectedInvoice.total_taxable_amount?.toLocaleString("en-IN")}</span>
-                    <span>CGST: ₹ {selectedInvoice.total_cgst?.toLocaleString("en-IN")}</span>
-                    <span>SGST: ₹ {selectedInvoice.total_sgst?.toLocaleString("en-IN")}</span>
-                    <span>IGST: ₹ {selectedInvoice.total_igst?.toLocaleString("en-IN")}</span>
-                    <span className="col-span-2 font-medium">Total: ₹ {selectedInvoice.grand_total?.toLocaleString("en-IN")}</span>
+                    <span>
+                      Taxable: ₹{" "}
+                      {selectedInvoice.total_taxable_amount?.toLocaleString(
+                        "en-IN"
+                      )}
+                    </span>
+                    <span>
+                      CGST: ₹{" "}
+                      {selectedInvoice.total_cgst?.toLocaleString(
+                        "en-IN"
+                      )}
+                    </span>
+                    <span>
+                      SGST: ₹{" "}
+                      {selectedInvoice.total_sgst?.toLocaleString(
+                        "en-IN"
+                      )}
+                    </span>
+                    <span>
+                      IGST: ₹{" "}
+                      {selectedInvoice.total_igst?.toLocaleString(
+                        "en-IN"
+                      )}
+                    </span>
+                    <span className="col-span-2 font-medium">
+                      Total: ₹{" "}
+                      {selectedInvoice.grand_total?.toLocaleString(
+                        "en-IN"
+                      )}
+                    </span>
                   </div>
                 </div>
               )}
@@ -443,7 +554,10 @@ export default function CreditNotes() {
                   type="number"
                   value={form.total_amount}
                   onChange={(e) => {
-                    setForm((prev) => ({ ...prev, total_amount: e.target.value }));
+                    setForm((prev) => ({
+                      ...prev,
+                      total_amount: e.target.value,
+                    }));
                     handleAmountChange(e.target.value);
                   }}
                   className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
@@ -453,39 +567,74 @@ export default function CreditNotes() {
                   required
                 />
                 <p className="text-xs text-secondary-light mt-1">
-                  Max allowed: ₹ {selectedInvoice?.grand_total?.toLocaleString("en-IN") || "0"}
+                  Max allowed: ₹{" "}
+                  {selectedInvoice?.grand_total?.toLocaleString(
+                    "en-IN"
+                  ) || "0"}
                 </p>
               </div>
 
               {/* Calculated Tax Breakdown */}
               {parseFloat(form.total_amount) > 0 && (
                 <div className="bg-gray-50 rounded-lg p-3 space-y-1 text-sm">
-                  <p className="font-medium text-secondary-dark">Tax Breakdown</p>
+                  <p className="font-medium text-secondary-dark">
+                    Tax Breakdown
+                  </p>
                   <div className="grid grid-cols-2 gap-2">
-                    <span className="text-gray-600">Taxable Amount:</span>
-                    <span className="font-medium text-right">₹ {calculatedTax.taxable_amount.toFixed(2)}</span>
+                    <span className="text-gray-600">
+                      Taxable Amount:
+                    </span>
+                    <span className="font-medium text-right">
+                      ₹ {calculatedTax.taxable_amount.toFixed(2)}
+                    </span>
                     {calculatedTax.cgst > 0 && (
                       <>
-                        <span className="text-gray-600">CGST:</span>
-                        <span className="font-medium text-right">₹ {calculatedTax.cgst.toFixed(2)}</span>
+                        <span className="text-gray-600">
+                          CGST:
+                        </span>
+                        <span className="font-medium text-right">
+                          ₹ {calculatedTax.cgst.toFixed(2)}
+                        </span>
                       </>
                     )}
                     {calculatedTax.sgst > 0 && (
                       <>
-                        <span className="text-gray-600">SGST:</span>
-                        <span className="font-medium text-right">₹ {calculatedTax.sgst.toFixed(2)}</span>
+                        <span className="text-gray-600">
+                          SGST:
+                        </span>
+                        <span className="font-medium text-right">
+                          ₹ {calculatedTax.sgst.toFixed(2)}
+                        </span>
                       </>
                     )}
                     {calculatedTax.igst > 0 && (
                       <>
-                        <span className="text-gray-600">IGST:</span>
-                        <span className="font-medium text-right">₹ {calculatedTax.igst.toFixed(2)}</span>
+                        <span className="text-gray-600">
+                          IGST:
+                        </span>
+                        <span className="font-medium text-right">
+                          ₹ {calculatedTax.igst.toFixed(2)}
+                        </span>
                       </>
                     )}
-                    <span className="text-gray-600 font-medium border-t pt-1">Total Tax:</span>
-                    <span className="font-medium text-right border-t pt-1">₹ {calculatedTax.total_tax_amount.toFixed(2)}</span>
-                    <span className="text-gray-600 font-bold border-t pt-1">Total Amount:</span>
-                    <span className="font-bold text-right border-t pt-1">₹ {Number(form.total_amount || 0).toFixed(2)}</span>
+                    <span className="text-gray-600 font-medium border-t pt-1">
+                      Total Tax:
+                    </span>
+                    <span className="font-medium text-right border-t pt-1">
+                      ₹{" "}
+                      {calculatedTax.total_tax_amount.toFixed(
+                        2
+                      )}
+                    </span>
+                    <span className="text-gray-600 font-bold border-t pt-1">
+                      Total Amount:
+                    </span>
+                    <span className="font-bold text-right border-t pt-1">
+                      ₹{" "}
+                      {Number(
+                        form.total_amount || 0
+                      ).toFixed(2)}
+                    </span>
                   </div>
                 </div>
               )}
@@ -497,7 +646,12 @@ export default function CreditNotes() {
                 </label>
                 <textarea
                   value={form.reason}
-                  onChange={(e) => setForm((prev) => ({ ...prev, reason: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      reason: e.target.value,
+                    }))
+                  }
                   rows={2}
                   className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
                   placeholder="e.g., Student cancelled admission, Scholarship granted after billing, etc."
@@ -511,7 +665,12 @@ export default function CreditNotes() {
                 <input
                   type="date"
                   value={form.date}
-                  onChange={(e) => setForm((prev) => ({ ...prev, date: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      date: e.target.value,
+                    }))
+                  }
                   className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
                 />
               </div>
@@ -529,15 +688,21 @@ export default function CreditNotes() {
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting || createMutation.isPending}
+                  disabled={
+                    submitting || createMutation.isPending
+                  }
                   className="bg-primary hover:bg-primary-light text-white px-6 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
                 >
-                  {submitting || createMutation.isPending ? (
+                  {submitting ||
+                  createMutation.isPending ? (
                     <Loader className="w-4 h-4 animate-spin" />
                   ) : (
                     <CheckCircle size={16} />
                   )}
-                  {submitting || createMutation.isPending ? "Creating..." : "Create Draft"}
+                  {submitting ||
+                  createMutation.isPending
+                    ? "Creating..."
+                    : "Create Draft"}
                 </button>
               </div>
             </form>

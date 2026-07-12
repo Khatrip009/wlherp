@@ -8,7 +8,7 @@ import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
 import { receivePO } from "../services/poService";
 import { getOrganization } from "../services/organizationService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 // Indian English number‑to‑words converter
 function numberToWords(num) {
@@ -32,37 +32,43 @@ export default function PODetail() {
   const { id } = useParams();
   const queryClient = useQueryClient();
 
-  // ── Get organisation for print header and context for mutations ──
+  // ── Get organisation and branch/FY for print header and scoping ──
   const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
     queryFn: () => getOrganization(currentOrg?.id),
     enabled: !!currentOrg?.id,
   });
 
-  const context = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const context = { branchId, financialYearId };
 
+  // Fetch purchase order – scoped
   const { data: po, isLoading } = useQuery({
-    queryKey: ["purchase-order", id],
+    queryKey: ["purchase-order", id, branchId, financialYearId],
     queryFn: async () => {
       const { data } = await supabase
         .from("purchase_orders")
-        .select(`
-          *,
+        .select(
+          `*,
           purchase_order_items(
             *,
             inventory_items(item_name, unit),
             tax_rates(name, rate)
-          )
-        `)
+          )`
+        )
         .eq("id", id)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .single();
       return data;
     },
-    enabled: !!id,
+    enabled: !!id && !!branchId && !!financialYearId,
   });
 
-  // Receive PO mutation with context
+  // Receive PO mutation (already uses context)
   const receiveMut = useMutation({
     mutationFn: () => receivePO(id, context),
     onSuccess: () => {

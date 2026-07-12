@@ -23,7 +23,7 @@ import AdminLayout from "../layouts/AdminLayout";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../api/supabase";
 import StudentForm from "../components/StudentForm";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 const formatCurrency = (amount) => `₹${Number(amount).toLocaleString("en-IN")}`;
 
@@ -32,178 +32,249 @@ export default function StudentProfile() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  // Context for multi-tenant readiness (page is read-only; StudentForm handles writes)
-  useOrg();   // included for consistency
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   // Local state for editing modal
   const [editingStudent, setEditingStudent] = useState(null);
 
   // Resolve student ID (from URL or from logged-in student)
   const { data: resolvedStudentId, isLoading: resolving } = useQuery({
-    queryKey: ["resolve-student-id", id, user?.id],
+    queryKey: ["resolve-student-id", id, user?.id, branchId, financialYearId],
     queryFn: async () => {
       if (id) return id;
-      if (!user?.id) return null;
+      if (!user?.id || !branchId || !financialYearId) return null;
       const { data } = await supabase
         .from("students")
         .select("id")
         .eq("user_id", user.id)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .single();
       return data?.id || null;
     },
-    enabled: !!user?.id || !!id,
+    enabled: (!!user?.id || !!id) && !!branchId && !!financialYearId,
   });
 
   const targetId = resolvedStudentId;
- // 1. Basic student info
+
+  // 1. Basic student info – scoped
   const {
     data: student,
     isLoading: studentLoading,
     error: studentError,
   } = useQuery({
-    queryKey: ["student", targetId],
+    queryKey: ["student", targetId, branchId, financialYearId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("students")
         .select("*")
-        .eq("id", targetId)
-        .single();
+        .eq("id", targetId);
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data, error } = await query.single();
       if (error) throw error;
       return data;
     },
-    enabled: !!targetId,
+    enabled: !!targetId && !!branchId && !!financialYearId,
   });
 
-  // 2. Parents – with null safety
+  // 2. Parents – scoped
   const { data: parents = [] } = useQuery({
-    queryKey: ["student-parents", targetId],
+    queryKey: ["student-parents", targetId, branchId, financialYearId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("student_parents")
         .select("relation, parents(*)")
         .eq("student_id", targetId);
+
+      if (branchId) {
+        query = query.eq("branch_id", branchId);
+        query = query.eq("parents.branch_id", branchId);
+      }
+      if (financialYearId) {
+        query = query.eq("financial_year_id", financialYearId);
+        query = query.eq("parents.financial_year_id", financialYearId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return (data || [])
         .filter((item) => item.parents !== null)
         .map((item) => item.parents);
     },
-    enabled: !!targetId,
+    enabled: !!targetId && !!branchId && !!financialYearId,
   });
 
-  // 3. Batches
+  // 3. Batches – scoped
   const { data: batches = [] } = useQuery({
-    queryKey: ["student-batches", targetId],
+    queryKey: ["student-batches", targetId, branchId, financialYearId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("student_batches")
         .select(`batch_id, enrollment_date, batches(batch_name, course_id, courses(course_name))`)
         .eq("student_id", targetId)
         .eq("status", "active");
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
-    enabled: !!targetId,
+    enabled: !!targetId && !!branchId && !!financialYearId,
   });
 
-  // 4. Fee summary
+  // 4. Fee summary – scoped
   const { data: feeSummary = { totalFee: 0, totalPaid: 0, pending: 0 } } = useQuery({
-    queryKey: ["student-fee-summary", targetId],
+    queryKey: ["student-fee-summary", targetId, branchId, financialYearId],
     queryFn: async () => {
-      const { data: fees, error } = await supabase
+      let feesQuery = supabase
         .from("student_fees")
         .select("id, final_fee")
         .eq("student_id", targetId);
+
+      if (branchId) feesQuery = feesQuery.eq("branch_id", branchId);
+      if (financialYearId) feesQuery = feesQuery.eq("financial_year_id", financialYearId);
+
+      const { data: fees, error } = await feesQuery;
       if (error) throw error;
 
       let totalFee = 0, totalPaid = 0;
       for (const fee of fees || []) {
         totalFee += Number(fee.final_fee);
-        const { data: payments } = await supabase
+
+        let paymentsQuery = supabase
           .from("fee_payments")
           .select("amount")
           .eq("student_fee_id", fee.id);
+
+        if (branchId) paymentsQuery = paymentsQuery.eq("branch_id", branchId);
+        if (financialYearId) paymentsQuery = paymentsQuery.eq("financial_year_id", financialYearId);
+
+        const { data: payments } = await paymentsQuery;
         totalPaid += payments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0;
       }
       const pending = Math.max(totalFee - totalPaid, 0);
       return { totalFee, totalPaid, pending };
     },
-    enabled: !!targetId,
+    enabled: !!targetId && !!branchId && !!financialYearId,
   });
 
-  // 5. Attendance
+  // 5. Attendance – scoped
   const { data: attendanceStats = { percentage: 0, totalSessions: 0, presentCount: 0 } } = useQuery({
-    queryKey: ["student-attendance", targetId],
+    queryKey: ["student-attendance", targetId, branchId, financialYearId],
     queryFn: async () => {
-      const { data: batchRows } = await supabase
+      let batchQuery = supabase
         .from("student_batches")
         .select("batch_id")
         .eq("student_id", targetId)
         .eq("status", "active");
+
+      if (branchId) batchQuery = batchQuery.eq("branch_id", branchId);
+      if (financialYearId) batchQuery = batchQuery.eq("financial_year_id", financialYearId);
+
+      const { data: batchRows } = await batchQuery;
       if (!batchRows?.length) return { percentage: 0, totalSessions: 0, presentCount: 0 };
 
       const batchIds = batchRows.map((r) => r.batch_id);
-      const { data: sessions } = await supabase
+      let sessionQuery = supabase
         .from("attendance_sessions")
         .select("id")
         .in("batch_id", batchIds);
+
+      if (branchId) sessionQuery = sessionQuery.eq("branch_id", branchId);
+      if (financialYearId) sessionQuery = sessionQuery.eq("financial_year_id", financialYearId);
+
+      const { data: sessions } = await sessionQuery;
       if (!sessions?.length) return { percentage: 0, totalSessions: 0, presentCount: 0 };
 
       const sessionIds = sessions.map((s) => s.id);
-      const { data: marks } = await supabase
+      let marksQuery = supabase
         .from("student_attendance")
         .select("status")
         .eq("student_id", targetId)
         .in("session_id", sessionIds);
 
+      if (branchId) marksQuery = marksQuery.eq("branch_id", branchId);
+      if (financialYearId) marksQuery = marksQuery.eq("financial_year_id", financialYearId);
+
+      const { data: marks } = await marksQuery;
       const total = sessionIds.length;
       const present = marks?.filter((m) => m.status === "Present").length || 0;
       const percentage = total > 0 ? ((present / total) * 100).toFixed(1) : 0;
       return { percentage, totalSessions: total, presentCount: present };
     },
-    enabled: !!targetId,
+    enabled: !!targetId && !!branchId && !!financialYearId,
   });
 
-  // 6. Recent results
+  // 6. Recent results – scoped
   const { data: recentResults = [] } = useQuery({
-    queryKey: ["student-results", targetId],
+    queryKey: ["student-results", targetId, branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("student_results")
         .select(`marks_obtained, remarks, exams(exam_name, exam_date, total_marks)`)
         .eq("student_id", targetId)
         .order("exam_id", { ascending: false })
         .limit(3);
+
+      if (branchId) {
+        query = query.eq("branch_id", branchId);
+        query = query.eq("exams.branch_id", branchId);
+      }
+      if (financialYearId) {
+        query = query.eq("financial_year_id", financialYearId);
+        query = query.eq("exams.financial_year_id", financialYearId);
+      }
+
+      const { data } = await query;
       return data || [];
     },
-    enabled: !!targetId,
+    enabled: !!targetId && !!branchId && !!financialYearId,
   });
 
-  // 7. Progress evaluations
+  // 7. Progress evaluations – scoped
   const { data: progressEvaluations = [] } = useQuery({
-    queryKey: ["student-progress", targetId],
+    queryKey: ["student-progress", targetId, branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("student_progress")
         .select("evaluation_date, performance_score, teacher_remarks")
         .eq("student_id", targetId)
         .order("evaluation_date", { ascending: false })
         .limit(3);
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data } = await query;
       return data || [];
     },
-    enabled: !!targetId,
+    enabled: !!targetId && !!branchId && !!financialYearId,
   });
 
-  // 8. Documents count
+  // 8. Documents count – scoped
   const { data: documentCount = 0 } = useQuery({
-    queryKey: ["student-documents-count", targetId],
+    queryKey: ["student-documents-count", targetId, branchId, financialYearId],
     queryFn: async () => {
-      const { count } = await supabase
+      let query = supabase
         .from("student_documents")
         .select("*", { count: "exact", head: true })
         .eq("student_id", targetId);
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { count } = await query;
       return count || 0;
     },
-    enabled: !!targetId,
+    enabled: !!targetId && !!branchId && !!financialYearId,
   });
 
   if (resolving || studentLoading) {

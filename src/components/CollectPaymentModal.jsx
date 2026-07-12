@@ -8,11 +8,13 @@ import {
 import { collectPayment } from "../services/feeService";
 import { supabase } from "../api/supabase";
 import { useOrgDarkLogo } from "../hooks/useOrgDarkLogo";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
   const darkLogo = useOrgDarkLogo();
-  const { branch, selectedFinancialYear } = useOrg();      // NEW
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const [form, setForm] = useState({
     payment_date: new Date().toISOString().split("T")[0],
@@ -26,14 +28,17 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
   const [loadingInstallments, setLoadingInstallments] = useState(true);
   const [taxInfo, setTaxInfo] = useState(null);
 
-  // Fetch installments and tax info for this fee
+  // Fetch installments and tax info – scoped
   useEffect(() => {
+    if (!branchId || !financialYearId) return;
     async function loadData() {
-      // 1. Fetch installments
+      // 1. Fetch installments (scoped)
       const { data: instData, error: instError } = await supabase
         .from("fee_installments")
         .select("*")
         .eq("student_fee_id", fee.id)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .order("installment_number");
       if (instError) {
         toast.error("Could not load installments");
@@ -42,13 +47,13 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
       }
       setLoadingInstallments(false);
 
-      // 2. Fetch tax info from fee structure
+      // 2. Fetch tax info from fee structure (already scoped by fee.fee_structures, but we need to scope tax rate lookup)
       if (fee.fee_structures?.tax_rate_id) {
         const taxRateId = fee.fee_structures.tax_rate_id;
         const taxInclusive = fee.fee_structures.tax_inclusive !== undefined
           ? fee.fee_structures.tax_inclusive
           : true;
-        const taxRate = fee.fee_structures.tax_rates; // already populated from join
+        const taxRate = fee.fee_structures.tax_rates; // already joined
 
         if (taxRate) {
           setTaxInfo({
@@ -60,11 +65,13 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
             finalFee: Number(fee.final_fee),
           });
         } else {
-          // Fetch tax rate separately if not populated
+          // Fetch tax rate separately – scoped
           const { data: taxRateData } = await supabase
             .from("tax_rates")
             .select("rate, name")
             .eq("id", taxRateId)
+            .eq("branch_id", branchId)
+            .eq("financial_year_id", financialYearId)
             .single();
           if (taxRateData) {
             setTaxInfo({
@@ -80,7 +87,7 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
       }
     }
     loadData();
-  }, [fee]);
+  }, [fee, branchId, financialYearId]);
 
   // When an installment is selected, auto-fill the amount
   const selectedInstallment = installments.find(
@@ -114,15 +121,11 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
     if (taxInfo && taxInfo.rate > 0) {
       const rate = taxInfo.rate / 100;
       if (taxInfo.taxInclusive) {
-        // Amount includes tax
         baseAmount = paymentAmount / (1 + rate);
         taxAmount = paymentAmount - baseAmount;
       } else {
-        // Tax added on top
-        baseAmount = paymentAmount;
         taxAmount = paymentAmount * rate;
       }
-      // Round to 2 decimals
       baseAmount = Math.round(baseAmount * 100) / 100;
       taxAmount = Math.round(taxAmount * 100) / 100;
     }
@@ -140,13 +143,11 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
         installment_id: form.installment_id || null,
       };
 
-      // Build context for branch & financial year
       const context = {
-        branchId: branch?.id,
-        financialYearId: selectedFinancialYear?.id,
+        branchId: branchId,
+        financialYearId: financialYearId,
       };
 
-      // collectPayment signature: (paymentPayload, studentId, invoiceId, context)
       await collectPayment(paymentPayload, fee.student_id, null, context);
       toast.success("Payment collected, receipt generated");
       if (onSuccess) onSuccess();

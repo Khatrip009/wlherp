@@ -13,7 +13,7 @@ import {
 } from "../services/voucherService";
 import { getOrganization } from "../services/organizationService";
 import { getChartOfAccounts } from "../services/accountingService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function VoucherDetail() {
   const { id } = useParams();
@@ -22,28 +22,37 @@ export default function VoucherDetail() {
   const queryClient = useQueryClient();
 
   // ── Organisation / Branch / Financial Year context ──
-  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
-  // Fetch organization with current org id
+  // Fetch organization (unchanged, org‑wide)
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
     queryFn: () => getOrganization(currentOrg?.id),
     enabled: !!currentOrg?.id,
   });
 
+  // Scoped chart of accounts
   const { data: accounts = [] } = useQuery({
-    queryKey: ["chart-of-accounts"],
-    queryFn: getChartOfAccounts,
+    queryKey: ["chart-of-accounts", branchId, financialYearId],
+    queryFn: () => getChartOfAccounts(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 10 * 60 * 1000,
   });
+
+  // Voucher types (org‑wide)
   const { data: voucherTypes = [] } = useQuery({
     queryKey: ["voucher-types"],
     queryFn: getVoucherTypes,
   });
+
+  // Scoped voucher fetch
   const { data: voucher, isLoading } = useQuery({
-    queryKey: ["voucher", id],
-    queryFn: () => getVoucherById(id),
-    enabled: !isNew,
+    queryKey: ["voucher", id, branchId, financialYearId],
+    queryFn: () => getVoucherById(id, branchId, financialYearId),
+    enabled: !isNew && !!branchId && !!financialYearId,
   });
 
   const [editing, setEditing] = useState(isNew);
@@ -75,7 +84,7 @@ export default function VoucherDetail() {
     }
   }, [voucher]);
 
-  // Save mutation – now passes context
+  // Save mutation – uses context
   const saveMutation = useMutation({
     mutationFn: (payload) =>
       isNew
@@ -113,7 +122,7 @@ export default function VoucherDetail() {
     setEditing(!editing);
   };
 
-  // Save handler
+  // Save handler (unchanged)
   const handleSave = () => {
     const totalDebit = form.lines.reduce(
       (s, l) => s + (parseFloat(l.debit) || 0),
@@ -142,7 +151,7 @@ export default function VoucherDetail() {
     saveMutation.mutate(payload);
   };
 
-  // Line management
+  // Line management (unchanged)
   const addLine = () =>
     setForm({
       ...form,
@@ -156,7 +165,7 @@ export default function VoucherDetail() {
     setForm({ ...form, lines: updated });
   };
 
-  // Print function (unchanged, uses org data which is now correctly scoped)
+  // Print function (unchanged)
   const handlePrint = () => {
     if (isNew || !voucher) return;
 

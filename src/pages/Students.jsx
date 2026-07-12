@@ -10,7 +10,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import BackButton from "../components/BackButton";
 import StudentForm from "../components/StudentForm";
 import { getStudents, createStudent, updateStudent, deleteStudent, getMediumOptions } from "../services/studentService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function Students() {
   const queryClient = useQueryClient();
@@ -23,7 +23,9 @@ export default function Students() {
 
   // ── Organisation / Branch / Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediums-dropdown"],
@@ -37,15 +39,16 @@ export default function Students() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["students", search, filterMedium],
+    queryKey: ["students", search, filterMedium, branchId, financialYearId],
     queryFn: ({ pageParam = 0 }) =>
-      getStudents({ pageParam, filters: { search, medium_id: filterMedium } }),
+      getStudents({ pageParam, filters: { search, medium_id: filterMedium }, branchId, financialYearId }),
     getNextPageParam: (lastPage, allPages) => {
       const totalFetched = allPages.reduce((sum, page) => sum + page.data.length, 0);
       if (lastPage.count && totalFetched < lastPage.count) return allPages.length;
       return undefined;
     },
     initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
@@ -263,7 +266,7 @@ export default function Students() {
       {showModal && (
         <StudentForm
           initialData={editingStudent || {}}
-          onSubmit={handleFormSubmit}   // now we pass onSubmit
+          onSubmit={handleFormSubmit}
           onSuccess={() => {
             queryClient.invalidateQueries(["students"]);
             setShowModal(false);

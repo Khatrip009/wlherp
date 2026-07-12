@@ -16,19 +16,17 @@ import {
   clearStatementLines,
   importStatementLines,
 } from "../services/bankReconciliationService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function BankReconciliation() {
   const queryClient = useQueryClient();
 
   // ── Organization, Branch & Financial Year context ──
-  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();   // NEW
-  const context = {
-    branchId: branch?.id,
-    financialYearId: selectedFinancialYear?.id,
-  };
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
-  // Fetch organization details (pass org id)
+  // Fetch organization details
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
     queryFn: () => getOrganization(currentOrg?.id),
@@ -36,40 +34,51 @@ export default function BankReconciliation() {
   });
 
   const [selectedAccountId, setSelectedAccountId] = useState("");
-  const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split("T")[0]);
-  const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
+  const [startDate, setStartDate] = useState(
+    new Date(new Date().getFullYear(), 0, 1).toISOString().split("T")[0]
+  );
+  const [endDate, setEndDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
   const [selectedStatementId, setSelectedStatementId] = useState(null);
   const fileInputRef = useRef(null);
 
+  // Bank accounts – scoped
   const { data: accounts = [] } = useQuery({
-    queryKey: ["bank-accounts"],
-    queryFn: getBankAccounts,
+    queryKey: ["bank-accounts", branchId, financialYearId],
+    queryFn: () => getBankAccounts(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
+  // Statement lines – scoped
   const { data: statementLines = [] } = useQuery({
-    queryKey: ["statement-lines", selectedAccountId],
-    queryFn: () => getStatementLines(selectedAccountId),
-    enabled: !!selectedAccountId,
+    queryKey: ["statement-lines", selectedAccountId, branchId, financialYearId],
+    queryFn: () => getStatementLines(selectedAccountId, branchId, financialYearId),
+    enabled: !!selectedAccountId && !!branchId && !!financialYearId,
   });
 
+  // Unreconciled entries – scoped
   const { data: unreconciled = [] } = useQuery({
-    queryKey: ["unreconciled-entries", selectedAccountId, startDate, endDate],
-    queryFn: () => getUnreconciledEntries(selectedAccountId, startDate, endDate),
-    enabled: !!selectedAccountId && !!startDate && !!endDate,
+    queryKey: ["unreconciled-entries", selectedAccountId, startDate, endDate, branchId, financialYearId],
+    queryFn: () =>
+      getUnreconciledEntries(selectedAccountId, startDate, endDate, branchId, financialYearId),
+    enabled: !!selectedAccountId && !!startDate && !!endDate && !!branchId && !!financialYearId,
   });
 
+  // Reconciled IDs – scoped
   const { data: reconciledIds = [] } = useQuery({
-    queryKey: ["reconciled-ids", selectedAccountId],
-    queryFn: () => getReconciledLineIds(selectedAccountId),
-    enabled: !!selectedAccountId,
+    queryKey: ["reconciled-ids", selectedAccountId, branchId, financialYearId],
+    queryFn: () => getReconciledLineIds(selectedAccountId, branchId, financialYearId),
+    enabled: !!selectedAccountId && !!branchId && !!financialYearId,
   });
 
   const reconciledSet = new Set(reconciledIds);
 
-  // Mutations now pass context
+  // Mutations – now pass context or explicit IDs
   const reconcileMut = useMutation({
-    mutationFn: ({ lineId, statementId }) => reconcileLine(lineId, statementId, context),
+    mutationFn: ({ lineId, statementId }) =>
+      reconcileLine(lineId, statementId, { branchId, financialYearId }),
     onSuccess: () => {
       queryClient.invalidateQueries(["reconciled-ids"]);
       toast.success("Line reconciled");
@@ -77,17 +86,18 @@ export default function BankReconciliation() {
   });
 
   const unreconcileMut = useMutation({
-    mutationFn: ({ lineId, statementId }) => unreconcileLine(lineId, statementId), // no context needed for delete
+    mutationFn: ({ lineId, statementId }) =>
+      unreconcileLine(lineId, statementId, { branchId, financialYearId }),
     onSuccess: () => {
       queryClient.invalidateQueries(["reconciled-ids"]);
       toast.success("Line un‑reconciled");
     },
   });
 
-  // CSV upload – pass context to importStatementLines
+  // CSV upload – scoped clearing and import
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
-    if (!file || !selectedAccountId) return;
+    if (!file || !selectedAccountId || !branchId || !financialYearId) return;
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
@@ -101,8 +111,8 @@ export default function BankReconciliation() {
           reference: r.Reference || r.reference || "",
         }));
         try {
-          await clearStatementLines(selectedAccountId);
-          await importStatementLines(rows, context);   // pass context
+          await clearStatementLines(selectedAccountId, branchId, financialYearId);
+          await importStatementLines(rows, { branchId, financialYearId });
           queryClient.invalidateQueries(["statement-lines"]);
           toast.success(`${rows.length} statement lines imported`);
         } catch (err) {
@@ -114,7 +124,10 @@ export default function BankReconciliation() {
   };
 
   // Calculate totals
-  const stmtTotal = statementLines.reduce((s, l) => s + (l.debit || 0) - (l.credit || 0), 0);
+  const stmtTotal = statementLines.reduce(
+    (s, l) => s + (l.debit || 0) - (l.credit || 0),
+    0
+  );
   const unreconciledTotal = unreconciled
     .filter((u) => !reconciledSet.has(u.id))
     .reduce((s, u) => s + (u.debit || 0) - (u.credit || 0), 0);
@@ -122,7 +135,9 @@ export default function BankReconciliation() {
   return (
     <AdminLayout>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">Bank Reconciliation</h1>
+        <h1 className="text-3xl font-righteous text-primary-dark">
+          Bank Reconciliation
+        </h1>
       </div>
 
       {/* Account & Date Selectors */}
@@ -139,15 +154,31 @@ export default function BankReconciliation() {
             </option>
           ))}
         </select>
-        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="border rounded p-2 text-sm" />
-        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="border rounded p-2 text-sm" />
+        <input
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="border rounded p-2 text-sm"
+        />
+        <input
+          type="date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          className="border rounded p-2 text-sm"
+        />
         <button
           onClick={() => fileInputRef.current?.click()}
           className="border px-4 py-2 rounded-lg text-sm flex items-center gap-2"
         >
           <Upload size={16} /> Upload Statement CSV
         </button>
-        <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleFileUpload} />
+        <input
+          type="file"
+          ref={fileInputRef}
+          className="hidden"
+          accept=".csv"
+          onChange={handleFileUpload}
+        />
       </div>
 
       {!selectedAccountId ? (
@@ -158,7 +189,9 @@ export default function BankReconciliation() {
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* Bank Statement Side */}
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <h2 className="text-lg font-semibold p-4 border-b">Bank Statement (Uploaded)</h2>
+            <h2 className="text-lg font-semibold p-4 border-b">
+              Bank Statement (Uploaded)
+            </h2>
             <div className="max-h-96 overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-100 sticky top-0">
@@ -172,20 +205,45 @@ export default function BankReconciliation() {
                 </thead>
                 <tbody>
                   {statementLines.length === 0 ? (
-                    <tr><td colSpan={5} className="p-4 text-center text-secondary">No statement lines. Upload a CSV.</td></tr>
+                    <tr>
+                      <td colSpan={5} className="p-4 text-center text-secondary">
+                        No statement lines. Upload a CSV.
+                      </td>
+                    </tr>
                   ) : (
                     statementLines.map((line) => (
                       <tr
                         key={line.id}
-                        className={`border-t cursor-pointer ${selectedStatementId === line.id ? "bg-blue-50" : ""}`}
+                        className={`border-t cursor-pointer ${
+                          selectedStatementId === line.id ? "bg-blue-50" : ""
+                        }`}
                         onClick={() => setSelectedStatementId(line.id)}
                       >
                         <td className="p-2">{line.statement_date}</td>
                         <td className="p-2">{line.description}</td>
-                        <td className="p-2 text-right">{line.debit > 0 ? `₹ ${Number(line.debit).toLocaleString("en-IN")}` : ""}</td>
-                        <td className="p-2 text-right">{line.credit > 0 ? `₹ ${Number(line.credit).toLocaleString("en-IN")}` : ""}</td>
+                        <td className="p-2 text-right">
+                          {line.debit > 0
+                            ? `₹ ${Number(line.debit).toLocaleString("en-IN")}`
+                            : ""}
+                        </td>
+                        <td className="p-2 text-right">
+                          {line.credit > 0
+                            ? `₹ ${Number(line.credit).toLocaleString("en-IN")}`
+                            : ""}
+                        </td>
                         <td className="p-2 text-right font-medium">
-                          ₹ {statementLines.filter((l, i) => i <= statementLines.indexOf(line)).reduce((s, l) => s + (l.debit || 0) - (l.credit || 0), 0).toLocaleString("en-IN")}
+                          ₹{" "}
+                          {statementLines
+                            .filter(
+                              (l, i) =>
+                                i <= statementLines.indexOf(line)
+                            )
+                            .reduce(
+                              (s, l) =>
+                                s + (l.debit || 0) - (l.credit || 0),
+                              0
+                            )
+                            .toLocaleString("en-IN")}
                         </td>
                       </tr>
                     ))
@@ -200,7 +258,9 @@ export default function BankReconciliation() {
 
           {/* System Entries Side */}
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <h2 className="text-lg font-semibold p-4 border-b">System Entries (Reconcile)</h2>
+            <h2 className="text-lg font-semibold p-4 border-b">
+              System Entries (Reconcile)
+            </h2>
             <div className="max-h-96 overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-100 sticky top-0">
@@ -215,16 +275,28 @@ export default function BankReconciliation() {
                 </thead>
                 <tbody>
                   {unreconciled.length === 0 ? (
-                    <tr><td colSpan={6} className="p-4 text-center text-secondary">No entries for this period.</td></tr>
+                    <tr>
+                      <td colSpan={6} className="p-4 text-center text-secondary">
+                        No entries for this period.
+                      </td>
+                    </tr>
                   ) : (
                     unreconciled.map((entry) => {
                       const isRec = reconciledSet.has(entry.id);
                       return (
-                        <tr key={entry.id} className={`border-t ${isRec ? "bg-green-50" : ""}`}>
+                        <tr
+                          key={entry.id}
+                          className={`border-t ${isRec ? "bg-green-50" : ""}`}
+                        >
                           <td className="p-1 text-center">
                             {selectedStatementId && !isRec && (
                               <button
-                                onClick={() => reconcileMut.mutate({ lineId: entry.id, statementId: selectedStatementId })}
+                                onClick={() =>
+                                  reconcileMut.mutate({
+                                    lineId: entry.id,
+                                    statementId: selectedStatementId,
+                                  })
+                                }
                                 className="text-green-600 p-1"
                                 title="Match with selected statement line"
                               >
@@ -233,7 +305,12 @@ export default function BankReconciliation() {
                             )}
                             {isRec && (
                               <button
-                                onClick={() => unreconcileMut.mutate({ lineId: entry.id, statementId: selectedStatementId })}
+                                onClick={() =>
+                                  unreconcileMut.mutate({
+                                    lineId: entry.id,
+                                    statementId: selectedStatementId,
+                                  })
+                                }
                                 className="text-red-600 p-1"
                                 title="Un‑reconcile"
                               >
@@ -241,11 +318,23 @@ export default function BankReconciliation() {
                               </button>
                             )}
                           </td>
-                          <td className="p-2">{entry.journal_entries?.entry_date}</td>
+                          <td className="p-2">
+                            {entry.journal_entries?.entry_date}
+                          </td>
                           <td className="p-2">{entry.description}</td>
-                          <td className="p-2 text-right text-green-600">{entry.debit > 0 ? `₹ ${Number(entry.debit).toLocaleString("en-IN")}` : ""}</td>
-                          <td className="p-2 text-right text-red-600">{entry.credit > 0 ? `₹ ${Number(entry.credit).toLocaleString("en-IN")}` : ""}</td>
-                          <td className="p-2 text-center">{isRec ? "✅" : "⏳"}</td>
+                          <td className="p-2 text-right text-green-600">
+                            {entry.debit > 0
+                              ? `₹ ${Number(entry.debit).toLocaleString("en-IN")}`
+                              : ""}
+                          </td>
+                          <td className="p-2 text-right text-red-600">
+                            {entry.credit > 0
+                              ? `₹ ${Number(entry.credit).toLocaleString("en-IN")}`
+                              : ""}
+                          </td>
+                          <td className="p-2 text-center">
+                            {isRec ? "✅" : "⏳"}
+                          </td>
                         </tr>
                       );
                     })
@@ -254,7 +343,8 @@ export default function BankReconciliation() {
               </table>
             </div>
             <div className="p-3 border-t font-bold text-right">
-              Unreconciled Amount: ₹ {unreconciledTotal.toLocaleString("en-IN")}
+              Unreconciled Amount: ₹{" "}
+              {unreconciledTotal.toLocaleString("en-IN")}
             </div>
           </div>
         </div>

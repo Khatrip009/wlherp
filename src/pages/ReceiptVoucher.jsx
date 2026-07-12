@@ -5,14 +5,23 @@ import { Plus, Trash2 } from "lucide-react";
 import AdminLayout from "../layouts/AdminLayout";
 import { getChartOfAccounts } from "../services/accountingService";
 import { createVoucher } from "../services/voucherService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function ReceiptVoucher() {
   const queryClient = useQueryClient();
-  const { branch, selectedFinancialYear } = useOrg();      // NEW
-  const context = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const context = { branchId, financialYearId };
 
-  const { data: accounts = [] } = useQuery({ queryKey: ["chart-of-accounts"], queryFn: getChartOfAccounts });
+  // Scoped chart of accounts
+  const { data: accounts = [] } = useQuery({
+    queryKey: ["chart-of-accounts", branchId, financialYearId],
+    queryFn: () => getChartOfAccounts(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 10 * 60 * 1000,
+  });
+
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [reference, setReference] = useState("");
   const [description, setDescription] = useState("");
@@ -39,7 +48,11 @@ export default function ReceiptVoucher() {
         context   // pass branch & FY context
       );
     },
-    onSuccess: () => { toast.success("Receipt voucher created"); queryClient.invalidateQueries(["vouchers"]); setLines([{ account_id: "", amount: "", description: "" }]); },
+    onSuccess: () => {
+      toast.success("Receipt voucher created");
+      queryClient.invalidateQueries(["vouchers"]);
+      setLines([{ account_id: "", amount: "", description: "" }]);
+    },
     onError: () => toast.error("Failed to create voucher"),
   });
 

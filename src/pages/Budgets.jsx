@@ -7,26 +7,33 @@ import { Link } from "react-router-dom";
 import AdminLayout from "../layouts/AdminLayout";
 import { getBudgets, createBudget, updateBudget, deleteBudget } from "../services/budgetService";
 import { getChartOfAccounts } from "../services/accountingService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function Budgets() {
   const queryClient = useQueryClient();
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const context = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  const context = { branchId, financialYearId };
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ account_id: "", period_start: "", period_end: "", amount: "" });
 
+  // Budgets – scoped
   const { data: budgets = [], isLoading } = useQuery({
-    queryKey: ["budgets"],
-    queryFn: getBudgets,
+    queryKey: ["budgets", branchId, financialYearId],
+    queryFn: () => getBudgets(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
+  // Chart of Accounts – scoped
   const { data: accounts = [] } = useQuery({
-    queryKey: ["chart-of-accounts"],
-    queryFn: getChartOfAccounts,
+    queryKey: ["chart-of-accounts", branchId, financialYearId],
+    queryFn: () => getChartOfAccounts(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
@@ -55,7 +62,7 @@ export default function Budgets() {
   });
 
   const deleteMut = useMutation({
-    mutationFn: deleteBudget,   // hard delete, RLS protects
+    mutationFn: (id) => deleteBudget(id, branchId, financialYearId),
     onSuccess: () => {
       toast.success("Budget deleted");
       queryClient.invalidateQueries(["budgets"]);

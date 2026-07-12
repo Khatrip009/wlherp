@@ -4,22 +4,30 @@ import { AlertTriangle, Package, TrendingDown, TrendingUp } from "lucide-react";
 import { Link } from "react-router-dom";
 import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function StockDashboard() {
-  // ── Context for consistency (read‑only page) ──
-  useOrg();   // included for any potential future need, no writes
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
-  // Fetch all items with category
+  // Fetch all items with category – now scoped to branch & FY
   const { data: items = [], isLoading } = useQuery({
-    queryKey: ["inventory-items"],
+    queryKey: ["inventory-items", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("inventory_items")
         .select("*, inventory_categories(name)")
         .order("item_name");
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 

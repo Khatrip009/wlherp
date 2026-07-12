@@ -28,41 +28,51 @@ export default function TaxSettings() {
     is_active: true,
   });
 
-  // ── Get branch & financial year from context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  // Fetch tax rates
+  // Fetch tax rates – scoped to branch & FY (include inactive as well)
   const { data: taxRates = [], isLoading } = useQuery({
-    queryKey: ["tax-rates"],
+    queryKey: ["tax-rates", branchId, financialYearId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("tax_rates")
         .select("*")
         .order("created_at", { ascending: false });
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 10 * 60 * 1000,
   });
 
-  // Create mutation
+  // Create mutation – adds branch & FY to payload
   const createMutation = useMutation({
     mutationFn: async (payload) => {
-      // If this is default, unset other defaults
       if (payload.is_default) {
-        await supabase
+        // Unset other defaults (scoped)
+        let unsetQuery = supabase
           .from("tax_rates")
           .update({ is_default: false })
           .eq("is_default", true);
+        if (branchId) unsetQuery = unsetQuery.eq("branch_id", branchId);
+        if (financialYearId) unsetQuery = unsetQuery.eq("financial_year_id", financialYearId);
+        await unsetQuery;
       }
       const { data, error } = await supabase
         .from("tax_rates")
         .insert([
           {
             ...payload,
-            branch_id: branchId,                  // NEW
-            financial_year_id: financialYearId,   // NEW
+            branch_id: branchId,
+            financial_year_id: financialYearId,
           },
         ])
         .select()
@@ -79,22 +89,25 @@ export default function TaxSettings() {
     onError: (err) => toast.error(err.message),
   });
 
-  // Update mutation
+  // Update mutation – scoped
   const updateMutation = useMutation({
     mutationFn: async ({ id, payload }) => {
       if (payload.is_default) {
-        await supabase
+        let unsetQuery = supabase
           .from("tax_rates")
           .update({ is_default: false })
           .eq("is_default", true)
           .neq("id", id);
+        if (branchId) unsetQuery = unsetQuery.eq("branch_id", branchId);
+        if (financialYearId) unsetQuery = unsetQuery.eq("financial_year_id", financialYearId);
+        await unsetQuery;
       }
       const { data, error } = await supabase
         .from("tax_rates")
         .update({
           ...payload,
-          branch_id: branchId,                  // NEW
-          financial_year_id: financialYearId,   // NEW
+          branch_id: branchId,
+          financial_year_id: financialYearId,
         })
         .eq("id", id)
         .select()
@@ -112,13 +125,16 @@ export default function TaxSettings() {
     onError: (err) => toast.error(err.message),
   });
 
-  // Delete mutation (unchanged)
+  // Delete mutation – scoped to prevent cross‑branch deletion
   const deleteMutation = useMutation({
     mutationFn: async (id) => {
-      const { error } = await supabase
+      let query = supabase
         .from("tax_rates")
         .delete()
         .eq("id", id);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { error } = await query;
       if (error) throw error;
     },
     onSuccess: () => {

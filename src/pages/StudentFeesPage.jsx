@@ -17,9 +17,11 @@ export default function StudentFeesPage() {
   const { studentId, isLoading: idLoading } = useStudentId();
   const queryClient = useQueryClient();
 
-  // ── Get branch & financial year for context ──
+  // ── Branch & Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   const [expandedFeeId, setExpandedFeeId] = useState(null);
   const [payingFee, setPayingFee] = useState(null);
@@ -30,31 +32,47 @@ export default function StudentFeesPage() {
     installment_id: "",
   });
 
-  // Fetch fee records with installments and payments
+  // Fetch fee records with installments and payments – scoped
   const { data: fees = [], isLoading } = useQuery({
-    queryKey: ["student-fees-list", studentId],
+    queryKey: ["student-fees-list", studentId, branchId, financialYearId],
     queryFn: async () => {
-      if (!studentId) return [];
-      const { data: feeData, error: feeError } = await supabase
+      if (!studentId || !branchId || !financialYearId) return [];
+
+      // Main fee records scoped
+      let feeQuery = supabase
         .from("student_fees")
         .select(`*, fee_structures(fee_amount, courses(course_name))`)
-        .eq("student_id", studentId);
+        .eq("student_id", studentId)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
+
+      const { data: feeData, error: feeError } = await feeQuery;
       if (feeError) throw feeError;
       if (!feeData || feeData.length === 0) return [];
 
       const enriched = await Promise.all(
         feeData.map(async (fee) => {
-          const { data: payments } = await supabase
+          // Payments scoped
+          let paymentsQuery = supabase
             .from("fee_payments")
             .select("*")
             .eq("student_fee_id", fee.id)
+            .eq("branch_id", branchId)
+            .eq("financial_year_id", financialYearId)
             .order("payment_date", { ascending: false });
 
-          const { data: installments } = await supabase
+          const { data: payments } = await paymentsQuery;
+
+          // Installments scoped
+          let installmentsQuery = supabase
             .from("fee_installments")
             .select("*")
             .eq("student_fee_id", fee.id)
+            .eq("branch_id", branchId)
+            .eq("financial_year_id", financialYearId)
             .order("installment_number");
+
+          const { data: installments } = await installmentsQuery;
 
           const totalPaid = (payments || [])
             .filter((p) => p.status === "Approved")
@@ -73,7 +91,7 @@ export default function StudentFeesPage() {
       );
       return enriched;
     },
-    enabled: !!studentId,
+    enabled: !!studentId && !!branchId && !!financialYearId,
   });
 
   const toggleExpand = (id) => {

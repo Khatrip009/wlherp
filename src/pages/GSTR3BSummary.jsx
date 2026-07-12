@@ -14,6 +14,7 @@ import {
   TrendingUp,
   TrendingDown,
 } from "lucide-react";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 
 export default function GSTR3BSummary() {
   const today = new Date();
@@ -21,21 +22,27 @@ export default function GSTR3BSummary() {
   const [startDate, setStartDate] = useState(firstDay.toISOString().split("T")[0]);
   const [endDate, setEndDate] = useState(today.toISOString().split("T")[0]);
 
+  // ── Organisation, branch, financial year context ──
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  // Organization details
   const { data: org } = useQuery({
-    queryKey: ["organization"],
-    queryFn: getOrganization,
+    queryKey: ["organization", currentOrg?.id],
+    queryFn: () => getOrganization(currentOrg?.id),
+    enabled: !!currentOrg?.id,
   });
 
-  // ─── 1. Fetch outward supplies (from invoices) ──────────────
+  // ─── 1. Fetch outward supplies (from invoices) – scoped ──
   const {
     data: outwardData,
     isLoading: loadingOutward,
     refetch: refetchOutward,
   } = useQuery({
-    queryKey: ["gstr3b-outward", startDate, endDate],
+    queryKey: ["gstr3b-outward", startDate, endDate, branchId, financialYearId],
     queryFn: async () => {
-      // Get all finalized invoices in date range
-      const { data: invoices, error } = await supabase
+      let query = supabase
         .from("invoices")
         .select(`
           id,
@@ -55,11 +62,15 @@ export default function GSTR3BSummary() {
         .lte("invoice_date", endDate)
         .eq("status", "Final");
 
+      // Apply branch & FY scope
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data: invoices, error } = await query;
       if (error) throw error;
       if (!invoices || invoices.length === 0)
         return { summary: { taxable: 0, cgst: 0, sgst: 0, igst: 0, totalTax: 0 }, byRate: [] };
 
-      // Sum up all items
       const summary = {
         taxable: 0,
         cgst: 0,
@@ -81,7 +92,6 @@ export default function GSTR3BSummary() {
           summary.igst += igst;
           summary.totalTax += cgst + sgst + igst;
 
-          // Group by tax rate
           const rateId = item.tax_rate_id || "0";
           const rateName = item.tax_rates?.name || "No Tax";
           const ratePercent = item.tax_rates?.rate || 0;
@@ -104,33 +114,37 @@ export default function GSTR3BSummary() {
         });
       });
 
-      // Sort by rate descending
       const byRate = Object.values(rateMap).sort((a, b) => b.ratePercent - a.ratePercent);
-
       return { summary, byRate };
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
-  // ─── 2. Fetch ITC claimed (from expenses) ──────────────────
+  // ─── 2. Fetch ITC claimed (from expenses) – scoped ──
   const {
     data: itcData,
     isLoading: loadingITC,
     refetch: refetchITC,
   } = useQuery({
-    queryKey: ["gstr3b-itc", startDate, endDate],
+    queryKey: ["gstr3b-itc", startDate, endDate, branchId, financialYearId],
     queryFn: async () => {
-      const { data: expenses, error } = await supabase
+      let query = supabase
         .from("expenses")
         .select("gst_amount, expense_date")
         .gte("expense_date", startDate)
         .lte("expense_date", endDate)
         .eq("itc_claimed", true);
 
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data: expenses, error } = await query;
       if (error) throw error;
       const totalITC = (expenses || []).reduce((sum, e) => sum + Number(e.gst_amount || 0), 0);
       return { totalITC, count: expenses?.length || 0 };
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 

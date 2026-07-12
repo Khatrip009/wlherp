@@ -5,19 +5,21 @@ import toast from "react-hot-toast";
 import AdminLayout from "../layouts/AdminLayout";
 import { getChartOfAccounts } from "../services/accountingService";
 import { createVoucher } from "../services/voucherService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function ContraVoucher() {
   const queryClient = useQueryClient();
-  const { branch, selectedFinancialYear } = useOrg();      // NEW
-  const context = {
-    branchId: branch?.id,
-    financialYearId: selectedFinancialYear?.id,
-  };
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
+  const context = { branchId, financialYearId };
+
+  // Fetch accounts – now scoped to current branch & FY
   const { data: accounts = [] } = useQuery({
-    queryKey: ["chart-of-accounts"],
-    queryFn: getChartOfAccounts,
+    queryKey: ["chart-of-accounts", branchId, financialYearId],
+    queryFn: () => getChartOfAccounts(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
   });
 
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
@@ -39,7 +41,7 @@ export default function ContraVoucher() {
             { account_id: parseInt(fromAccount), debit: 0, credit: parseFloat(amount), description: "Transfer out" },
           ],
         },
-        context   // pass branch & FY
+        context   // passes branchId & financialYearId
       );
     },
     onSuccess: () => {

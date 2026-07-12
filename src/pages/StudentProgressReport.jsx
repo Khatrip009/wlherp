@@ -26,6 +26,7 @@ import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
 import { getStudentProgress } from "../services/examService";
 import { generateProgressPdf } from "../utils/progressPdf";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 
 export default function StudentProgressReport() {
   const [search, setSearch] = useState("");
@@ -38,17 +39,28 @@ export default function StudentProgressReport() {
     status: "",
   });
 
-  // Dropdown options
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  // Dropdowns – scoped where applicable
   const { data: batches = [] } = useQuery({
-    queryKey: ["batches-dropdown"],
+    queryKey: ["batches-dropdown", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("batches")
         .select("id, batch_name")
         .eq("status", "active")
         .order("batch_name");
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
@@ -77,39 +89,45 @@ export default function StudentProgressReport() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Fetch students with all filters
+  // Fetch students with all filters – scoped to branch & FY
   const { data: students = [] } = useQuery({
-    queryKey: ["students-filtered", { search, ...filters }],
+    queryKey: ["students-filtered", { search, ...filters }, branchId, financialYearId],
     queryFn: async () => {
       let query = supabase
         .from("students")
         .select("id, first_name, last_name, admission_no, photo_url, status")
         .order("first_name");
 
-      // Text search
+      // Scope students table
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
       if (search) {
         query = query.or(
           `first_name.ilike.%${search}%,last_name.ilike.%${search}%,admission_no.ilike.%${search}%`
         );
       }
 
-      // Status filter
       if (filters.status) {
         query = query.eq("status", filters.status);
       }
 
-      // Medium filter
       if (filters.medium_id) {
         query = query.eq("medium_id", filters.medium_id);
       }
 
-      // Batch filter (via student_batches)
+      // Batch filter (via student_batches – scoped)
       if (filters.batch_id) {
-        const { data: batchStudents } = await supabase
+        let sbQuery = supabase
           .from("student_batches")
           .select("student_id")
           .eq("batch_id", filters.batch_id)
           .eq("status", "active");
+
+        if (branchId) sbQuery = sbQuery.eq("branch_id", branchId);
+        if (financialYearId) sbQuery = sbQuery.eq("financial_year_id", financialYearId);
+
+        const { data: batchStudents } = await sbQuery;
         const ids = batchStudents?.map((bs) => bs.student_id) || [];
         if (ids.length > 0) {
           query = query.in("id", ids);
@@ -118,28 +136,48 @@ export default function StudentProgressReport() {
         }
       }
 
-      // Course filter (via batches -> student_batches)
+      // Course filter (via batches -> student_batches – all scoped)
       if (filters.course_id) {
-        const { data: courseBatches } = await supabase
+        // Get batch IDs for course
+        let courseBatchesQuery = supabase
           .from("batches")
           .select("id")
           .eq("course_id", filters.course_id);
+
+        if (branchId) courseBatchesQuery = courseBatchesQuery.eq("branch_id", branchId);
+        if (financialYearId) courseBatchesQuery = courseBatchesQuery.eq("financial_year_id", financialYearId);
+
+        const { data: courseBatches } = await courseBatchesQuery;
         const batchIds = courseBatches?.map((b) => b.id) || [];
         if (batchIds.length === 0) return [];
-        const { data: courseStudents } = await supabase
+
+        // Get student IDs in those batches
+        let courseStudentsQuery = supabase
           .from("student_batches")
           .select("student_id")
           .in("batch_id", batchIds)
           .eq("status", "active");
+
+        if (branchId) courseStudentsQuery = courseStudentsQuery.eq("branch_id", branchId);
+        if (financialYearId) courseStudentsQuery = courseStudentsQuery.eq("financial_year_id", financialYearId);
+
+        const { data: courseStudents } = await courseStudentsQuery;
         const ids = courseStudents?.map((cs) => cs.student_id) || [];
         if (ids.length > 0) {
+          // If batch filter also active, intersect IDs
           if (filters.batch_id) {
-            const existingIds = (await supabase
+            // Re-fetch batch IDs (already scoped)
+            let batchIntersectQuery = supabase
               .from("student_batches")
               .select("student_id")
               .eq("batch_id", filters.batch_id)
-              .eq("status", "active"))
-              .data?.map((bs) => bs.student_id) || [];
+              .eq("status", "active");
+
+            if (branchId) batchIntersectQuery = batchIntersectQuery.eq("branch_id", branchId);
+            if (financialYearId) batchIntersectQuery = batchIntersectQuery.eq("financial_year_id", financialYearId);
+
+            const { data: batchIdsForIntersect } = await batchIntersectQuery;
+            const existingIds = batchIdsForIntersect?.map((bs) => bs.student_id) || [];
             const intersection = existingIds.filter((id) => ids.includes(id));
             if (intersection.length > 0) {
               query = query.in("id", intersection);
@@ -158,14 +196,15 @@ export default function StudentProgressReport() {
       if (error) throw error;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
-  // Fetch progress for selected student
+  // Fetch progress for selected student – scoped
   const { data: progressData = [], isLoading } = useQuery({
-    queryKey: ["student-progress", selectedStudent?.id],
-    queryFn: () => getStudentProgress(selectedStudent.id),
-    enabled: !!selectedStudent,
+    queryKey: ["student-progress", selectedStudent?.id, branchId, financialYearId],
+    queryFn: () => getStudentProgress(selectedStudent.id, branchId, financialYearId),
+    enabled: !!selectedStudent && !!branchId && !!financialYearId,
   });
 
   // Convert data for Recharts (last 5 exams per subject)
@@ -321,7 +360,6 @@ export default function StudentProgressReport() {
                   }}
                   className="w-full text-left px-4 py-2 text-sm hover:bg-primary-bg flex items-center gap-3"
                 >
-                  {/* Only render image if photo_url exists */}
                   {s.photo_url && (
                     <img
                       src={s.photo_url}

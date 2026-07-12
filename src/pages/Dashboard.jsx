@@ -36,7 +36,7 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import AdminLayout from "../layouts/AdminLayout";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../api/supabase";                 // direct supabase import
+import { supabase } from "../api/supabase";
 
 // ─── Reusable Stat Card ─────────────────────────────────────────────────
 const StatCard = ({ icon: Icon, title, value, subtext, color, linkTo, onClick }) => {

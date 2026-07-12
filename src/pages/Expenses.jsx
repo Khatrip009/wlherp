@@ -33,15 +33,17 @@ import {
   getAllExpensesForExport,
 } from "../services/financeService";
 import { useOrgDarkLogo } from "../hooks/useOrgDarkLogo";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function Expenses() {
   const queryClient = useQueryClient();
   const darkLogo = useOrgDarkLogo();
 
   // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   // Filters
   const [search, setSearch] = useState("");
@@ -63,7 +65,7 @@ export default function Expenses() {
   });
   const fileInputRef = useRef(null);
 
-  // Infinite query
+  // Infinite query – scoped with branchId & financialYearId
   const {
     data,
     isLoading,
@@ -71,8 +73,9 @@ export default function Expenses() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["expenses", allFilters],
-    queryFn: ({ pageParam = 0 }) => getExpenses({ pageParam, filters: allFilters }),
+    queryKey: ["expenses", allFilters, branchId, financialYearId],
+    queryFn: ({ pageParam = 0 }) =>
+      getExpenses({ pageParam, filters: allFilters, branchId, financialYearId }),
     getNextPageParam: (lastPage, allPages) => {
       const totalFetched = allPages.reduce((sum, page) => sum + page.data.length, 0);
       if (lastPage.count && totalFetched < lastPage.count) {
@@ -81,12 +84,13 @@ export default function Expenses() {
       return undefined;
     },
     initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
   const expenses = data?.pages.flatMap((page) => page.data) || [];
 
-  // Mutations – now pass context
+  // Mutations – pass context (branchId & financialYearId) where needed
   const createMutation = useMutation({
     mutationFn: (payload) => createExpense(payload, ctx),
     onSuccess: () => {
@@ -116,7 +120,7 @@ export default function Expenses() {
     onError: () => toast.error("Delete failed"),
   });
 
-  // CSV Import – need context for createExpense
+  // CSV Import – use context for createExpense
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -135,7 +139,7 @@ export default function Expenses() {
               description: row.description || "",
               bill_number: row.bill_number || null,
             };
-            await createExpense(payload, ctx);   // pass context
+            await createExpense(payload, ctx);
             successCount++;
           } catch (err) {
             console.error(err);
@@ -148,10 +152,10 @@ export default function Expenses() {
     });
   }
 
-  // CSV Export (unchanged)
+  // CSV Export – now scoped
   async function handleCSVExport() {
     try {
-      const allData = await getAllExpensesForExport(allFilters);
+      const allData = await getAllExpensesForExport(allFilters, branchId, financialYearId);
       const csv = Papa.unparse(allData);
       const blob = new Blob([csv], { type: "text/csv" });
       const url = URL.createObjectURL(blob);

@@ -11,22 +11,27 @@ import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
 import FeeStructureForm from "../components/FeeStructureForm";
 import BackButton from "../components/BackButton";
+import { useOrg } from "../context/OrganizationContext";
+import { deleteFeeStructure } from "../services/feeService";   // scoped service
 
-// Fetch fee structures with components (including tax rates)
-async function getFeeStructures({ pageParam = 0, filters = {} }) {
+// Fetch fee structures with components (including tax rates) – scoped to branch & FY
+async function getFeeStructures({ pageParam = 0, filters = {}, branchId, financialYearId }) {
   const limit = 100;
   let query = supabase
     .from("fee_structures")
-    .select(`
-      *,
+    .select(
+      `*,
       courses(course_name),
       fee_structure_components(
         *,
         tax_rates(id, name, rate)
-      )
-    `)
+      )`
+    )
     .order("id")
     .range(pageParam * limit, (pageParam + 1) * limit - 1);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
   if (filters.search) {
     query = query.or(`courses.course_name.ilike.%${filters.search}%`);
@@ -43,6 +48,11 @@ export default function FeeStructures() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
 
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
+
   const {
     data,
     isLoading,
@@ -50,23 +60,24 @@ export default function FeeStructures() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["fee-structures", search],
-    queryFn: ({ pageParam = 0 }) => getFeeStructures({ pageParam, filters: { search } }),
+    queryKey: ["fee-structures", search, branchId, financialYearId],
+    queryFn: ({ pageParam = 0 }) =>
+      getFeeStructures({ pageParam, filters: { search }, branchId, financialYearId }),
     getNextPageParam: (lastPage, allPages) => {
       const totalFetched = allPages.reduce((sum, page) => sum + page.data.length, 0);
       if (lastPage.count && totalFetched < lastPage.count) return allPages.length;
       return undefined;
     },
     initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
   const feeStructures = data?.pages.flatMap((page) => page.data) || [];
 
+  // Delete mutation – uses scoped service
   const deleteMut = useMutation({
-    mutationFn: async (id) => {
-      await supabase.from("fee_structures").delete().eq("id", id);
-    },
+    mutationFn: (id) => deleteFeeStructure(id, ctx),
     onSuccess: () => {
       toast.success("Deleted");
       queryClient.invalidateQueries(["fee-structures"]);

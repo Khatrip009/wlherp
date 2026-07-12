@@ -11,25 +11,30 @@ import { useOrg } from "../context/OrganizationContext";   // NEW
 
 export default function StudentBatchPage() {
   const { user } = useAuth();
-  // Context for multi-tenant readiness (no writes, but good practice)
-  useOrg();
+
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["my-batch-full", user?.id],
+    queryKey: ["my-batch-full", user?.id, branchId, financialYearId],
     queryFn: async () => {
       if (!user?.id) return null;
 
-      // 1. Find student ID
-      const { data: student, error: studentError } = await supabase
+      // 1. Find student ID – scoped to branch & FY
+      let studentQuery = supabase
         .from("students")
         .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
+        .eq("user_id", user.id);
+      if (branchId) studentQuery = studentQuery.eq("branch_id", branchId);
+      if (financialYearId) studentQuery = studentQuery.eq("financial_year_id", financialYearId);
+      const { data: student, error: studentError } = await studentQuery.maybeSingle();
       if (studentError) throw studentError;
       if (!student?.id) return { studentId: null, batch: null, subjects: [], teachers: [] };
 
-      // 2. Get active batch with all nested data – now includes medium
-      const { data: batchAssignment, error: batchError } = await supabase
+      // 2. Get active batch with all nested data – scoped
+      let batchQuery = supabase
         .from("student_batches")
         .select(`
           batch_id,
@@ -44,18 +49,19 @@ export default function StudentBatchPage() {
           )
         `)
         .eq("student_id", student.id)
-        .eq("status", "active")
-        .maybeSingle();
+        .eq("status", "active");
 
+      if (branchId) batchQuery = batchQuery.eq("branch_id", branchId);
+      if (financialYearId) batchQuery = batchQuery.eq("financial_year_id", financialYearId);
+
+      const { data: batchAssignment, error: batchError } = await batchQuery.maybeSingle();
       if (batchError) throw batchError;
       if (!batchAssignment) return { studentId: student.id, batch: null, subjects: [], teachers: [] };
 
       const batch = batchAssignment.batches;
 
-      // Subjects from course
       const subjects = batch?.courses?.subjects || [];
 
-      // Teacher assignments
       const teachers = batch?.batch_teachers?.map((bt) => ({
         teacher_id: bt.teacher_id,
         teacher_name: bt.teachers
@@ -75,7 +81,8 @@ export default function StudentBatchPage() {
         teachers,
       };
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
   if (isLoading) {

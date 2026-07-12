@@ -4,7 +4,7 @@ import { supabase } from "../api/supabase";
 import AdminLayout from "../layouts/AdminLayout";
 import BatchForm from "../components/BatchForm";
 import { updateBatch } from "../services/batchService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 import toast from "react-hot-toast";
 import { Clock, Layers } from "lucide-react";
 
@@ -17,9 +17,11 @@ export default function AdminTimetable() {
   const [selectedMediumId, setSelectedMediumId] = useState("");
 
   // ── Organization & Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();      // NEW
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
-  // Fetch mediums for filter dropdown
+  // Fetch mediums for filter dropdown (org‑wide)
   const { data: mediums = [] } = useQuery({
     queryKey: ["timetable-mediums"],
     queryFn: async () => {
@@ -29,9 +31,9 @@ export default function AdminTimetable() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Fetch all active batches with nested data – now includes medium name
+  // Fetch all active batches – NOW SCOPED by branch & FY
   const { data: batches = [], isLoading } = useQuery({
-    queryKey: ["timetable-batches", selectedMediumId],
+    queryKey: ["timetable-batches", selectedMediumId, branchId, financialYearId],
     queryFn: async () => {
       let query = supabase
         .from("batches")
@@ -42,6 +44,8 @@ export default function AdminTimetable() {
           batch_teachers ( teacher_id, subject_id, day, teachers ( first_name, last_name ), subjects ( subject_name ) )
         `)
         .eq("status", "active")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .order("batch_name");
 
       if (selectedMediumId) {
@@ -52,6 +56,7 @@ export default function AdminTimetable() {
       if (error) throw error;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -64,7 +69,6 @@ export default function AdminTimetable() {
     return h + m / 60;
   };
 
-  // Get batches for a slot, only showing assignments whose day matches exactly
   const getBatchesForSlot = (day, hour) => {
     return batches
       .filter((batch) => {
@@ -84,10 +88,9 @@ export default function AdminTimetable() {
 
   const handleBatchUpdate = async (payload) => {
     try {
-      // Build context for branch & financial year
       const context = {
-        branchId: branch?.id,
-        financialYearId: selectedFinancialYear?.id,
+        branchId: branchId,
+        financialYearId: financialYearId,
       };
       await updateBatch(editingBatch.id, payload, context);
       toast.success("Batch updated");

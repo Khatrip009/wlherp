@@ -4,37 +4,56 @@ import AdminLayout from "../layouts/AdminLayout";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../api/supabase";
 import BackButton from "../components/BackButton";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 
 export default function MySalary() {
   const { user } = useAuth();
 
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  // Teacher ID – scoped to branch & FY
   const { data: teacherId } = useQuery({
-    queryKey: ["teacher-id", user?.id],
+    queryKey: ["teacher-id", user?.id, branchId, financialYearId],
     queryFn: async () => {
       if (!user?.id) return null;
-      const { data, error } = await supabase
+      let query = supabase
         .from("teachers")
         .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
+        .eq("user_id", user.id);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data, error } = await query.maybeSingle();
       if (error) throw error;
       return data?.id || null;
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!branchId && !!financialYearId,
+    staleTime: 10 * 60 * 1000,
   });
 
+  // Salary payments – scoped to branch & FY
   const { data: payments = [], isLoading } = useQuery({
-    queryKey: ["my-salary", teacherId],
+    queryKey: ["my-salary", teacherId, branchId, financialYearId],
     queryFn: async () => {
       if (!teacherId) return [];
-      const { data } = await supabase
+      let query = supabase
         .from("salary_payments")
-        .select("payment_date, amount, net_amount, tds_amount, tds_percentage, payment_mode, payment_type, remarks")
+        .select(
+          "payment_date, amount, net_amount, tds_amount, tds_percentage, payment_mode, payment_type, remarks"
+        )
         .eq("teacher_id", teacherId)
         .order("payment_date", { ascending: false });
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data } = await query;
       return data || [];
     },
-    enabled: !!teacherId,
+    enabled: !!teacherId && !!branchId && !!financialYearId,
+    staleTime: 2 * 60 * 1000,
   });
 
   const totalGross = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);

@@ -6,15 +6,17 @@ import { Printer, Calendar, ChevronDown, ChevronRight } from "lucide-react";
 import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function DayBook() {
   const today = new Date().toISOString().split("T")[0];
   const [selectedDate, setSelectedDate] = useState(today);
   const [expandedVoucher, setExpandedVoucher] = useState(null);
 
-  // ── Current organisation from context ──
-  const { org: currentOrg } = useOrg();
+  // ── Branch & Financial Year context ──
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
@@ -22,41 +24,42 @@ export default function DayBook() {
     enabled: !!currentOrg?.id,
   });
 
-  // Fetch vouchers for the selected date with journal entry lines
+  // Fetch vouchers for the selected date – now scoped
   const { data: vouchers = [], isLoading } = useQuery({
-    queryKey: ["day-book", selectedDate],
+    queryKey: ["day-book", selectedDate, branchId, financialYearId],
     queryFn: async () => {
-      // 1. Get vouchers for this date
       const { data: vouchList, error } = await supabase
         .from("vouchers")
-        .select(`
-          id,
-          voucher_no,
-          entry_date,
-          reference,
-          description,
-          voucher_types(name, abbreviation),
-          journal_entries!inner(
-            id,
-            journal_entry_lines(
-              id,
-              debit,
-              credit,
-              description,
-              chart_of_accounts(account_name, account_code)
-            )
-          )
-        `)
+        .select(
+          `id,
+           voucher_no,
+           entry_date,
+           reference,
+           description,
+           voucher_types(name, abbreviation),
+           journal_entries!inner(
+             id,
+             journal_entry_lines(
+               id,
+               debit,
+               credit,
+               description,
+               chart_of_accounts(account_name, account_code)
+             )
+           )`
+        )
         .eq("entry_date", selectedDate)
+        .eq("branch_id", branchId)                // ← scoped
+        .eq("financial_year_id", financialYearId) // ← scoped
         .order("voucher_no");
 
       if (error) throw error;
       return vouchList || [];
     },
-    enabled: !!selectedDate,
+    enabled: !!selectedDate && !!branchId && !!financialYearId,
   });
 
-  // Group vouchers by type
+  // Group vouchers by type (unchanged)
   const groupedVouchers = vouchers.reduce((acc, v) => {
     const typeName = v.voucher_types?.name || "Other";
     if (!acc[typeName]) acc[typeName] = [];
@@ -64,7 +67,7 @@ export default function DayBook() {
     return acc;
   }, {});
 
-  // Totals
+  // Totals (unchanged)
   const totalDebit = vouchers.reduce((s, v) => {
     return s + (v.journal_entries?.journal_entry_lines || []).reduce((sum, l) => sum + (parseFloat(l.debit) || 0), 0);
   }, 0);
@@ -72,7 +75,7 @@ export default function DayBook() {
     return s + (v.journal_entries?.journal_entry_lines || []).reduce((sum, l) => sum + (parseFloat(l.credit) || 0), 0);
   }, 0);
 
-  // Print – uses org data from updated query
+  // Print – uses org data (unchanged, except small addition to query remains scoped)
   const handlePrint = () => {
     const logoUrl = org?.logo_dark_url || "/ShreeVidhyaDark.png";
     const orgName = org?.company_name || "ShreeVidhya Academy";

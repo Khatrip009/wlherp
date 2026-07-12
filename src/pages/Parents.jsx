@@ -32,8 +32,10 @@ export default function Parents() {
   const queryClient = useQueryClient();
 
   // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   // Search & filters
   const [search, setSearch] = useState("");
@@ -44,7 +46,7 @@ export default function Parents() {
   const [editing, setEditing] = useState(null);
   const fileInputRef = useRef(null);
 
-  // Infinite query
+  // Infinite query – now scoped
   const {
     data,
     isLoading,
@@ -52,8 +54,9 @@ export default function Parents() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["parents", allFilters],
-    queryFn: ({ pageParam = 0 }) => getParents({ pageParam, filters: allFilters }),
+    queryKey: ["parents", allFilters, branchId, financialYearId],
+    queryFn: ({ pageParam = 0 }) =>
+      getParents({ pageParam, filters: allFilters, branchId, financialYearId }),
     getNextPageParam: (lastPage, allPages) => {
       const totalFetched = allPages.reduce((sum, page) => sum + page.data.length, 0);
       if (lastPage.count && totalFetched < lastPage.count) {
@@ -62,12 +65,13 @@ export default function Parents() {
       return undefined;
     },
     initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
   const parents = data?.pages.flatMap((page) => page.data) || [];
 
-  // Mutations – now pass context
+  // Mutations – already using context, no change
   const createMutation = useMutation({
     mutationFn: ({ form, studentId }) => createParent(form, studentId, ctx),
     onSuccess: () => {
@@ -98,7 +102,7 @@ export default function Parents() {
       toast.error("Deletion failed. The parent may be linked to students."),
   });
 
-  // CSV Import – now passes context (no studentId)
+  // CSV Import – already uses context
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -131,10 +135,10 @@ export default function Parents() {
     });
   }
 
-  // CSV Export (unchanged)
+  // CSV Export – now scoped
   async function handleCSVExport() {
     try {
-      const allData = await getAllParentsForExport(allFilters);
+      const allData = await getAllParentsForExport(allFilters, branchId, financialYearId);
       const csv = Papa.unparse(allData);
       const blob = new Blob([csv], { type: "text/csv" });
       const url = URL.createObjectURL(blob);

@@ -11,111 +11,140 @@ import {
 import AdminLayout from "../layouts/AdminLayout";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../api/supabase";
-import { useOrg } from "../context/OrganizationContext";   // NEW (for consistency)
+import { useOrg } from "../context/OrganizationContext";
 
 export default function TeacherDashboard() {
   const { user, profile } = useAuth();
-  // Context import – no writes on this page, included for consistency
-  useOrg();
-  // 1. Teacher record
+
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  // 1. Teacher record – scoped to branch & FY
   const { data: teacherId, isLoading: teacherLoading } = useQuery({
-    queryKey: ["teacher-id", user?.id],
+    queryKey: ["teacher-id", user?.id, branchId, financialYearId],
     queryFn: async () => {
+      if (!user?.id || !branchId || !financialYearId) return null;
       const { data, error } = await supabase
         .from("teachers")
         .select("id")
         .eq("user_id", user.id)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .maybeSingle();
       if (error) throw error;
       return data?.id || null;
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!branchId && !!financialYearId,
+    staleTime: 10 * 60 * 1000,
   });
 
-  // 2. Assigned batches
+  // 2. Assigned batches – scoped via batch_teachers
   const { data: batches = [], isLoading: batchesLoading } = useQuery({
-    queryKey: ["teacher-batches", teacherId],
+    queryKey: ["teacher-batches", teacherId, branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      if (!teacherId || !branchId || !financialYearId) return [];
+      let btQuery = supabase
         .from("batch_teachers")
         .select(`id, batch_id, batches(id, batch_name, start_time, end_time, days, capacity, courses(course_name))`)
         .eq("teacher_id", teacherId);
+      if (branchId) btQuery = btQuery.eq("branch_id", branchId);
+      if (financialYearId) btQuery = btQuery.eq("financial_year_id", financialYearId);
+      const { data } = await btQuery;
       return data || [];
     },
-    enabled: !!teacherId,
+    enabled: !!teacherId && !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
   const batchIds = batches.map((b) => b.batch_id);
   const today = new Date().toISOString().split("T")[0];
 
-  // 3. Today's sessions
+  // 3. Today's sessions – scoped
   const { data: todaySessions = [] } = useQuery({
-    queryKey: ["teacher-today-sessions", batchIds, today],
+    queryKey: ["teacher-today-sessions", batchIds, today, branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("attendance_sessions")
         .select(`id, attendance_date, topic_covered, batches(batch_name)`)
         .in("batch_id", batchIds)
         .eq("attendance_date", today);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data || [];
     },
-    enabled: batchIds.length > 0,
+    enabled: batchIds.length > 0 && !!branchId && !!financialYearId,
   });
 
-  // 4. Upcoming homework
+  // 4. Upcoming homework – scoped
   const { data: homeworks = [] } = useQuery({
-    queryKey: ["teacher-homeworks", batchIds],
+    queryKey: ["teacher-homeworks", batchIds, today, branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("homework")
         .select(`id, title, due_date, batches(batch_name), subjects(subject_name)`)
         .in("batch_id", batchIds)
         .gte("due_date", today)
         .order("due_date", { ascending: true })
         .limit(5);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data || [];
     },
-    enabled: batchIds.length > 0,
+    enabled: batchIds.length > 0 && !!branchId && !!financialYearId,
   });
 
-  // 5. Upcoming exams
+  // 5. Upcoming exams – scoped
   const { data: exams = [] } = useQuery({
-    queryKey: ["teacher-exams", batchIds],
+    queryKey: ["teacher-exams", batchIds, today, branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("exams")
         .select(`id, exam_name, exam_date, total_marks, batches(batch_name)`)
         .in("batch_id", batchIds)
         .gte("exam_date", today)
         .order("exam_date", { ascending: true })
         .limit(5);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data || [];
     },
-    enabled: batchIds.length > 0,
+    enabled: batchIds.length > 0 && !!branchId && !!financialYearId,
   });
 
-  // 6. Attendance trend (last 30 days)
+  // 6. Attendance trend (last 30 days) – scoped
   const { data: attendanceTrend = [] } = useQuery({
-    queryKey: ["teacher-attendance-trend", batchIds],
+    queryKey: ["teacher-attendance-trend", batchIds, branchId, financialYearId],
     queryFn: async () => {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const startDate = thirtyDaysAgo.toISOString().split("T")[0];
 
-      const { data: sessions } = await supabase
+      let sessionsQuery = supabase
         .from("attendance_sessions")
         .select(`id, attendance_date`)
         .in("batch_id", batchIds)
         .gte("attendance_date", startDate)
         .order("attendance_date", { ascending: true });
+      if (branchId) sessionsQuery = sessionsQuery.eq("branch_id", branchId);
+      if (financialYearId) sessionsQuery = sessionsQuery.eq("financial_year_id", financialYearId);
 
+      const { data: sessions } = await sessionsQuery;
       if (!sessions?.length) return [];
 
       const sessionIds = sessions.map((s) => s.id);
-      const { data: marks } = await supabase
+      let marksQuery = supabase
         .from("student_attendance")
         .select("session_id, status")
         .in("session_id", sessionIds);
+      if (branchId) marksQuery = marksQuery.eq("branch_id", branchId);
+      if (financialYearId) marksQuery = marksQuery.eq("financial_year_id", financialYearId);
+
+      const { data: marks } = await marksQuery;
 
       const byDate = {};
       sessions.forEach((s) => { byDate[s.attendance_date] = { total: 0, present: 0 }; });
@@ -134,39 +163,51 @@ export default function TeacherDashboard() {
         attendance: stats.total > 0 ? ((stats.present / stats.total) * 100).toFixed(1) : 0,
       }));
     },
-    enabled: batchIds.length > 0,
+    enabled: batchIds.length > 0 && !!branchId && !!financialYearId,
   });
 
-  // 7. Unread notifications
+  // 7. Unread notifications – scoped
   const { data: unreadCount = 0 } = useQuery({
-    queryKey: ["teacher-notifications-unread", user?.id],
+    queryKey: ["teacher-notifications-unread", user?.id, branchId, financialYearId],
     queryFn: async () => {
-      const { count } = await supabase
+      if (!user?.id || !branchId || !financialYearId) return 0;
+      let query = supabase
         .from("notifications")
         .select("*", { count: "exact", head: true })
         .eq("user_id", user.id)
         .eq("is_read", false);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { count } = await query;
       return count || 0;
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!branchId && !!financialYearId,
   });
 
-  // 8. Salary & leave summary
+  // 8. Salary & leave summary – scoped
   const { data: salaryInfo } = useQuery({
-    queryKey: ["teacher-salary-info", teacherId],
+    queryKey: ["teacher-salary-info", teacherId, branchId, financialYearId],
     queryFn: async () => {
-      const { data: payments } = await supabase
+      if (!teacherId || !branchId || !financialYearId) return { lastSalary: null, lastSalaryDate: null, pendingLeaves: 0 };
+
+      let paymentsQuery = supabase
         .from("salary_payments")
         .select("net_amount, payment_date")
         .eq("teacher_id", teacherId)
         .order("payment_date", { ascending: false })
         .limit(1);
+      if (branchId) paymentsQuery = paymentsQuery.eq("branch_id", branchId);
+      if (financialYearId) paymentsQuery = paymentsQuery.eq("financial_year_id", financialYearId);
+      const { data: payments } = await paymentsQuery;
 
-      const { count: pendingLeaves } = await supabase
+      let leavesQuery = supabase
         .from("teacher_leaves")
         .select("*", { count: "exact", head: true })
         .eq("teacher_id", teacherId)
         .eq("status", "Pending");
+      if (branchId) leavesQuery = leavesQuery.eq("branch_id", branchId);
+      if (financialYearId) leavesQuery = leavesQuery.eq("financial_year_id", financialYearId);
+      const { count: pendingLeaves } = await leavesQuery;
 
       return {
         lastSalary: payments?.[0]?.net_amount || null,
@@ -174,7 +215,7 @@ export default function TeacherDashboard() {
         pendingLeaves: pendingLeaves || 0,
       };
     },
-    enabled: !!teacherId,
+    enabled: !!teacherId && !!branchId && !!financialYearId,
   });
 
   if (teacherLoading || batchesLoading) {
@@ -201,7 +242,7 @@ export default function TeacherDashboard() {
         )}
       </div>
 
-      {/* Quick Actions */}
+      {/* Quick Actions (unchanged) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <Link
           to="/attendance"
@@ -233,7 +274,7 @@ export default function TeacherDashboard() {
         </Link>
       </div>
 
-      {/* Stats */}
+      {/* Stats (unchanged) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
         <div className="bg-white rounded-xl p-5 shadow-sm border border-secondary-light">
           <div className="flex items-center justify-between">
@@ -273,7 +314,7 @@ export default function TeacherDashboard() {
         </div>
       </div>
 
-      {/* Salary & Leave Widget + Charts */}
+      {/* Salary & Leave Widget + Charts (unchanged) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         {/* Salary & Leave */}
         <div className="bg-white rounded-xl p-5 shadow-sm border border-secondary-light">
@@ -312,7 +353,7 @@ export default function TeacherDashboard() {
           </div>
         </div>
 
-        {/* Attendance Trend Chart */}
+        {/* Attendance Trend Chart (unchanged) */}
         <div className="lg:col-span-2 bg-white rounded-xl p-5 shadow-sm border border-secondary-light">
           <h2 className="text-lg font-righteous text-primary-dark mb-4 flex items-center gap-2">
             <TrendingUp size={18} /> Attendance Trend (Last 30 Days)
@@ -333,7 +374,7 @@ export default function TeacherDashboard() {
         </div>
       </div>
 
-      {/* Lists Section */}
+      {/* Lists Section (unchanged) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* My Batches */}
         <div className="bg-white rounded-xl p-5 shadow-sm border border-secondary-light">

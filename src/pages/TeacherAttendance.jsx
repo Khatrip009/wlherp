@@ -21,28 +21,34 @@ export default function TeacherAttendance() {
 
   // ---- Get the teacher's own ID if the user is a teacher ----
   const { data: ownTeacherId } = useQuery({
-    queryKey: ["my-teacher-id", profile?.id],
+    queryKey: ["my-teacher-id", profile?.id, branchId, financialYearId],
     queryFn: async () => {
       if (!profile?.id || isAdmin) return null;
       const { data } = await supabase
         .from("teachers")
         .select("id")
         .eq("user_id", profile.id)
+        .eq("branch_id", branchId)                 // scoped
+        .eq("financial_year_id", financialYearId) // scoped
         .single();
       return data?.id || null;
     },
-    enabled: !!profile?.id && !isAdmin,
+    enabled: !!profile?.id && !isAdmin && !!branchId && !!financialYearId,
   });
 
   // ---- Fetch teachers (admin sees all; teacher sees only themselves) ----
   const { data: teachers = [] } = useQuery({
-    queryKey: ["active-teachers", isAdmin, ownTeacherId],
+    queryKey: ["active-teachers", isAdmin, ownTeacherId, branchId, financialYearId],
     queryFn: async () => {
       let query = supabase
         .from("teachers")
         .select("id, first_name, last_name, employee_code")
         .eq("status", "active")
         .order("first_name");
+
+      // Scope to branch & FY
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
       if (!isAdmin && ownTeacherId) {
         query = query.eq("id", ownTeacherId);
@@ -52,17 +58,19 @@ export default function TeacherAttendance() {
       const { data } = await query;
       return data || [];
     },
-    enabled: isAdmin || !!ownTeacherId,
+    enabled: (isAdmin || !!ownTeacherId) && !!branchId && !!financialYearId,
   });
 
   // ---- Fetch attendance for selected date ----
   const { data: attendance = [], isLoading } = useQuery({
-    queryKey: ["teacher-attendance", date, isAdmin, ownTeacherId],
+    queryKey: ["teacher-attendance", date, isAdmin, ownTeacherId, branchId, financialYearId],
     queryFn: async () => {
       let query = supabase
         .from("teacher_attendance")
         .select("*")
-        .eq("attendance_date", date);
+        .eq("attendance_date", date)
+        .eq("branch_id", branchId)                  // scoped
+        .eq("financial_year_id", financialYearId); // scoped
 
       if (!isAdmin && ownTeacherId) {
         query = query.eq("teacher_id", ownTeacherId);
@@ -71,7 +79,7 @@ export default function TeacherAttendance() {
       const { data } = await query;
       return data || [];
     },
-    enabled: isAdmin || !!ownTeacherId,
+    enabled: (isAdmin || !!ownTeacherId) && !!branchId && !!financialYearId,
   });
 
   // ---- Statistics ----

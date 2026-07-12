@@ -31,11 +31,9 @@ export default function Header({ onMenuClick }) {
     switchFinancialYear,
   } = useOrg();
 
-  // ── Branch / FY panel state ──
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const settingsPanelRef = useRef(null);
 
-  // Install prompt hook
   const { isInstallable, promptInstall } = useInstallPrompt();
 
   const role = (profile?.role || "").toLowerCase().replace(/\s+/g, "_");
@@ -56,7 +54,7 @@ export default function Header({ onMenuClick }) {
     enabled: !!profile && isStudent,
   });
 
-  // Unread notifications count (per user)
+  // Unread notifications count
   const { data: unreadCount = 0 } = useQuery({
     queryKey: ["notification-unread-count", profile?.id],
     queryFn: async () => {
@@ -72,7 +70,7 @@ export default function Header({ onMenuClick }) {
     enabled: !!profile?.id,
   });
 
-  // Recent notifications (dropdown)
+  // Recent notifications
   const { data: recentNotifications = [] } = useQuery({
     queryKey: ["notifications-recent", profile?.id],
     queryFn: async () => {
@@ -88,7 +86,6 @@ export default function Header({ onMenuClick }) {
     enabled: dropdownOpen && !!profile?.id,
   });
 
-  // Mark all as read
   const markAllReadMutation = useMutation({
     mutationFn: async () => {
       const { error } = await supabase
@@ -104,7 +101,6 @@ export default function Header({ onMenuClick }) {
     },
   });
 
-  // Mark single as read
   const markReadMutation = useMutation({
     mutationFn: async (id) => {
       const { error } = await supabase
@@ -166,9 +162,29 @@ export default function Header({ onMenuClick }) {
     }
   };
 
+  // ── Handler for branch selection: updates context and invalidates queries ──
+  const handleBranchChange = (e) => {
+    const selected = branches.find((b) => b.id == e.target.value);
+    if (selected) {
+      setBranch(selected);
+      // Invalidate all data queries so they refetch with the new branch
+      queryClient.invalidateQueries();
+    }
+  };
+
+  // ── Handler for financial year selection ──
+  const handleFinancialYearChange = (e) => {
+    const fyId = Number(e.target.value);
+    if (fyId) {
+      switchFinancialYear(fyId);
+      // Invalidate all data queries so they refetch with the new FY
+      queryClient.invalidateQueries();
+    }
+  };
+
   return (
     <header className="bg-white border-b border-secondary-light px-4 lg:px-6 py-3 lg:py-4 flex items-center justify-between">
-      {/* ── Left section (no org name) ── */}
+      {/* ── Left section ── */}
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
@@ -189,7 +205,7 @@ export default function Header({ onMenuClick }) {
           </p>
         </div>
 
-        {/* ── Branch / FY icon button ── */}
+        {/* ── Branch / FY selector button ── */}
         {showBranchFY && (
           <div className="relative" ref={settingsPanelRef}>
             <button
@@ -210,12 +226,7 @@ export default function Header({ onMenuClick }) {
                     </label>
                     <select
                       value={branch?.id || ""}
-                      onChange={(e) => {
-                        const selected = branches.find(
-                          (b) => b.id == e.target.value
-                        );
-                        setBranch(selected || null);
-                      }}
+                      onChange={handleBranchChange}
                       className="w-full border border-secondary-light rounded p-1.5 text-sm focus:ring-1 focus:ring-primary"
                     >
                       {branches.map((b) => (
@@ -236,9 +247,7 @@ export default function Header({ onMenuClick }) {
                     {selectedFinancialYear ? (
                       <select
                         value={selectedFinancialYear.id}
-                        onChange={(e) =>
-                          switchFinancialYear(Number(e.target.value))
-                        }
+                        onChange={handleFinancialYearChange}
                         className="w-full border border-secondary-light rounded p-1.5 text-sm focus:ring-1 focus:ring-primary"
                       >
                         {financialYears.map((fy) => (
@@ -251,7 +260,10 @@ export default function Header({ onMenuClick }) {
                       <select
                         onChange={(e) => {
                           const id = Number(e.target.value);
-                          if (id) switchFinancialYear(id);
+                          if (id) {
+                            switchFinancialYear(id);
+                            queryClient.invalidateQueries();
+                          }
                         }}
                         className="w-full border border-secondary-light rounded p-1.5 text-sm focus:ring-1 focus:ring-primary"
                         defaultValue=""

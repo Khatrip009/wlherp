@@ -19,7 +19,7 @@ import {
   getProgressEvaluations,
 } from "../services/progressService";
 import { useOrgDarkLogo } from "../hooks/useOrgDarkLogo";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function ProgressEvaluationForm({
   onSubmit,
@@ -27,7 +27,9 @@ export default function ProgressEvaluationForm({
   initialData = {},
 }) {
   const darkLogo = useOrgDarkLogo();
-  const { branch, selectedFinancialYear } = useOrg();      // NEW
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const [batches, setBatches] = useState([]);
   const [mediums, setMediums] = useState([]);
@@ -44,36 +46,35 @@ export default function ProgressEvaluationForm({
     teacher_remarks: initialData.teacher_remarks || "",
   });
 
+  // Load dropdowns only when branch & FY are ready
   useEffect(() => {
+    if (!branchId || !financialYearId) return;
     loadDropdowns();
-  }, []);
+  }, [branchId, financialYearId]);
 
+  // Set medium filter based on selected batch
   useEffect(() => {
-    if (initialData.batch_id && batches.length > 0) {
-      const batch = batches.find((b) => b.id == initialData.batch_id);
-      if (batch) {
-        setSelectedMediumId(batch.medium_id ? String(batch.medium_id) : "");
-      }
-    }
-  }, [initialData.batch_id, batches]);
-
-  useEffect(() => {
-    if (form.batch_id && batches.length > 0) {
-      const batch = batches.find((b) => b.id == form.batch_id);
-      if (batch) {
-        setSelectedMediumId(batch.medium_id ? String(batch.medium_id) : "");
-      }
-      loadStudents(form.batch_id);
-    } else {
-      setStudents([]);
+    if (!form.batch_id || batches.length === 0) return;
+    const batch = batches.find((b) => b.id == form.batch_id);
+    if (batch) {
+      setSelectedMediumId(batch.medium_id ? String(batch.medium_id) : "");
     }
   }, [form.batch_id, batches]);
+
+  // Load students when batch changes
+  useEffect(() => {
+    if (!form.batch_id || !branchId || !financialYearId) {
+      setStudents([]);
+      return;
+    }
+    loadStudents(form.batch_id);
+  }, [form.batch_id, branchId, financialYearId]);
 
   async function loadDropdowns() {
     try {
       const [batchData, mediumData] = await Promise.all([
-        getActiveBatches(),
-        getMediumOptions(),
+        getActiveBatches(branchId, financialYearId),   // now scoped
+        getMediumOptions(),                             // org‑wide
       ]);
       setBatches(batchData);
       setMediums(mediumData);
@@ -84,7 +85,7 @@ export default function ProgressEvaluationForm({
 
   async function loadStudents(batchId) {
     try {
-      const data = await getStudentsByBatch(batchId);
+      const data = await getStudentsByBatch(batchId, branchId, financialYearId);
       setStudents(data);
     } catch {
       toast.error("Failed to load students");
@@ -95,18 +96,20 @@ export default function ProgressEvaluationForm({
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
-  // Fetch previous evaluations for the selected student
+  // Fetch previous evaluations for the selected student (scoped by service)
   const { data: studentEvals = [] } = useQuery({
-    queryKey: ["student-evaluations", form.student_id],
+    queryKey: ["student-evaluations", form.student_id, branchId, financialYearId],
     queryFn: async () => {
       if (!form.student_id) return [];
       const { data } = await getProgressEvaluations({
         pageParam: 0,
         filters: { student_id: form.student_id, pageSize: 100 },
+        branchId,
+        financialYearId,
       });
       return data || [];
     },
-    enabled: !!form.student_id,
+    enabled: !!form.student_id && !!branchId && !!financialYearId,
     staleTime: 1 * 60 * 1000,
   });
 
@@ -124,9 +127,12 @@ export default function ProgressEvaluationForm({
     };
   }, [studentEvals]);
 
-  // Filter batches by selected medium (but keep current batch visible even if it doesn't match)
+  // Filter batches by selected medium (keep current batch visible)
   const filteredBatches = batches.filter(
-    (b) => !selectedMediumId || b.medium_id == selectedMediumId || b.id == form.batch_id
+    (b) =>
+      !selectedMediumId ||
+      b.medium_id == selectedMediumId ||
+      b.id == form.batch_id
   );
 
   async function handleSubmit(e) {
@@ -145,10 +151,9 @@ export default function ProgressEvaluationForm({
         : null,
     };
 
-    // Build context for branch & financial year
     const context = {
-      branchId: branch?.id,
-      financialYearId: selectedFinancialYear?.id,
+      branchId: branchId,
+      financialYearId: financialYearId,
     };
 
     try {

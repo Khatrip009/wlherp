@@ -1,7 +1,7 @@
 // src/services/debitNoteService.js
 import { supabase } from "../api/supabase";
 
-export async function getDebitNotes(filters = {}) {
+export async function getDebitNotes(filters = {}, branchId, financialYearId) {
   let query = supabase
     .from("debit_notes")
     .select(`
@@ -14,6 +14,10 @@ export async function getDebitNotes(filters = {}) {
     `)
     .order("date", { ascending: false });
 
+  // Scope to current branch & financial year
+  if (branchId) query = query.eq("debit_notes.branch_id", branchId);
+  if (financialYearId) query = query.eq("debit_notes.financial_year_id", financialYearId);
+
   if (filters.status) query = query.eq("status", filters.status);
   if (filters.invoice_id) query = query.eq("invoice_id", filters.invoice_id);
 
@@ -22,8 +26,8 @@ export async function getDebitNotes(filters = {}) {
   return data || [];
 }
 
-export async function getDebitNote(id) {
-  const { data, error } = await supabase
+export async function getDebitNote(id, branchId, financialYearId) {
+  let query = supabase
     .from("debit_notes")
     .select(`
       *,
@@ -32,8 +36,12 @@ export async function getDebitNote(id) {
         students(first_name, last_name, admission_no, gstin, state_code)
       )
     `)
-    .eq("id", id)
-    .single();
+    .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query.single();
   if (error) throw error;
   return data;
 }
@@ -72,7 +80,15 @@ export async function finalizeDebitNote(id) {
   return data;
 }
 
-export async function deleteDebitNote(id) {
-  const { error } = await supabase.from("debit_notes").delete().eq("id", id);
+export async function deleteDebitNote(id, branchId, financialYearId) {
+  let query = supabase
+    .from("debit_notes")
+    .delete()
+    .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { error } = await query;
   if (error) throw error;
 }

@@ -8,12 +8,17 @@ import AdminLayout from "../layouts/AdminLayout";
 import { useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Layers } from "lucide-react";
+import { useOrg } from "../context/OrganizationContext";
 
 export default function CalendarPage() {
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
   const [events, setEvents] = useState([]);
   const [selectedMediumId, setSelectedMediumId] = useState("");
 
-  // Fetch mediums for filter dropdown
+  // Fetch mediums for filter dropdown (org‑wide, unchanged)
   const { data: mediums = [] } = useQuery({
     queryKey: ["calendar-mediums"],
     queryFn: async () => {
@@ -22,9 +27,9 @@ export default function CalendarPage() {
     },
   });
 
-  // Fetch batches with course, teacher, and medium info
+  // Fetch batches with course, teacher, and medium info – NOW SCOPED
   const { data: batches, isLoading } = useQuery({
-    queryKey: ["calendar-batches", selectedMediumId],
+    queryKey: ["calendar-batches", selectedMediumId, branchId, financialYearId],
     queryFn: async () => {
       let query = supabase
         .from("batches")
@@ -34,7 +39,9 @@ export default function CalendarPage() {
           medium:mediums(id, name),
           batch_teachers(teacher:teachers(id, first_name, last_name))
         `)
-        .eq("status", "active");
+        .eq("status", "active")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
 
       if (selectedMediumId) {
         query = query.eq("medium_id", selectedMediumId);
@@ -44,6 +51,7 @@ export default function CalendarPage() {
       if (error) throw error;
       return data;
     },
+    enabled: !!branchId && !!financialYearId,
   });
 
   // Convert batches to FullCalendar events (handling repeat days)
@@ -96,7 +104,7 @@ export default function CalendarPage() {
               start_time,
               end_time,
               days,
-              medium_name: medium?.name || "",    // NEW
+              medium_name: medium?.name || "",
             },
           });
         }
@@ -126,7 +134,7 @@ export default function CalendarPage() {
       <div className="p-4 bg-white rounded-xl shadow-sm">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
           <h1 className="text-2xl font-righteous text-primary-dark">Class Calendar</h1>
-          {/* Medium Filter – NEW */}
+          {/* Medium Filter */}
           <div className="flex items-center gap-2">
             <Layers size={18} className="text-secondary" />
             <select

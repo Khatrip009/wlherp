@@ -7,11 +7,13 @@ import {
   getBatchStudents,
 } from "../services/homeworkService";
 import { useOrgDarkLogo } from "../hooks/useOrgDarkLogo";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function ViewSubmissionsModal({ homework, onClose }) {
   const darkLogo = useOrgDarkLogo();
-  const { branch, selectedFinancialYear } = useOrg();      // NEW
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const [students, setStudents] = useState([]);
   const [submissions, setSubmissions] = useState([]);
@@ -22,15 +24,16 @@ export default function ViewSubmissionsModal({ homework, onClose }) {
   const [remarksInput, setRemarksInput] = useState({});
 
   useEffect(() => {
+    if (!homework?.id || !branchId || !financialYearId) return;
     loadData();
-  }, [homework.id]);
+  }, [homework?.id, branchId, financialYearId]);
 
   async function loadData() {
     setLoading(true);
     try {
       const [allStudents, allSubs] = await Promise.all([
-        getBatchStudents(homework.batch_id),
-        getSubmissionsByHomework(homework.id),
+        getBatchStudents(homework.batch_id, branchId, financialYearId),
+        getSubmissionsByHomework(homework.id, branchId, financialYearId),
       ]);
       setStudents(allStudents);
       setSubmissions(allSubs);
@@ -53,10 +56,9 @@ export default function ViewSubmissionsModal({ homework, onClose }) {
 
   async function handleSaveMarks(submission) {
     try {
-      // Build context
       const context = {
-        branchId: branch?.id,
-        financialYearId: selectedFinancialYear?.id,
+        branchId: branchId,
+        financialYearId: financialYearId,
       };
       await updateSubmission(
         submission.id,
@@ -65,7 +67,7 @@ export default function ViewSubmissionsModal({ homework, onClose }) {
           remarks: remarksInput[submission.student_id],
           status: "Graded",
         },
-        context                     // pass context as third argument
+        context
       );
       toast.success("Marks saved");
       loadData();

@@ -22,10 +22,10 @@ import {
 } from "lucide-react";
 import Papa from "papaparse";
 import AdminLayout from "../layouts/AdminLayout";
-import TeacherForm from "../components/TeacherForm"; // still reusing the same form (now accepts employee fields)
+import TeacherForm from "../components/TeacherForm";
 import BackButton from "../components/BackButton";
 import {
-  getTeachers,               // still works – the table now has employee columns
+  getTeachers,
   createTeacher,
   updateTeacher,
   deleteTeacher,
@@ -42,7 +42,7 @@ import { useOrg } from "../context/OrganizationContext";
 export default function Employees() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [staffTypeFilter, setStaffTypeFilter] = useState("");   // NEW filter
+  const [staffTypeFilter, setStaffTypeFilter] = useState("");
   const [mediumFilter, setMediumFilter] = useState("");
   const [courseFilter, setCourseFilter] = useState("");
   const [courseLevelFilter, setCourseLevelFilter] = useState("");
@@ -54,9 +54,11 @@ export default function Employees() {
   const fileInputRef = useRef(null);
 
   const { branch, selectedFinancialYear } = useOrg();
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
-  // Dropdown data for filters
+  // Dropdown data for filters (organisation‑wide)
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediums"],
     queryFn: getMediumOptions,
@@ -80,7 +82,7 @@ export default function Employees() {
 
   const filters = {
     search,
-    staff_type: staffTypeFilter,       // NEW filter key
+    staff_type: staffTypeFilter,
     medium_id: mediumFilter,
     course_id: courseFilter,
     course_level_id: courseLevelFilter,
@@ -94,8 +96,9 @@ export default function Employees() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["employees", filters],  // renamed to "employees"
-    queryFn: ({ pageParam = 0 }) => getTeachers({ pageParam, filters }),
+    queryKey: ["employees", filters, branchId, financialYearId],
+    queryFn: ({ pageParam = 0 }) =>
+      getTeachers({ pageParam, filters, branchId, financialYearId }),
     getNextPageParam: (lastPage, allPages) => {
       const totalFetched = allPages.reduce(
         (sum, page) => sum + page.data.length,
@@ -107,6 +110,7 @@ export default function Employees() {
       return undefined;
     },
     initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -143,7 +147,7 @@ export default function Employees() {
       toast.error("Deletion failed. The employee may be assigned to a batch."),
   });
 
-  // CSV import – updated to include new fields
+  // CSV import – already uses ctx
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -189,7 +193,11 @@ export default function Employees() {
 
   async function handleCSVExport() {
     try {
-      const allData = await getAllTeachersForExport(filters);
+      const allData = await getAllTeachersForExport(
+        filters,
+        branchId,
+        financialYearId
+      );
       const csv = Papa.unparse(
         allData.map((t) => ({
           employee_code: t.employee_code,
@@ -207,7 +215,10 @@ export default function Employees() {
           date_of_birth: t.date_of_birth,
           gender: t.gender,
           emergency_contact: t.emergency_contact,
-          bank_account_details: typeof t.bank_account_details === 'object' ? JSON.stringify(t.bank_account_details) : t.bank_account_details,
+          bank_account_details:
+            typeof t.bank_account_details === "object"
+              ? JSON.stringify(t.bank_account_details)
+              : t.bank_account_details,
           mediums: (t.mediums || []).join(", "),
           courses: (t.courses || []).join(", "),
           course_levels: (t.course_levels || []).join(", "),
@@ -258,7 +269,6 @@ export default function Employees() {
   const truncateId = (uuid) =>
     uuid ? `${uuid.substring(0, 8)}...${uuid.substring(uuid.length - 4)}` : null;
 
-  // Helper to format staff_type for display
   const formatStaffType = (type) => {
     const types = {
       teacher: "Teacher",
@@ -337,7 +347,6 @@ export default function Employees() {
       {/* Filter Panel */}
       {showFilters && (
         <div className="bg-white rounded-xl p-4 shadow-sm mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border border-secondary-light">
-          {/* Staff Type filter (NEW) */}
           <div>
             <label className="text-xs font-montserrat text-secondary-dark">Staff Type</label>
             <select

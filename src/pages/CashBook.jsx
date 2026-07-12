@@ -5,7 +5,7 @@ import { Printer } from "lucide-react";
 import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function CashBook() {
   const today = new Date().toISOString().split("T")[0];
@@ -17,27 +17,32 @@ export default function CashBook() {
   const [endDate, setEndDate] = useState(today);
   const [selectedAccount, setSelectedAccount] = useState("all");
 
-  // ── Current organisation from context ──
-  const { org: currentOrg } = useOrg();
+  // ── Current organisation, branch, and financial year ──
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
-  // Fetch organization details with current org id
+  // Fetch organization details
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
     queryFn: () => getOrganization(currentOrg?.id),
     enabled: !!currentOrg?.id,
   });
 
-  // Cash/bank accounts
+  // Cash/bank accounts – scoped
   const { data: cashBankAccounts = [] } = useQuery({
-    queryKey: ["cash-bank-accounts"],
+    queryKey: ["cash-bank-accounts", branchId, financialYearId],
     queryFn: async () => {
       const { data } = await supabase
         .from("chart_of_accounts")
         .select("id, account_code, account_name")
         .in("account_code", ["1001", "1002", "1006"])
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .order("account_code");
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: Infinity,
   });
 
@@ -51,34 +56,39 @@ export default function CashBook() {
     return [parseInt(selectedAccount)];
   }, [selectedAccount, cashBankAccounts]);
 
-  // Opening balance (sum of entries before start date)
+  // Opening balance – fully scoped (lines + journal entry)
   const { data: openingBalance = 0 } = useQuery({
-    queryKey: ["cash-book-opening", startDate, selectedAccount],
+    queryKey: ["cash-book-opening", startDate, selectedAccount, branchId, financialYearId],
     queryFn: async () => {
       const accountIds = getAccountIds;
       if (accountIds.length === 0) return 0;
 
-      const { data } = await supabase
+      let query = supabase
         .from("journal_entry_lines")
         .select("debit, credit, journal_entries!inner(entry_date)")
         .in("account_id", accountIds)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
+        .eq("journal_entries.branch_id", branchId)         // ← scoped inner table
+        .eq("journal_entries.financial_year_id", financialYearId) // ← scoped inner table
         .lt("journal_entries.entry_date", startDate);
 
+      const { data } = await query;
       const totalDebit = data?.reduce((s, r) => s + parseFloat(r.debit), 0) || 0;
       const totalCredit = data?.reduce((s, r) => s + parseFloat(r.credit), 0) || 0;
       return totalDebit - totalCredit;
     },
-    enabled: !!startDate && cashBankAccounts.length > 0,
+    enabled: !!startDate && cashBankAccounts.length > 0 && !!branchId && !!financialYearId,
   });
 
-  // Main entries for the period
+  // Main entries for the period – fully scoped (lines + journal entry)
   const { data: entries = [], isLoading } = useQuery({
-    queryKey: ["cash-book-entries", startDate, endDate, selectedAccount],
+    queryKey: ["cash-book-entries", startDate, endDate, selectedAccount, branchId, financialYearId],
     queryFn: async () => {
       const accountIds = getAccountIds;
       if (accountIds.length === 0) return [];
 
-      const { data } = await supabase
+      let query = supabase
         .from("journal_entry_lines")
         .select(`
           debit,
@@ -88,32 +98,43 @@ export default function CashBook() {
           journal_entries!inner(entry_date, reference, id)
         `)
         .in("account_id", accountIds)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
+        .eq("journal_entries.branch_id", branchId)         // ← scoped inner table
+        .eq("journal_entries.financial_year_id", financialYearId) // ← scoped inner table
         .gte("journal_entries.entry_date", startDate)
         .lte("journal_entries.entry_date", endDate)
         .order("journal_entries(entry_date)", { ascending: true })
         .order("id", { ascending: true });
 
+      const { data } = await query;
       return data || [];
     },
-    enabled: !!startDate && !!endDate && cashBankAccounts.length > 0,
+    enabled: !!startDate && !!endDate && cashBankAccounts.length > 0 && !!branchId && !!financialYearId,
   });
 
-  // Fetch voucher numbers separately
-  const journalEntryIds = useMemo(() => entries.map((e) => e.journal_entries?.id).filter(Boolean), [entries]);
+  // Fetch voucher numbers – scoped
+  const journalEntryIds = useMemo(
+    () => entries.map((e) => e.journal_entries?.id).filter(Boolean),
+    [entries]
+  );
 
   const { data: vouchersMap = {} } = useQuery({
-    queryKey: ["vouchers-for-entries", journalEntryIds],
+    queryKey: ["vouchers-for-entries", journalEntryIds, branchId, financialYearId],
     queryFn: async () => {
       if (journalEntryIds.length === 0) return {};
-      const { data } = await supabase
+      let query = supabase
         .from("vouchers")
         .select("voucher_no, journal_entry_id")
-        .in("journal_entry_id", journalEntryIds);
+        .in("journal_entry_id", journalEntryIds)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
+      const { data } = await query;
       const map = {};
       data?.forEach((v) => { map[v.journal_entry_id] = v.voucher_no; });
       return map;
     },
-    enabled: journalEntryIds.length > 0,
+    enabled: journalEntryIds.length > 0 && !!branchId && !!financialYearId,
   });
 
   // Running balance
@@ -131,9 +152,10 @@ export default function CashBook() {
     });
   }, [entries, openingBalance, vouchersMap]);
 
-  const closingBalance = ledgerWithBalance.length > 0
-    ? ledgerWithBalance[ledgerWithBalance.length - 1].balance
-    : openingBalance;
+  const closingBalance =
+    ledgerWithBalance.length > 0
+      ? ledgerWithBalance[ledgerWithBalance.length - 1].balance
+      : openingBalance;
 
   const totalReceipts = entries.reduce((s, e) => s + (parseFloat(e.debit) || 0), 0);
   const totalPayments = entries.reduce((s, e) => s + (parseFloat(e.credit) || 0), 0);

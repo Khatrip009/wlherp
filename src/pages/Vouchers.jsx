@@ -8,7 +8,7 @@ import BackButton from "../components/BackButton";
 
 import { getVoucherTypes, getVouchers } from "../services/voucherService";
 import { getOrganization } from "../services/organizationService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function Vouchers() {
   const [startDate, setStartDate] = useState("");
@@ -16,30 +16,38 @@ export default function Vouchers() {
   const [typeFilter, setTypeFilter] = useState("");
   const [search, setSearch] = useState("");
 
-  // ── Get current organisation from context ──
-  const { org: currentOrg } = useOrg();   // NEW
+  // ── Organisation, Branch & Financial Year from context ──
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const { data: types = [] } = useQuery({
     queryKey: ["voucher-types"],
     queryFn: getVoucherTypes,
   });
 
-  // Fetch organization using current org id
+  // Fetch organization (org‑wide)
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
     queryFn: () => getOrganization(currentOrg?.id),
     enabled: !!currentOrg?.id,
   });
 
+  // Scoped voucher list
   const { data: vouchers = [], isLoading } = useQuery({
-    queryKey: ["vouchers", startDate, endDate, typeFilter, search],
+    queryKey: ["vouchers", startDate, endDate, typeFilter, search, branchId, financialYearId],
     queryFn: () =>
-      getVouchers({
-        start_date: startDate,
-        end_date: endDate,
-        voucher_type_id: typeFilter,
-        search,
-      }),
+      getVouchers(
+        {
+          start_date: startDate,
+          end_date: endDate,
+          voucher_type_id: typeFilter,
+          search,
+        },
+        branchId,
+        financialYearId
+      ),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 

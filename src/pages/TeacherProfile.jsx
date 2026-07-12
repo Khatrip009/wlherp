@@ -31,26 +31,29 @@ export default function TeacherProfile() {
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  // ---- Fetch teacher data ----
+  // ---- Fetch teacher data (scoped) ----
   const { data: teacher, isLoading, error } = useQuery({
-    queryKey: ["teacher-profile", user?.id],
+    queryKey: ["teacher-profile", user?.id, branchId, financialYearId],
     queryFn: async () => {
+      if (!user?.id || !branchId || !financialYearId) return null;
       const { data, error } = await supabase
         .from("teachers")
         .select("*")
         .eq("user_id", user.id)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .single();
       if (error) throw error;
       return data;
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!branchId && !!financialYearId,
   });
 
-  // ---- Fetch assigned batches with medium ----
+  // ---- Fetch assigned batches with medium (scoped) ----
   const { data: batches = [] } = useQuery({
-    queryKey: ["teacher-batches", teacher?.id],
+    queryKey: ["teacher-batches", teacher?.id, branchId, financialYearId],
     queryFn: async () => {
-      if (!teacher?.id) return [];
+      if (!teacher?.id || !branchId || !financialYearId) return [];
       const { data } = await supabase
         .from("batch_teachers")
         .select(`
@@ -65,10 +68,14 @@ export default function TeacherProfile() {
             courses ( course_name )
           )
         `)
-        .eq("teacher_id", teacher.id);
+        .eq("teacher_id", teacher.id)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
+        .eq("batches.branch_id", branchId)           // scope the nested batches
+        .eq("batches.financial_year_id", financialYearId);
       return data || [];
     },
-    enabled: !!teacher?.id,
+    enabled: !!teacher?.id && !!branchId && !!financialYearId,
   });
 
   // ---- Profile update state ----
@@ -102,7 +109,7 @@ export default function TeacherProfile() {
     }
   }, [teacher]);
 
-  // ---- Update profile mutation (with branch & FY) ----
+  // ---- Update profile mutation (already includes branch & FY) ----
   const updateMutation = useMutation({
     mutationFn: async (payload) => {
       const { error } = await supabase
@@ -123,7 +130,7 @@ export default function TeacherProfile() {
     onError: (err) => toast.error(err.message || "Update failed"),
   });
 
-  // ---- Leave request mutation (with branch & FY) ----
+  // ---- Leave request mutation (already includes branch & FY) ----
   const leaveMutation = useMutation({
     mutationFn: async (payload) => {
       const { error } = await supabase.from("leaves").insert({

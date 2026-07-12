@@ -4,56 +4,71 @@ import AdminLayout from "../layouts/AdminLayout";
 import BackButton from "../components/BackButton";
 
 import { useAuth } from "../context/AuthContext";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 import { Award, Calendar, Layers, BookOpen } from "lucide-react";
 
 export default function StudentExamsPage() {
   const { user } = useAuth();
 
-  // 1. Get student ID
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  // 1. Get student ID – scoped to current branch & FY
   const { data: studentId, isLoading: idLoading } = useQuery({
-    queryKey: ["student-id", user?.id],
+    queryKey: ["student-id", user?.id, branchId, financialYearId],
     queryFn: async () => {
-      if (!user?.id) return null;
+      if (!user?.id || !branchId || !financialYearId) return null;
       const { data } = await supabase
         .from("students")
         .select("id")
         .eq("user_id", user.id)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .maybeSingle();
       return data?.id || null;
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
-  // 2. Get active batch IDs
+  // 2. Get active batch IDs – scoped
   const { data: batchIds = [], isLoading: batchesLoading } = useQuery({
-    queryKey: ["student-batch-ids", studentId],
+    queryKey: ["student-batch-ids", studentId, branchId, financialYearId],
     queryFn: async () => {
-      if (!studentId) return [];
+      if (!studentId || !branchId || !financialYearId) return [];
       const { data } = await supabase
         .from("student_batches")
         .select("batch_id")
         .eq("student_id", studentId)
-        .eq("status", "active");
+        .eq("status", "active")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
       return data.map((row) => row.batch_id);
     },
-    enabled: !!studentId,
+    enabled: !!studentId && !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
-  // 3. Get upcoming exams for those batches – now includes medium
+  // 3. Get upcoming exams for those batches – scoped
   const today = new Date().toISOString().split("T")[0];
   const { data: exams = [], isLoading: examsLoading } = useQuery({
-    queryKey: ["student-exams", batchIds],
+    queryKey: ["student-exams", batchIds, branchId, financialYearId],
     queryFn: async () => {
-      if (batchIds.length === 0) return [];
+      if (batchIds.length === 0 || !branchId || !financialYearId) return [];
       const { data } = await supabase
         .from("exams")
         .select(`*, batches(batch_name, courses(course_name), mediums(name))`)
         .in("batch_id", batchIds)
         .gte("exam_date", today)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .order("exam_date", { ascending: true });
       return data || [];
     },
-    enabled: batchIds.length > 0,
+    enabled: batchIds.length > 0 && !!branchId && !!financialYearId,
+    staleTime: 2 * 60 * 1000,
   });
 
   if (idLoading || batchesLoading || examsLoading) {

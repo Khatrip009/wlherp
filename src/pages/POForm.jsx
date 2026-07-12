@@ -17,7 +17,9 @@ export default function POForm() {
 
   // ── Organisation / Branch / Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   const [form, setForm] = useState({
     vendor: "",
@@ -35,27 +37,45 @@ export default function POForm() {
     { item_id: "", quantity_ordered: "1", unit_price: "", tax_rate_id: "" },
   ]);
 
-  // Fetch inventory items & tax rates
+  // Fetch inventory items – scoped
   const { data: items = [] } = useQuery({
-    queryKey: ["inventory-items"],
+    queryKey: ["inventory-items", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase.from("inventory_items").select("id, item_name").order("item_name");
+      let query = supabase
+        .from("inventory_items")
+        .select("id, item_name")
+        .order("item_name");
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data || [];
     },
-  });
-  const { data: taxRates = [] } = useQuery({
-    queryKey: ["tax-rates"],
-    queryFn: async () => {
-      const { data } = await supabase.from("tax_rates").select("id, name, rate").eq("is_active", true);
-      return data || [];
-    },
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
-  // Load existing PO for editing
+  // Fetch tax rates – scoped
+  const { data: taxRates = [] } = useQuery({
+    queryKey: ["tax-rates", branchId, financialYearId],
+    queryFn: async () => {
+      let query = supabase
+        .from("tax_rates")
+        .select("id, name, rate")
+        .eq("is_active", true);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
+      return data || [];
+    },
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // Load existing PO for editing – scoped
   const { data: existingPO } = useQuery({
-    queryKey: ["purchase-order", id],
-    queryFn: () => getPOById(id),
-    enabled: isEditing,
+    queryKey: ["purchase-order", id, branchId, financialYearId],
+    queryFn: () => getPOById(id, branchId, financialYearId),
+    enabled: isEditing && !!branchId && !!financialYearId,
   });
 
   useEffect(() => {
@@ -109,11 +129,14 @@ export default function POForm() {
           .eq("id", id);
         if (poError) throw poError;
 
-        // Delete old items
-        const { error: delError } = await supabase
+        // Delete old items – scoped
+        let deleteQuery = supabase
           .from("purchase_order_items")
           .delete()
           .eq("purchase_order_id", id);
+        if (branchId) deleteQuery = deleteQuery.eq("branch_id", branchId);
+        if (financialYearId) deleteQuery = deleteQuery.eq("financial_year_id", financialYearId);
+        const { error: delError } = await deleteQuery;
         if (delError) throw delError;
 
         // Insert new items with branch & FY

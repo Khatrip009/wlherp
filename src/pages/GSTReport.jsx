@@ -6,6 +6,7 @@ import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
 import toast from "react-hot-toast";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 
 // ─── HELPERS ───────────────────────────────────────────────
 
@@ -133,11 +134,11 @@ function buildGSTR1JSON(invoices, org, startDate, endDate) {
     version: "1.0.0",
     b2b: b2b.length > 0 ? b2b : [],
     b2cs: b2cs.length > 0 ? b2cs : [],
-    b2cl: [], // B2C large > 2.5L (not currently tracked)
+    b2cl: [],
     nil: nilSupplies,
     hsn: hsn.length > 0 ? hsn : [],
-    exp: [], // Exports (not currently tracked)
-    cdnr: [], // Credit notes (not yet implemented)
+    exp: [],
+    cdnr: [],
   };
 }
 
@@ -149,76 +150,100 @@ export default function GSTReport() {
   );
   const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
 
+  // ── Organisation context ──
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
   const { data: org } = useQuery({
-    queryKey: ["organization"],
-    queryFn: getOrganization,
+    queryKey: ["organization", currentOrg?.id],
+    queryFn: () => getOrganization(currentOrg?.id),
+    enabled: !!currentOrg?.id,
   });
 
-  // ── Fetch invoices with items, tax rates, students ──
+  // ── Fetch invoices with items, tax rates, students – scoped ──
   const { data: invoices = [], isLoading, refetch } = useQuery({
-    queryKey: ["gst-invoices", startDate, endDate],
+    queryKey: ["gst-invoices", startDate, endDate, branchId, financialYearId],
     queryFn: async () => {
-      // 1. Fetch invoices
-      // 1. Fetch invoices with student data (simple join)
-const { data: invoiceData, error: invError } = await supabase
-  .from("invoices")
-  .select(`
-    *,
-    students:student_id(id, first_name, last_name, admission_no, gstin, state_code, legal_business_name)
-  `)
-  .gte("invoice_date", startDate)
-  .lte("invoice_date", endDate)
-  .eq("status", "Final");
+      if (!branchId || !financialYearId) return [];
 
-if (invError) throw invError;
+      // 1. Fetch invoices – scoped
+      let invQuery = supabase
+        .from("invoices")
+        .select(`
+          *,
+          students:student_id(id, first_name, last_name, admission_no, gstin, state_code, legal_business_name)
+        `)
+        .gte("invoice_date", startDate)
+        .lte("invoice_date", endDate)
+        .eq("status", "Final")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
 
-// 2. Fetch invoice items separately
-const invoiceIds = invoiceData.map(inv => inv.id);
-const { data: itemsData, error: itemsError } = await supabase
-  .from("invoice_items")
-  .select("*")
-  .in("invoice_id", invoiceIds);
+      const { data: invoiceData, error: invError } = await invQuery;
+      if (invError) throw invError;
 
-if (itemsError) throw itemsError;
+      if (!invoiceData.length) return [];
 
-// 3. Fetch tax rates for items
-const taxRateIds = [...new Set(itemsData.map(item => item.tax_rate_id).filter(Boolean))];
-let taxRates = [];
-if (taxRateIds.length > 0) {
-  const { data: trData } = await supabase
-    .from("tax_rates")
-    .select("id, name, rate")
-    .in("id", taxRateIds);
-  taxRates = trData || [];
-}
-const taxRateMap = Object.fromEntries(taxRates.map(tr => [tr.id, tr]));
+      // 2. Fetch invoice items – scoped
+      const invoiceIds = invoiceData.map(inv => inv.id);
+      let itemsQuery = supabase
+        .from("invoice_items")
+        .select("*")
+        .in("invoice_id", invoiceIds);
 
-// 4. Fetch inventory items for product items
-const itemIds = itemsData.filter(item => item.item_type === 'product' && item.item_id).map(item => item.item_id);
-let inventoryItems = [];
-if (itemIds.length > 0) {
-  const { data: invData } = await supabase
-    .from("inventory_items")
-    .select("id, item_name, unit")
-    .in("id", itemIds);
-  inventoryItems = invData || [];
-}
-const inventoryMap = Object.fromEntries(inventoryItems.map(inv => [inv.id, inv]));
+      // Invoice items table might also have branch/FY – scope if available
+      if (branchId) itemsQuery = itemsQuery.eq("branch_id", branchId);
+      if (financialYearId) itemsQuery = itemsQuery.eq("financial_year_id", financialYearId);
 
-// 5. Combine everything
-const invoices = invoiceData.map(inv => ({
-  ...inv,
-  invoice_items: itemsData
-    .filter(item => item.invoice_id === inv.id)
-    .map(item => ({
-      ...item,
-      tax_rates: taxRateMap[item.tax_rate_id] || null,
-      inventory_items: inventoryMap[item.item_id] || null,
-    })),
-}));
+      const { data: itemsData, error: itemsError } = await itemsQuery;
+      if (itemsError) throw itemsError;
 
-return invoices;
+      // 3. Fetch tax rates for items – scoped
+      const taxRateIds = [...new Set(itemsData.map(item => item.tax_rate_id).filter(Boolean))];
+      let taxRates = [];
+      if (taxRateIds.length > 0) {
+        let taxQuery = supabase
+          .from("tax_rates")
+          .select("id, name, rate")
+          .in("id", taxRateIds);
+        if (branchId) taxQuery = taxQuery.eq("branch_id", branchId);
+        if (financialYearId) taxQuery = taxQuery.eq("financial_year_id", financialYearId);
+        const { data: trData } = await taxQuery;
+        taxRates = trData || [];
+      }
+      const taxRateMap = Object.fromEntries(taxRates.map(tr => [tr.id, tr]));
+
+      // 4. Fetch inventory items for product items – scoped
+      const productItemIds = itemsData
+        .filter(item => item.item_type === 'product' && item.item_id)
+        .map(item => item.item_id);
+      let inventoryItems = [];
+      if (productItemIds.length > 0) {
+        let invItemQuery = supabase
+          .from("inventory_items")
+          .select("id, item_name, unit")
+          .in("id", productItemIds);
+        if (branchId) invItemQuery = invItemQuery.eq("branch_id", branchId);
+        if (financialYearId) invItemQuery = invItemQuery.eq("financial_year_id", financialYearId);
+        const { data: invData } = await invItemQuery;
+        inventoryItems = invData || [];
+      }
+      const inventoryMap = Object.fromEntries(inventoryItems.map(inv => [inv.id, inv]));
+
+      // 5. Combine everything
+      return invoiceData.map(inv => ({
+        ...inv,
+        invoice_items: itemsData
+          .filter(item => item.invoice_id === inv.id)
+          .map(item => ({
+            ...item,
+            tax_rates: taxRateMap[item.tax_rate_id] || null,
+            inventory_items: inventoryMap[item.item_id] || null,
+          })),
+      }));
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 

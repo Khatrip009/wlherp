@@ -35,7 +35,9 @@ export default function StudentDocuments() {
 
   // ── Organization, Branch & Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   // Filters for students
   const [search, setSearch] = useState("");
@@ -46,7 +48,7 @@ export default function StudentDocuments() {
   const [filterStatus, setFilterStatus] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
-  // Fetch courses for filter
+  // Fetch courses for filter – organisation‑wide (no scoping)
   const { data: courses = [] } = useQuery({
     queryKey: ["courses-dropdown"],
     queryFn: async () => {
@@ -56,17 +58,25 @@ export default function StudentDocuments() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Fetch batches for filter
+  // Fetch batches for filter – scoped
   const { data: batches = [] } = useQuery({
-    queryKey: ["batches-dropdown"],
+    queryKey: ["batches-dropdown", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase.from("batches").select("id, batch_name").eq("status", "active");
+      let query = supabase
+        .from("batches")
+        .select("id, batch_name")
+        .eq("status", "active")
+        .order("batch_name");
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
-  // Fetch mediums for filter
+  // Fetch mediums for filter – organisation‑wide
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediums-dropdown"],
     queryFn: async () => {
@@ -76,14 +86,18 @@ export default function StudentDocuments() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Fetch students with all filters
+  // Fetch students with all filters – scoped
   const { data: students = [], isLoading: studentsLoading } = useQuery({
-    queryKey: ["students-filtered", { search, course: filterCourse, batch: filterBatch, medium: filterMedium, standard: filterStandard, status: filterStatus }],
+    queryKey: ["students-filtered", { search, course: filterCourse, batch: filterBatch, medium: filterMedium, standard: filterStandard, status: filterStatus }, branchId, financialYearId],
     queryFn: async () => {
       let query = supabase
         .from("students")
         .select("id, first_name, last_name, admission_no, standard, photo_url, status, medium_id")
         .order("first_name");
+
+      // Scope to branch and financial year
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
       if (search) {
         query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,admission_no.ilike.%${search}%`);
@@ -98,30 +112,39 @@ export default function StudentDocuments() {
         query = query.eq("status", filterStatus);
       }
 
-      // Course and batch filters require joining
+      // Course and batch filters require joining – scope those subqueries too
       if (filterCourse || filterBatch) {
         let studentIds = new Set();
         if (filterCourse) {
-          const { data: courseBatches } = await supabase
+          let courseBatchesQuery = supabase
             .from("batches")
             .select("id")
             .eq("course_id", filterCourse);
+          if (branchId) courseBatchesQuery = courseBatchesQuery.eq("branch_id", branchId);
+          if (financialYearId) courseBatchesQuery = courseBatchesQuery.eq("financial_year_id", financialYearId);
+          const { data: courseBatches } = await courseBatchesQuery;
           const batchIds = courseBatches?.map((b) => b.id) || [];
           if (batchIds.length > 0) {
-            const { data: batchStudents } = await supabase
+            let batchStudentsQuery = supabase
               .from("student_batches")
               .select("student_id")
               .in("batch_id", batchIds)
               .eq("status", "active");
+            if (branchId) batchStudentsQuery = batchStudentsQuery.eq("branch_id", branchId);
+            if (financialYearId) batchStudentsQuery = batchStudentsQuery.eq("financial_year_id", financialYearId);
+            const { data: batchStudents } = await batchStudentsQuery;
             batchStudents?.forEach((bs) => studentIds.add(bs.student_id));
           }
         }
         if (filterBatch) {
-          const { data: batchStudents } = await supabase
+          let batchStudentsQuery = supabase
             .from("student_batches")
             .select("student_id")
             .eq("batch_id", filterBatch)
             .eq("status", "active");
+          if (branchId) batchStudentsQuery = batchStudentsQuery.eq("branch_id", branchId);
+          if (financialYearId) batchStudentsQuery = batchStudentsQuery.eq("financial_year_id", financialYearId);
+          const { data: batchStudents } = await batchStudentsQuery;
           batchStudents?.forEach((bs) => studentIds.add(bs.student_id));
         }
         const ids = Array.from(studentIds);
@@ -132,25 +155,26 @@ export default function StudentDocuments() {
         }
       }
 
-      const { data, error } = await query.limit(200); // increased for better filtering
+      const { data, error } = await query.limit(200);
       if (error) throw error;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
-  // Fetch documents for selected student
+  // Fetch documents for selected student – scoped
   const {
     data: documents = [],
     isLoading: docsLoading,
   } = useQuery({
-    queryKey: ["student-documents", selectedStudentId],
-    queryFn: () => getStudentDocuments(selectedStudentId),
-    enabled: !!selectedStudentId,
+    queryKey: ["student-documents", selectedStudentId, branchId, financialYearId],
+    queryFn: () => getStudentDocuments(selectedStudentId, branchId, financialYearId),
+    enabled: !!selectedStudentId && !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
-  // Mutations
+  // Mutations – pass context or scoped IDs
   const uploadMutation = useMutation({
     mutationFn: async (file) => {
       // Pass context as fourth argument to uploadStudentDocument
@@ -169,7 +193,7 @@ export default function StudentDocuments() {
       const url = new URL(doc.file_path);
       const pathParts = url.pathname.split("/ShreeVidhya_Academy/"); // adjust for your bucket
       const filePath = pathParts[1] || doc.file_path;
-      await deleteStudentDocument(doc.id, filePath);
+      await deleteStudentDocument(doc.id, filePath, branchId, financialYearId);
     },
     onSuccess: () => {
       toast.success("Document deleted");
@@ -250,7 +274,6 @@ export default function StudentDocuments() {
               ))}
             </select>
           </div>
-          {/* NEW: Medium filter */}
           <div>
             <label className="text-xs font-montserrat text-secondary-dark">Medium</label>
             <select
@@ -274,7 +297,6 @@ export default function StudentDocuments() {
               className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
             />
           </div>
-          {/* NEW: Status filter */}
           <div>
             <label className="text-xs font-montserrat text-secondary-dark">Status</label>
             <select

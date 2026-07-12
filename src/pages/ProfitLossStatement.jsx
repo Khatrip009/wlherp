@@ -2,14 +2,24 @@
 import { useQuery } from "@tanstack/react-query";
 import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 
 export default function ProfitLossStatement() {
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
   const { data, isLoading } = useQuery({
-    queryKey: ["profit-loss"],
+    queryKey: ["profit-loss", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase.rpc("get_profit_loss");   // we'll create this function
+      const { data } = await supabase.rpc("get_profit_loss", {
+        p_branch_id: branchId,
+        p_financial_year_id: financialYearId,
+      });
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
   });
 
   return (

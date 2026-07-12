@@ -7,6 +7,7 @@ import AdminLayout from "../layouts/AdminLayout";
 import BackButton from "../components/BackButton";
 import { getAllExams } from "../services/examService";
 import { useAuth } from "../context/AuthContext";
+import { useOrg } from "../context/OrganizationContext";
 
 export default function Results() {
   const navigate = useNavigate();
@@ -16,18 +17,24 @@ export default function Results() {
   const role = (profile?.role || "").toLowerCase().replace(/\s+/g, "_");
   const isAdmin = role === "admin" || role === "super_admin";
 
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
   const {
     data: exams = [],
     isLoading,
     isError,
     error,
   } = useQuery({
-    queryKey: ["all-exams"],
+    queryKey: ["all-exams", branchId, financialYearId],
     queryFn: async () => {
-      const result = await getAllExams();
+      const result = await getAllExams(branchId, financialYearId);
       if (!result) throw new Error("No data returned");
       return result;
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 

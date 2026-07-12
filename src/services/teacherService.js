@@ -28,7 +28,12 @@ function cleanTeacherData(data) {
 }
 
 // ─── GET TEACHERS (paginated) ────────────────────────────
-export async function getTeachers({ pageParam = 0, filters = {} }) {
+export async function getTeachers({
+  pageParam = 0,
+  filters = {},
+  branchId,
+  financialYearId,
+} = {}) {
   const limit = 10;
   const from = pageParam * limit;
   const to = from + limit - 1;
@@ -48,18 +53,26 @@ export async function getTeachers({ pageParam = 0, filters = {} }) {
     .order("id", { ascending: false })
     .range(from, to);
 
+  // Scope main table
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
   if (filters.search) {
     query = query.or(
       `first_name.ilike.%${filters.search}%,last_name.ilike.%${filters.search}%,employee_code.ilike.%${filters.search}%`
     );
   }
 
+  // Scoped junction filter helper
   const filterByJunction = async (table, column, value) => {
     if (!value) return null;
-    const { data: ids, error } = await supabase
+    let subQuery = supabase
       .from(table)
       .select("teacher_id")
       .eq(column, value);
+    if (branchId) subQuery = subQuery.eq("branch_id", branchId);
+    if (financialYearId) subQuery = subQuery.eq("financial_year_id", financialYearId);
+    const { data: ids, error } = await subQuery;
     if (error) throw error;
     return ids.map((t) => t.teacher_id);
   };
@@ -119,7 +132,11 @@ export async function getTeachers({ pageParam = 0, filters = {} }) {
 }
 
 // ─── EXPORT ALL TEACHERS ──────────────────────────────────
-export async function getAllTeachersForExport(filters = {}) {
+export async function getAllTeachersForExport(
+  filters = {},
+  branchId,
+  financialYearId
+) {
   let query = supabase
     .from("teachers")
     .select(
@@ -133,6 +150,9 @@ export async function getAllTeachersForExport(filters = {}) {
     )
     .order("id", { ascending: false });
 
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
   if (filters.search) {
     query = query.or(
       `first_name.ilike.%${filters.search}%,last_name.ilike.%${filters.search}%,employee_code.ilike.%${filters.search}%`
@@ -141,10 +161,13 @@ export async function getAllTeachersForExport(filters = {}) {
 
   const filterByJunction = async (table, column, value) => {
     if (!value) return null;
-    const { data: ids, error } = await supabase
+    let subQuery = supabase
       .from(table)
       .select("teacher_id")
       .eq(column, value);
+    if (branchId) subQuery = subQuery.eq("branch_id", branchId);
+    if (financialYearId) subQuery = subQuery.eq("financial_year_id", financialYearId);
+    const { data: ids, error } = await subQuery;
     if (error) throw error;
     return ids.map((t) => t.teacher_id);
   };
@@ -190,11 +213,10 @@ export async function getAllTeachersForExport(filters = {}) {
 }
 
 // ─── CREATE TEACHER ──────────────────────────────────────
-// context: { branchId, financialYearId }
 export async function createTeacher(payload, context) {
   const {
-    email,           // keep for future mapping
-    password,        // ignored (no auth creation)
+    email,
+    password,        // ignored
     medium_ids,
     course_ids,
     course_level_ids,
@@ -203,11 +225,8 @@ export async function createTeacher(payload, context) {
   } = payload;
 
   const { branchId, financialYearId } = context;
-
-  // Include email in the cleaned data so it's stored on the record
   const cleanedTeacher = cleanTeacherData({ ...teacherData, email });
 
-  // No auth user creation – user_id stays null
   const { data: teacher, error } = await supabase
     .from("teachers")
     .insert([{
@@ -253,16 +272,29 @@ export async function updateTeacher(id, payload, context) {
   const { branchId, financialYearId } = context;
   const cleanedTeacher = cleanTeacherData(teacherData);
 
-  const { data: teacher, error } = await supabase
+  // Update teacher record with scope
+  let updateQuery = supabase
     .from("teachers")
     .update({ ...cleanedTeacher, branch_id: branchId, financial_year_id: financialYearId })
-    .eq("id", id)
-    .select()
-    .single();
+    .eq("id", id);
+
+  if (branchId) updateQuery = updateQuery.eq("branch_id", branchId);
+  if (financialYearId) updateQuery = updateQuery.eq("financial_year_id", financialYearId);
+
+  const { data: teacher, error } = await updateQuery.select().single();
   if (error) throw error;
 
+  // Replace junction records – scoped deletions and inserts
   const replaceJunction = async (table, idField, ids) => {
-    await supabase.from(table).delete().eq("teacher_id", id);
+    // Delete existing scoped to teacher_id, branch, FY
+    let deleteQuery = supabase
+      .from(table)
+      .delete()
+      .eq("teacher_id", id);
+    if (branchId) deleteQuery = deleteQuery.eq("branch_id", branchId);
+    if (financialYearId) deleteQuery = deleteQuery.eq("financial_year_id", financialYearId);
+    await deleteQuery;
+
     if (ids && ids.length > 0) {
       const rows = ids.map((val) => ({
         teacher_id: id,
@@ -286,7 +318,8 @@ export async function updateTeacher(id, payload, context) {
 // ─── DELETE (soft) ────────────────────────────────────────
 export async function deleteTeacher(id, context) {
   const { branchId, financialYearId } = context;
-  const { error } = await supabase
+
+  let query = supabase
     .from("teachers")
     .update({
       deleted_at: new Date().toISOString(),
@@ -294,14 +327,24 @@ export async function deleteTeacher(id, context) {
       financial_year_id: financialYearId,
     })
     .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { error } = await query;
   if (error) throw error;
 }
 
 // ─── OPTIONS ──────────────────────────────────────────────
-export async function getTeacherOptions() {
-  const { data, error } = await supabase
+export async function getTeacherOptions(branchId, financialYearId) {
+  let query = supabase
     .from("teachers")
     .select("id, first_name, last_name");
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data;
 }
@@ -345,7 +388,8 @@ export async function getSubjectOptions() {
 // ─── SALARY & ACTIVE TEACHERS ──────────────────────────────
 export async function updateTeacherSalary(teacherId, payload, context) {
   const { branchId, financialYearId } = context;
-  const { data, error } = await supabase
+
+  let query = supabase
     .from('teachers')
     .update({
       salary_type: payload.salary_type,
@@ -355,43 +399,60 @@ export async function updateTeacherSalary(teacherId, payload, context) {
       branch_id: branchId,
       financial_year_id: financialYearId,
     })
-    .eq('id', teacherId)
-    .select()
-    .single();
+    .eq('id', teacherId);
+
+  if (branchId) query = query.eq('branch_id', branchId);
+  if (financialYearId) query = query.eq('financial_year_id', financialYearId);
+
+  const { data, error } = await query.select().single();
   if (error) throw error;
   return data;
 }
 
-export async function getTeacherWithSalary(id) {
-  const { data, error } = await supabase
+export async function getTeacherWithSalary(id, branchId, financialYearId) {
+  let query = supabase
     .from('teachers')
     .select('*')
-    .eq('id', id)
-    .single();
+    .eq('id', id);
+
+  if (branchId) query = query.eq('branch_id', branchId);
+  if (financialYearId) query = query.eq('financial_year_id', financialYearId);
+
+  const { data, error } = await query.single();
   if (error) throw error;
   return data;
 }
 
-export async function getTeachersForSalary() {
-  const { data, error } = await supabase
+export async function getTeachersForSalary(branchId, financialYearId) {
+  let query = supabase
     .from('teachers')
     .select('id, first_name, last_name, salary_type, monthly_salary, per_lecture_rate, tds_percentage')
     .eq('status', 'active');
+
+  if (branchId) query = query.eq('branch_id', branchId);
+  if (financialYearId) query = query.eq('financial_year_id', financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
-export async function getActiveTeachers() {
-  const { data, error } = await supabase
+export async function getActiveTeachers(branchId, financialYearId) {
+  let query = supabase
     .from('teachers')
     .select('id, first_name, last_name, employee_code, salary_type, monthly_salary, per_lecture_rate, tds_percentage')
     .eq('status', 'active')
     .order('first_name');
+
+  if (branchId) query = query.eq('branch_id', branchId);
+  if (financialYearId) query = query.eq('financial_year_id', financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
-// ─── HELPER: get current teacher ID from auth ──────────────
+// ─── HELPER: get current teacher ID from auth (cross‑branch, no scope) ──
 export async function getCurrentTeacherId() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;

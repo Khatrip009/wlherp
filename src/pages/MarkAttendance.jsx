@@ -19,15 +19,16 @@ import {
   saveAttendance,
 } from "../services/attendanceService";
 import { supabase } from "../api/supabase";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function MarkAttendance() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
 
   // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const [students, setStudents] = useState([]);
   const [attendance, setAttendance] = useState({});
@@ -37,13 +38,15 @@ export default function MarkAttendance() {
   const [sessionInfo, setSessionInfo] = useState(null);
 
   useEffect(() => {
-    loadData();
-  }, [sessionId]);
+    if (branchId && financialYearId) {
+      loadData();
+    }
+  }, [sessionId, branchId, financialYearId]);
 
   async function loadData() {
     setLoading(true);
     try {
-      // Fetch session info including batch's medium
+      // Fetch session info scoped to the current branch & financial year
       const { data: session } = await supabase
         .from("attendance_sessions")
         .select(
@@ -51,6 +54,8 @@ export default function MarkAttendance() {
            batches(batch_name, medium_id, mediums(name))`
         )
         .eq("id", sessionId)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .single();
 
       if (!session) {
@@ -60,10 +65,18 @@ export default function MarkAttendance() {
       }
       setSessionInfo(session);
 
-      const studentList = await getStudentsByBatch(session.batch_id);
+      const studentList = await getStudentsByBatch(
+        session.batch_id,
+        branchId,
+        financialYearId
+      );
       setStudents(studentList);
 
-      const marked = await getMarkedAttendance(sessionId);
+      const marked = await getMarkedAttendance(
+        sessionId,
+        branchId,
+        financialYearId
+      );
       const initialAttendance = {};
       const initialRemarks = {};
       marked.forEach((m) => {
@@ -102,16 +115,18 @@ export default function MarkAttendance() {
 
     setSaving(true);
     try {
-      // Pass the context (financialYearId) to saveAttendance
-      await saveAttendance(sessionId, records, selectedFinancialYear?.id);
+      // Save attendance records with branch & financial year context
+      await saveAttendance(sessionId, records, branchId, financialYearId);
 
-      // Link the session to the current teacher
+      // Link the session to the current teacher (scoped)
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: teacherData } = await supabase
           .from("teachers")
           .select("id")
           .eq("user_id", user.id)
+          .eq("branch_id", branchId)
+          .eq("financial_year_id", financialYearId)
           .single();
 
         if (teacherData?.id) {
@@ -119,10 +134,12 @@ export default function MarkAttendance() {
             .from("attendance_sessions")
             .update({
               teacher_id: teacherData.id,
-              branch_id: branch?.id,           // optional RLS compliance
-              financial_year_id: selectedFinancialYear?.id,
+              branch_id: branchId,
+              financial_year_id: financialYearId,
             })
             .eq("id", sessionId)
+            .eq("branch_id", branchId)
+            .eq("financial_year_id", financialYearId)
             .is("teacher_id", null);
 
           if (updateError) {

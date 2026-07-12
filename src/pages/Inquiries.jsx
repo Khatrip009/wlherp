@@ -36,7 +36,9 @@ import { useOrg } from "../context/OrganizationContext";
 export default function Inquiries() {
   const queryClient = useQueryClient();
   const { branch, selectedFinancialYear } = useOrg();
-  const isBranchReady = !!branch?.id;
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const isBranchReady = !!branchId && !!financialYearId;
 
   // Filters
   const [search, setSearch] = useState("");
@@ -56,7 +58,7 @@ export default function Inquiries() {
   const [editing, setEditing] = useState(null);
   const fileInputRef = useRef(null);
 
-  // Paginated data
+  // Paginated data – scoped to branch & FY
   const {
     data,
     isLoading,
@@ -64,9 +66,14 @@ export default function Inquiries() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["inquiries", allFilters],
+    queryKey: ["inquiries", allFilters, branchId, financialYearId],
     queryFn: ({ pageParam = 0 }) =>
-      getInquiries({ pageParam, filters: allFilters }),
+      getInquiries({
+        pageParam,
+        filters: allFilters,
+        branchId,
+        financialYearId,
+      }),
     getNextPageParam: (lastPage, allPages) => {
       const totalFetched = allPages.reduce(
         (sum, page) => sum + page.data.length,
@@ -79,11 +86,12 @@ export default function Inquiries() {
     },
     initialPageParam: 0,
     staleTime: 2 * 60 * 1000,
+    enabled: isBranchReady,
   });
 
   const inquiries = data?.pages.flatMap((page) => page.data) || [];
 
-  // Dropdowns for filters
+  // Dropdowns for filters (organisation‑wide, no scoping needed)
   const { data: courses = [] } = useQuery({
     queryKey: ["coursesDropdown"],
     queryFn: getCourseOptions,
@@ -97,7 +105,6 @@ export default function Inquiries() {
   });
 
   // ── Helpers ──
-  // Convert empty strings to null (for date, integer, foreign key fields)
   const cleanNullable = (value) => (value === "" ? null : value);
   const cleanPayload = (payload) => ({
     ...payload,
@@ -112,8 +119,8 @@ export default function Inquiries() {
     mutationFn: async (payload) => {
       const clean = cleanPayload(payload);
       return createInquiry(clean, {
-        branchId: branch?.id,
-        financialYearId: selectedFinancialYear?.id,
+        branchId,
+        financialYearId,
       });
     },
     onSuccess: () => {
@@ -130,8 +137,8 @@ export default function Inquiries() {
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }) =>
       updateInquiry(id, cleanPayload(payload), {
-        branchId: branch?.id,
-        financialYearId: selectedFinancialYear?.id,
+        branchId,
+        financialYearId,
       }),
     onSuccess: () => {
       toast.success("Inquiry updated");
@@ -144,8 +151,8 @@ export default function Inquiries() {
   const deleteMutation = useMutation({
     mutationFn: (id) =>
       deleteInquiry(id, {
-        branchId: branch?.id,
-        financialYearId: selectedFinancialYear?.id,
+        branchId,
+        financialYearId,
       }),
     onSuccess: () => {
       toast.success("Inquiry deleted");
@@ -155,7 +162,11 @@ export default function Inquiries() {
   });
 
   const convertMutation = useMutation({
-    mutationFn: convertInquiryToStudent,
+    mutationFn: (inquiry) =>
+      convertInquiryToStudent(inquiry, {
+        branchId,
+        financialYearId,
+      }),
     onSuccess: (result) => {
       if (result.success) {
         toast.success("Admission created successfully");
@@ -168,7 +179,7 @@ export default function Inquiries() {
     onError: (err) => toast.error("Conversion error: " + err.message),
   });
 
-  // CSV Import (with context and cleaning)
+  // CSV Import (with context)
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -193,8 +204,8 @@ export default function Inquiries() {
               status: row.status || "New",
             });
             await createInquiry(payload, {
-              branchId: branch?.id,
-              financialYearId: selectedFinancialYear?.id,
+              branchId,
+              financialYearId,
             });
             successCount++;
           } catch (err) {
@@ -208,10 +219,14 @@ export default function Inquiries() {
     });
   }
 
-  // CSV Export
+  // CSV Export (with branch/FY scope)
   async function handleCSVExport() {
     try {
-      const allData = await getAllInquiriesForExport(allFilters);
+      const allData = await getAllInquiriesForExport(
+        allFilters,
+        branchId,
+        financialYearId
+      );
       const csv = Papa.unparse(
         allData.map((inq) => ({
           inquiry_no: inq.inquiry_no,
@@ -624,4 +639,4 @@ export default function Inquiries() {
       )}
     </AdminLayout>
   );
-}
+} 

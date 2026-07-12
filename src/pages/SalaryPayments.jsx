@@ -11,8 +11,10 @@ import toast from "react-hot-toast";
 import { useOrg } from "../context/OrganizationContext";   // NEW
 
 export default function SalaryPayments() {
-  // ── Context for potential future writes – not currently used ──
-  useOrg();   // just to have it available, no mutations here
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const [search, setSearch] = useState("");
   const [teacherFilter, setTeacherFilter] = useState("");
@@ -20,9 +22,12 @@ export default function SalaryPayments() {
   const [endDate, setEndDate] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
+  // Fetch salary payments – now scoped to branch & FY
   const { data: payments = [], isLoading } = useQuery({
-    queryKey: ["salary-payments"],
-    queryFn: getSalaryPayments,
+    queryKey: ["salary-payments", branchId, financialYearId],
+    queryFn: () => getSalaryPayments({}, branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
   const filteredPayments = useMemo(() => {

@@ -2,13 +2,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../api/supabase';
 import { useAuth } from '../context/AuthContext';
-import { useOrg } from '../context/OrganizationContext';   // NEW
+import { useOrg } from '../context/OrganizationContext';
 import toast from 'react-hot-toast';
 import { X } from 'lucide-react';
 
 export default function OnlineClassModal({ isOpen, onClose, onSuccess, initialData = null }) {
   const { profile } = useAuth();
-  const { branch, selectedFinancialYear } = useOrg();      // NEW
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -26,39 +28,54 @@ export default function OnlineClassModal({ isOpen, onClose, onSuccess, initialDa
   const isAdmin = userRole === 'admin' || userRole === 'super_admin';
   const isTeacher = userRole === 'teacher';
 
+  // Fetch dropdown data – scoped
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !branchId || !financialYearId) return;
+
     const fetchData = async () => {
+      // Batches for the current branch & FY
       const { data: batchesData } = await supabase
         .from('batches')
         .select('id, batch_name, course_id, courses(course_name)')
         .eq('status', 'active')
+        .eq('branch_id', branchId)
+        .eq('financial_year_id', financialYearId)
         .order('batch_name');
       setBatches(batchesData || []);
 
+      // Teachers – admin sees all in the branch, teacher gets self
       if (isAdmin) {
         const { data: teachersData } = await supabase
           .from('teachers')
           .select('id, first_name, last_name, employee_code')
           .eq('status', 'active')
+          .eq('branch_id', branchId)
+          .eq('financial_year_id', financialYearId)
           .order('first_name');
         setTeachers(teachersData || []);
-      } else if (isTeacher) {
+      } else if (isTeacher && profile?.id) {
         const { data: teacherData } = await supabase
           .from('teachers')
           .select('id')
           .eq('user_id', profile.id)
+          .eq('branch_id', branchId)
+          .eq('financial_year_id', financialYearId)
           .maybeSingle();
-        if (teacherData) setTeacherId(teacherData.id);
+
+        if (teacherData) {
+          setTeacherId(teacherData.id);
+        }
       }
     };
-    fetchData();
-  }, [isOpen, isAdmin, isTeacher, profile.id]);
 
+    fetchData();
+  }, [isOpen, isAdmin, isTeacher, profile?.id, branchId, financialYearId]);
+
+  // When batch changes, fetch batch_teachers (scoped)
   useEffect(() => {
-    if (!batchId) {
+    if (!batchId || !branchId || !financialYearId) {
       setBatchTeachers([]);
-      setTeacherId('');
+      if (!isAdmin) setTeacherId(''); // reset if not admin and no batch
       return;
     }
 
@@ -66,16 +83,19 @@ export default function OnlineClassModal({ isOpen, onClose, onSuccess, initialDa
       const { data } = await supabase
         .from('batch_teachers')
         .select('teacher_id, teachers(first_name, last_name, employee_code)')
-        .eq('batch_id', batchId);
+        .eq('batch_id', batchId)
+        .eq('branch_id', branchId)
+        .eq('financial_year_id', financialYearId);
+
       const teachersList = data?.map(item => ({
         id: item.teacher_id,
         ...item.teachers,
       })) || [];
       setBatchTeachers(teachersList);
 
+      // Auto-select teacher if applicable
       const currentId = teacherId ? parseInt(teacherId) : null;
       const stillExists = teachersList.some(t => t.id === currentId);
-
       if (currentId && !stillExists) {
         setTeacherId('');
       } else if (!currentId && !isAdmin && teachersList.length === 1) {
@@ -84,8 +104,9 @@ export default function OnlineClassModal({ isOpen, onClose, onSuccess, initialDa
     };
 
     fetchBatchTeachers();
-  }, [batchId, isAdmin, teacherId]);
+  }, [batchId, isAdmin, teacherId, branchId, financialYearId]);
 
+  // Populate form when editing
   useEffect(() => {
     if (isEdit && initialData) {
       setTitle(initialData.title || '');
@@ -111,8 +132,8 @@ export default function OnlineClassModal({ isOpen, onClose, onSuccess, initialDa
     setLoading(true);
     try {
       const context = {
-        branch_id: branch?.id,
-        financial_year_id: selectedFinancialYear?.id,
+        branch_id: branchId,
+        financial_year_id: financialYearId,
       };
 
       if (isEdit) {
@@ -125,7 +146,7 @@ export default function OnlineClassModal({ isOpen, onClose, onSuccess, initialDa
             duration_minutes: Number(duration),
             batch_id: batchId,
             teacher_id: Number(teacherId),
-            ...context,                                 // NEW: include branch & FY
+            ...context,
           })
           .eq('id', initialData.id)
           .select()
@@ -145,7 +166,7 @@ export default function OnlineClassModal({ isOpen, onClose, onSuccess, initialDa
             teacher_id: Number(teacherId),
             room_name: roomName,
             status: 'scheduled',
-            ...context,                                 // NEW: include branch & FY
+            ...context,
           })
           .select()
           .single();

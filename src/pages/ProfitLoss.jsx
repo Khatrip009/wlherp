@@ -19,7 +19,7 @@ import {
 import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 const GROUP_CONFIG = {
   "Direct Income": { parent: 4000, type: "income" },
@@ -39,8 +39,10 @@ export default function ProfitLoss() {
   const [startDate, setStartDate] = useState(firstOfMonth);
   const [endDate, setEndDate] = useState(today);
 
-  // ── Current organisation from context ──
-  const { org: currentOrg } = useOrg();
+  // ── Organisation, Branch & Financial Year context ──
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
@@ -48,18 +50,21 @@ export default function ProfitLoss() {
     enabled: !!currentOrg?.id,
   });
 
-  const chartRef = useRef(null); // for capturing charts as image
+  const chartRef = useRef(null);
 
+  // Profit & Loss data – now scoped with branch & FY
   const { data: accounts = [], isLoading } = useQuery({
-    queryKey: ["profit-loss", startDate, endDate],
+    queryKey: ["profit-loss", startDate, endDate, branchId, financialYearId],
     queryFn: async () => {
       const { data } = await supabase.rpc("get_profit_loss", {
         start_date: startDate,
         end_date: endDate,
+        p_branch_id: branchId,
+        p_financial_year_id: financialYearId,
       });
       return data || [];
     },
-    enabled: !!(startDate && endDate),
+    enabled: !!(startDate && endDate && branchId && financialYearId),
   });
 
   const groups = useMemo(() => {

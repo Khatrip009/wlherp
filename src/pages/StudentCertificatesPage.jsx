@@ -6,22 +6,35 @@ import BackButton from "../components/BackButton";
 import { useStudentId } from "../hooks/useStudentId";
 import { supabase } from "../api/supabase";
 import { generateCertificatePdf } from "../utils/certificatePdf";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 
 export default function StudentCertificatesPage() {
   const { studentId, isLoading: idLoading } = useStudentId();
 
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
   const { data: certificates = [], isLoading } = useQuery({
-    queryKey: ["student-certificates-list", studentId],
+    queryKey: ["student-certificates-list", studentId, branchId, financialYearId],
     queryFn: async () => {
       if (!studentId) return [];
-      const { data } = await supabase
+      let query = supabase
         .from("certificates")
         .select(`*, courses(course_name), course_levels(level_name)`)
         .eq("student_id", studentId)
         .order("issue_date", { ascending: false });
+
+      // Scope to branch & FY
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data } = await query;
       return data || [];
     },
-    enabled: !!studentId,
+    enabled: !!studentId && !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
   async function handleDownload(cert) {

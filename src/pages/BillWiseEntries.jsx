@@ -12,12 +12,15 @@ import {
   recordBillPayment,
 } from "../services/billWiseService";
 import { getOrganization } from "../services/organizationService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function BillWiseEntries() {
   const queryClient = useQueryClient();
-  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();   // NEW
-  const context = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  const context = { branchId, financialYearId };
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -37,26 +40,32 @@ export default function BillWiseEntries() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  // Fetch organization with current org id
+  // Fetch organization details
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
     queryFn: () => getOrganization(currentOrg?.id),
     enabled: !!currentOrg?.id,
   });
 
+  // Bills query – now scoped with branchId & financialYearId
   const { data: bills = [], isLoading } = useQuery({
-    queryKey: ["bill-wise-entries", search, statusFilter, startDate, endDate],
+    queryKey: ["bill-wise-entries", search, statusFilter, startDate, endDate, branchId, financialYearId],
     queryFn: () =>
-      getBillWiseEntries({
-        search,
-        status: statusFilter,
-        start_date: startDate,
-        end_date: endDate,
-      }),
+      getBillWiseEntries(
+        {
+          search,
+          status: statusFilter,
+          start_date: startDate,
+          end_date: endDate,
+        },
+        branchId,
+        financialYearId
+      ),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
-  // Mutations now pass context
+  // Mutations – create, update, payment use context; delete uses explicit IDs
   const createMut = useMutation({
     mutationFn: (payload) => createBillWiseEntry(payload, context),
     onSuccess: () => {
@@ -80,7 +89,7 @@ export default function BillWiseEntries() {
   });
 
   const deleteMut = useMutation({
-    mutationFn: deleteBillWiseEntry,   // hard delete, RLS protects
+    mutationFn: (id) => deleteBillWiseEntry(id, branchId, financialYearId),
     onSuccess: () => {
       toast.success("Bill deleted");
       queryClient.invalidateQueries(["bill-wise-entries"]);

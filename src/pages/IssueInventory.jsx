@@ -4,57 +4,87 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { User, Box } from "lucide-react";
 import AdminLayout from "../layouts/AdminLayout";
-import { getInventoryItems, addInventoryTransaction } from "../services/inventoryService";
+import {
+  getInventoryItems,
+  addInventoryTransaction,
+} from "../services/inventoryService";
 import { supabase } from "../api/supabase";
+import { useOrg } from "../context/OrganizationContext"; // NEW
 
 export default function IssueInventory() {
   const queryClient = useQueryClient();
+
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg(); // NEW
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
+
   const [studentId, setStudentId] = useState("");
   const [itemId, setItemId] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState("");
 
+  // Students – scoped to branch & FY
   const { data: students = [] } = useQuery({
-    queryKey: ["students-list"],
+    queryKey: ["students-list", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase.from("students").select("id, first_name, last_name, admission_no").order("first_name");
+      let query = supabase
+        .from("students")
+        .select("id, first_name, last_name, admission_no")
+        .order("first_name");
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
+  // Inventory items – scoped
   const { data: items = [] } = useQuery({
-    queryKey: ["inv-items"],
-    queryFn: getInventoryItems,
+    queryKey: ["inv-items", branchId, financialYearId],
+    queryFn: () => getInventoryItems({}, branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
+  // Issue mutation – passes context
   const issueMutation = useMutation({
     mutationFn: async () => {
-      const selectedStudent = students.find(s => s.id == studentId);
-      const studentName = selectedStudent ? `${selectedStudent.first_name} ${selectedStudent.last_name}` : "Unknown";
+      const selectedStudent = students.find((s) => s.id == studentId);
+      const studentName = selectedStudent
+        ? `${selectedStudent.first_name} ${selectedStudent.last_name}`
+        : "Unknown";
 
-      // Get the item's unit price (cost)
-      const { data: itemData, error: itemError } = await supabase
-        .from('inventory_items')
-        .select('unit_price')
-        .eq('id', itemId)
-        .single();
+      // Fetch the item's unit price – scoped
+      let itemQuery = supabase
+        .from("inventory_items")
+        .select("unit_price")
+        .eq("id", itemId);
+
+      if (branchId) itemQuery = itemQuery.eq("branch_id", branchId);
+      if (financialYearId) itemQuery = itemQuery.eq("financial_year_id", financialYearId);
+
+      const { data: itemData, error: itemError } = await itemQuery.single();
       if (itemError) throw itemError;
 
       const unitPrice = itemData?.unit_price || 0;
       const quantityNum = parseInt(quantity, 10);
-      const totalAmount = unitPrice * quantityNum;
 
       const payload = {
         item_id: parseInt(itemId, 10),
         transaction_type: "issue",
         quantity: quantityNum,
         unit_price: unitPrice,
-        // total_amount is computed in the DB if you have a generated column
         reference: `Student: ${studentName} (${selectedStudent?.admission_no || ""})`,
         notes,
       };
 
-      await addInventoryTransaction(payload);
+      await addInventoryTransaction(payload, ctx);
     },
     onSuccess: () => {
       toast.success("Item issued to student");
@@ -86,10 +116,17 @@ export default function IssueInventory() {
 
   return (
     <AdminLayout>
-      <h1 className="text-3xl font-righteous text-primary-dark mb-6">Issue Inventory to Student</h1>
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl p-6 shadow-sm max-w-xl space-y-4">
+      <h1 className="text-3xl font-righteous text-primary-dark mb-6">
+        Issue Inventory to Student
+      </h1>
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white rounded-xl p-6 shadow-sm max-w-xl space-y-4"
+      >
         <div>
-          <label className="block text-sm mb-1"><User size={14} className="inline mr-1" /> Student</label>
+          <label className="block text-sm mb-1">
+            <User size={14} className="inline mr-1" /> Student
+          </label>
           <select
             value={studentId}
             onChange={(e) => setStudentId(e.target.value)}
@@ -106,7 +143,9 @@ export default function IssueInventory() {
         </div>
 
         <div>
-          <label className="block text-sm mb-1"><Box size={14} className="inline mr-1" /> Item</label>
+          <label className="block text-sm mb-1">
+            <Box size={14} className="inline mr-1" /> Item
+          </label>
           <select
             value={itemId}
             onChange={(e) => setItemId(e.target.value)}

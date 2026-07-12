@@ -2,12 +2,24 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPurchaseInvoices, deletePurchaseInvoice, finalizePurchaseInvoice } from "../services/purchaseInvoiceService";
+import {
+  getPurchaseInvoices,
+  deletePurchaseInvoice,
+  finalizePurchaseInvoice,
+} from "../services/purchaseInvoiceService";
 import { supabase } from "../api/supabase";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 import toast from "react-hot-toast";
 import AdminLayout from "../layouts/AdminLayout";
-import { Search, Plus, Eye, Edit3, Trash2, CheckCircle, Loader } from "lucide-react";
+import {
+  Search,
+  Plus,
+  Eye,
+  Edit3,
+  Trash2,
+  CheckCircle,
+  Loader,
+} from "lucide-react";
 
 export default function PurchaseInvoices() {
   const queryClient = useQueryClient();
@@ -16,26 +28,55 @@ export default function PurchaseInvoices() {
   const [vendorFilter, setVendorFilter] = useState("");
 
   // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
+  // Vendors dropdown – now scoped
   const { data: vendors = [] } = useQuery({
-    queryKey: ["vendors-dropdown"],
+    queryKey: ["vendors-dropdown", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase.from("vendors").select("id, vendor_name").order("vendor_name");
+      let query = supabase
+        .from("vendors")
+        .select("id, vendor_name")
+        .order("vendor_name");
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
-  const { data: invoices = [], isLoading } = useQuery({
-    queryKey: ["purchase-invoices", search, statusFilter, vendorFilter],
-    queryFn: () => getPurchaseInvoices({ search, status: statusFilter, vendor_id: vendorFilter }),
+  // Purchase invoices – scoped
+  const {
+    data: invoices = [],
+    isLoading,
+  } = useQuery({
+    queryKey: [
+      "purchase-invoices",
+      search,
+      statusFilter,
+      vendorFilter,
+      branchId,
+      financialYearId,
+    ],
+    queryFn: () =>
+      getPurchaseInvoices(
+        { search, status: statusFilter, vendor_id: vendorFilter },
+        branchId,
+        financialYearId
+      ),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
+  // Delete mutation – scoped
   const deleteMutation = useMutation({
-    mutationFn: deletePurchaseInvoice,   // no context needed
+    mutationFn: (id) =>
+      deletePurchaseInvoice(id, branchId, financialYearId),
     onSuccess: () => {
       toast.success("Invoice deleted");
       queryClient.invalidateQueries(["purchase-invoices"]);
@@ -43,8 +84,9 @@ export default function PurchaseInvoices() {
     onError: (err) => toast.error(err.message),
   });
 
+  // Finalize mutation – already passes context
   const finalizeMutation = useMutation({
-    mutationFn: (id) => finalizePurchaseInvoice(id, ctx),   // pass context
+    mutationFn: (id) => finalizePurchaseInvoice(id, ctx),
     onSuccess: () => {
       toast.success("Invoice finalized");
       queryClient.invalidateQueries(["purchase-invoices"]);
@@ -57,7 +99,11 @@ export default function PurchaseInvoices() {
   };
 
   const handleFinalize = (id) => {
-    if (window.confirm("Finalize this invoice? This will update stock and create journal entry.")) {
+    if (
+      window.confirm(
+        "Finalize this invoice? This will update stock and create journal entry."
+      )
+    ) {
       finalizeMutation.mutate(id);
     }
   };
@@ -65,7 +111,9 @@ export default function PurchaseInvoices() {
   return (
     <AdminLayout>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">Purchase Invoices</h1>
+        <h1 className="text-3xl font-righteous text-primary-dark">
+          Purchase Invoices
+        </h1>
         <Link
           to="/purchase-invoices/new"
           className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
@@ -76,7 +124,10 @@ export default function PurchaseInvoices() {
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+          <Search
+            size={18}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary"
+          />
           <input
             type="text"
             placeholder="Search by invoice number, vendor..."
@@ -92,7 +143,9 @@ export default function PurchaseInvoices() {
         >
           <option value="">All Vendors</option>
           {vendors.map((v) => (
-            <option key={v.id} value={v.id}>{v.vendor_name}</option>
+            <option key={v.id} value={v.id}>
+              {v.vendor_name}
+            </option>
           ))}
         </select>
         <select
@@ -122,44 +175,86 @@ export default function PurchaseInvoices() {
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={6} className="p-6 text-center text-secondary">Loading…</td></tr>
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="p-6 text-center text-secondary"
+                  >
+                    Loading…
+                  </td>
+                </tr>
               ) : invoices.length === 0 ? (
-                <tr><td colSpan={6} className="p-6 text-center text-secondary">No purchase invoices.</td></tr>
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="p-6 text-center text-secondary"
+                  >
+                    No purchase invoices.
+                  </td>
+                </tr>
               ) : (
                 invoices.map((inv) => (
-                  <tr key={inv.id} className="border-t hover:bg-gray-50 transition">
-                    <td className="p-3 text-sm font-medium">{inv.invoice_number}</td>
-                    <td className="p-3 text-sm">{inv.vendors?.vendor_name}</td>
-                    <td className="p-3 text-sm">{inv.invoice_date}</td>
-                    <td className="p-3 text-right text-sm font-medium">
-                      ₹ {Number(inv.grand_total).toLocaleString("en-IN")}
+                  <tr
+                    key={inv.id}
+                    className="border-t hover:bg-gray-50 transition"
+                  >
+                    <td className="p-3 text-sm font-medium">
+                      {inv.invoice_number}
                     </td>
                     <td className="p-3 text-sm">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        inv.status === "Final" ? "bg-green-100 text-green-700" :
-                        inv.status === "Draft" ? "bg-yellow-100 text-yellow-700" :
-                        "bg-red-100 text-red-700"
-                      }`}>{inv.status}</span>
+                      {inv.vendors?.vendor_name}
+                    </td>
+                    <td className="p-3 text-sm">
+                      {inv.invoice_date}
+                    </td>
+                    <td className="p-3 text-right text-sm font-medium">
+                      ₹{" "}
+                      {Number(inv.grand_total).toLocaleString(
+                        "en-IN"
+                      )}
+                    </td>
+                    <td className="p-3 text-sm">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          inv.status === "Final"
+                            ? "bg-green-100 text-green-700"
+                            : inv.status === "Draft"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : "bg-red-100 text-red-700"
+                        }`}
+                      >
+                        {inv.status}
+                      </span>
                     </td>
                     <td className="p-3 text-sm">
                       <div className="flex gap-2">
-                        <Link to={`/purchase-invoices/${inv.id}`} className="text-blue-600 hover:underline">
+                        <Link
+                          to={`/purchase-invoices/${inv.id}`}
+                          className="text-blue-600 hover:underline"
+                        >
                           <Eye size={15} />
                         </Link>
                         {inv.status === "Draft" && (
                           <>
-                            <Link to={`/purchase-invoices/${inv.id}/edit`} className="text-yellow-600 hover:underline">
+                            <Link
+                              to={`/purchase-invoices/${inv.id}/edit`}
+                              className="text-yellow-600 hover:underline"
+                            >
                               <Edit3 size={15} />
                             </Link>
                             <button
-                              onClick={() => handleFinalize(inv.id)}
+                              onClick={() =>
+                                handleFinalize(inv.id)
+                              }
                               className="text-green-600 hover:underline"
                               title="Finalize"
                             >
                               <CheckCircle size={15} />
                             </button>
                             <button
-                              onClick={() => handleDelete(inv.id)}
+                              onClick={() =>
+                                handleDelete(inv.id)
+                              }
                               className="text-red-600 hover:underline"
                             >
                               <Trash2 size={15} />

@@ -34,24 +34,24 @@ import {
   getAllCoursesForExport,
   getMediumOptions,
 } from "../services/courseService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function Courses() {
   const queryClient = useQueryClient();
 
-  // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = {
-    branchId: branch?.id,
-    financialYearId: selectedFinancialYear?.id,
-  };
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  const ctx = { branchId, financialYearId };
 
   // Search & filters
   const [search, setSearch] = useState("");
   const [mediumFilter, setMediumFilter] = useState("");
   const filters = { search, medium_id: mediumFilter };
 
-  // Infinite query – fetch courses with medium name
+  // Infinite query – now scoped with branch & FY
   const {
     data,
     isLoading: coursesLoading,
@@ -59,7 +59,7 @@ export default function Courses() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["courses", filters],
+    queryKey: ["courses", filters, branchId, financialYearId],
     queryFn: async ({ pageParam = 0 }) => {
       const from = pageParam * 20;
       const to = from + 19;
@@ -67,6 +67,8 @@ export default function Courses() {
       let query = supabase
         .from("courses")
         .select("*, mediums(name)", { count: "exact" })
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .order("course_name", { ascending: true })
         .range(from, to);
 
@@ -95,34 +97,33 @@ export default function Courses() {
       return undefined;
     },
     initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
   const courses = data?.pages.flatMap((page) => page.data) || [];
 
-  // Mediums for filter (unchanged)
+  // Mediums (org‑wide)
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediumsDropdown"],
     queryFn: getMediumOptions,
     staleTime: 10 * 60 * 1000,
   });
 
+  // ── Mutations (already use context) ──
   const createMutation = useMutation({
-  mutationFn: (payload) => {
-    console.log('Creating course with payload:', payload);
-    console.log('Context (branchId, financialYearId):', ctx);
-    return createCourse(payload, ctx);
-  },
-  onSuccess: () => {
-    toast.success("Course created");
-    queryClient.invalidateQueries({ queryKey: ["courses"] });
-    setShowForm(false);
-  },
-  onError: (err) => {
-    console.error("Create course error:", err);
-    toast.error("Failed to create course");
-  },
-});
+    mutationFn: (payload) => createCourse(payload, ctx),
+    onSuccess: () => {
+      toast.success("Course created");
+      queryClient.invalidateQueries({ queryKey: ["courses"] });
+      setShowForm(false);
+    },
+    onError: (err) => {
+      console.error("Create course error:", err);
+      toast.error("Failed to create course");
+    },
+  });
+
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }) => updateCourse(id, payload, ctx),
     onSuccess: () => {
@@ -142,7 +143,7 @@ export default function Courses() {
     onError: () => toast.error("Delete failed"),
   });
 
-  // CSV Import – also pass context
+  // CSV Import – scoped via context
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -173,10 +174,14 @@ export default function Courses() {
     });
   }
 
-  // CSV Export (unchanged)
+  // CSV Export – now scoped, corrected signature
   async function handleCSVExport() {
     try {
-      const allData = await getAllCoursesForExport(filters);
+      const allData = await getAllCoursesForExport(
+        filters,
+        branchId,
+        financialYearId
+      );
       const csv = Papa.unparse(
         allData.map((c) => ({
           course_name: c.course_name,
@@ -198,14 +203,15 @@ export default function Courses() {
     }
   }
 
-  // Level management (unchanged except mutating functions now pass context)
+  // ── Level management (scoped) ──
   const [expandedCourseId, setExpandedCourseId] = useState(null);
   const [levelForm, setLevelForm] = useState(null);
   const [levelsMap, setLevelsMap] = useState({});
 
   async function loadLevels(courseId) {
+    if (!branchId || !financialYearId) return;
     try {
-      const levels = await getCourseLevels(courseId);
+      const levels = await getCourseLevels(courseId, branchId, financialYearId);
       setLevelsMap((prev) => ({ ...prev, [courseId]: levels }));
     } catch {
       toast.error("Failed to load levels");
@@ -242,7 +248,7 @@ export default function Courses() {
   });
 
   const deleteLevelMutation = useMutation({
-    mutationFn: deleteCourseLevel,   // hard delete, RLS protects
+    mutationFn: (id) => deleteCourseLevel(id, branchId, financialYearId),
     onSuccess: () => {
       toast.success("Level deleted");
       if (expandedCourseId) loadLevels(expandedCourseId);
@@ -250,7 +256,7 @@ export default function Courses() {
     onError: () => toast.error("Delete failed"),
   });
 
-  // UI state (unchanged)
+  // ── UI state ──
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const fileInputRef = useRef(null);
@@ -270,7 +276,7 @@ export default function Courses() {
 
   return (
     <AdminLayout>
-      {/* Header (unchanged) */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
           <h1 className="text-3xl font-righteous text-primary-dark">Courses</h1>
@@ -334,7 +340,7 @@ export default function Courses() {
         </select>
       </div>
 
-      {/* Courses Table (unchanged) */}
+      {/* Courses Table */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[600px]">

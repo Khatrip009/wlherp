@@ -1,7 +1,6 @@
 // src/utils/generateReportPdf.js
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { supabase } from "../api/supabase";
 
 async function loadImageAsBase64(url) {
   const response = await fetch(url);
@@ -12,16 +11,6 @@ async function loadImageAsBase64(url) {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
-}
-
-async function getOrg() {
-  const { data: org, error } = await supabase
-    .from("organization")
-    .select("company_name, letterhead_url")
-    .eq("id", 1)
-    .single();
-  if (error) return null;
-  return org;
 }
 
 // ─── Content‑aware column widths ──────────────────────────────
@@ -52,9 +41,8 @@ function computeColumnWidths(doc, headers, rows, pageWidth, sideMargin) {
 // ─── Main PDF generator ───────────────────────────────────────
 export async function generateReportPdf(reportConfig, filters = {}, org = null) {
   const letterheadEnabled = reportConfig.useLetterhead !== false;
-  const orgData = org || await getOrg();
-  const letterheadUrl = orgData?.letterhead_url || null;
-  const companyName = orgData?.company_name || 'ShreeVidhya Academy';
+  const letterheadUrl = org?.letterhead_url || null;
+  const companyName = org?.company_name || 'ShreeVidhya Academy';
 
   let letterheadBase64 = null;
   if (letterheadEnabled && letterheadUrl) {
@@ -82,39 +70,43 @@ export async function generateReportPdf(reportConfig, filters = {}, org = null) 
   const bottomMargin = 20;
   const sideMargin = 16;
 
-  // Letterhead background on first page
-  const addLetterhead = () => {
+  // Helper to draw letterhead on any page
+  const drawLetterhead = () => {
     if (letterheadBase64) {
       doc.addImage(letterheadBase64, "PNG", 0, 0, pageWidth, pageHeight);
     }
   };
-  addLetterhead();
+
+  // Draw letterhead for the first page
+  drawLetterhead();
 
   let y = topMargin;
 
-  // ── Title: full‑width white bar + black text ──
-  const title = reportConfig.title;
-  doc.setFillColor(255, 255, 255);
-  doc.rect(sideMargin, y - 10, pageWidth - 2 * sideMargin, 20, 'F');
-  doc.setFont("times", "bold");
-  doc.setFontSize(22);
-  doc.setTextColor("#000000");      // black text
-  doc.text(title, pageWidth / 2, y, { align: "center" });
-  y += 14;
+  // ── Title bar (blue with white text) ──
+  const titleBarHeight = 16;
+  doc.setFillColor("#0D47A1");
+  doc.rect(sideMargin, y - 6, pageWidth - 2 * sideMargin, titleBarHeight, 'F');
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.setTextColor("#FFFFFF");
+  doc.text(reportConfig.title, pageWidth / 2, y + 3, { align: "center" });
+  y += titleBarHeight + 4;
 
-  // ── Period subtitle: full‑width white bar ──
+  // ── Subtitle bar (light grey with dark text) ──
   if (filters.start_date || filters.end_date) {
     const period = `${filters.start_date || '?'} – ${filters.end_date || '?'}`;
-    doc.setFillColor(255, 255, 255);
-    doc.rect(sideMargin, y - 6, pageWidth - 2 * sideMargin, 14, 'F');
+    const subtitleBarHeight = 9;
+    doc.setFillColor("#F0F0F0");
+    doc.rect(sideMargin, y - 3, pageWidth - 2 * sideMargin, subtitleBarHeight, 'F');
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.setTextColor("#000000");
-    doc.text(period, pageWidth / 2, y, { align: "center" });
-    y += 12;
+    doc.setTextColor("#333333");
+    doc.text(period, pageWidth / 2, y + 1.5, { align: "center" });
+    y += subtitleBarHeight + 6;
   }
   y += 4;
 
+  // ── Empty state ─────────────────────────────────────────────
   if (rows.length === 0) {
     doc.setFontSize(12);
     doc.setTextColor("#333");
@@ -138,7 +130,7 @@ export async function generateReportPdf(reportConfig, filters = {}, org = null) 
     columnStyles[idx] = { cellWidth: w };
   });
 
-  // Reset text colour to black before table
+  // Reset to black for the table
   doc.setTextColor("#000000");
 
   autoTable(doc, {
@@ -180,8 +172,9 @@ export async function generateReportPdf(reportConfig, filters = {}, org = null) 
       }
     },
     willDrawPage: (data) => {
-      if (letterheadBase64) {
-        doc.addImage(letterheadBase64, "PNG", 0, 0, pageWidth, pageHeight);
+      // Redraw letterhead for every subsequent page (page 2 and beyond)
+      if (data.pageNumber > 1) {
+        drawLetterhead();
       }
     },
     didDrawPage: (data) => {
@@ -192,7 +185,7 @@ export async function generateReportPdf(reportConfig, filters = {}, org = null) 
     },
   });
 
-  // Page numbers on all pages
+  // Final page numbers
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);

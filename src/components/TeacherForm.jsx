@@ -18,8 +18,10 @@ import {
   Trash2,
 } from "lucide-react";
 import {
+  getCourseOptions,
   getCourseLevelOptions,
   getSubjectOptions,
+  getMediumOptions,
 } from "../services/teacherService";
 import { useOrg } from "../context/OrganizationContext";
 
@@ -35,7 +37,9 @@ const STAFF_PREFIX = {
 
 export default function TeacherForm({ initialData = null, onSubmit, onClose }) {
   const isEdit = !!initialData;
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   // Helper to derive course IDs from existing data
   const getInitialCourseIds = () => {
@@ -69,7 +73,7 @@ export default function TeacherForm({ initialData = null, onSubmit, onClose }) {
     joining_date: initialData?.joining_date || "",
     salary: initialData?.salary || "",
     status: initialData?.status || "active",
-    branch_id: initialData?.branch_id || branch?.id || "",
+    branch_id: initialData?.branch_id || branchId || "",
     medium_ids: initialData?.mediums?.map((m) => m.id) || [],
     course_ids: getInitialCourseIds(),
     course_level_ids: initialData?.course_levels?.map((cl) => cl.id) || [],
@@ -128,42 +132,43 @@ export default function TeacherForm({ initialData = null, onSubmit, onClose }) {
     generateCode();
   }, [isEdit, initialData?.employee_code, form.staff_type]);
 
-  // Fetch dropdown options: mediums, courses, levels, subjects, and branches
+  // ─── Fetch dropdowns (scoped) ──────────────
   useEffect(() => {
+    if (!branchId || !financialYearId) return;
     const fetchData = async () => {
       const [mediumRes, courseRes, levelRes, subjectRes] = await Promise.all([
-        supabase.from("mediums").select("id, name").order("name"),
-        supabase.from("courses").select("id, course_name").order("course_name"),
-        getCourseLevelOptions(),
-        getSubjectOptions(),
+        getMediumOptions(),                                              // org‑wide
+        getCourseOptions(branchId, financialYearId),                     // scoped
+        getCourseLevelOptions(branchId, financialYearId),               // scoped
+        getSubjectOptions(branchId, financialYearId),                   // scoped
       ]);
-      setMediums(mediumRes.data || []);
-      setCourses(courseRes.data || []);
+      setMediums(mediumRes || []);
+      setCourses(courseRes || []);
       setAllCourseLevels(levelRes || []);
       setAllSubjects(subjectRes || []);
     };
     fetchData();
-  }, []);
+  }, [branchId, financialYearId]);
 
-  // Fetch branches for the current organization (when branch context is available)
+  // Fetch branches for the current organisation (org‑level)
   useEffect(() => {
-    if (!branch?.organization_id) return;
+    if (!org?.id) return;
     const fetchBranches = async () => {
       const { data, error } = await supabase
         .from("branches")
         .select("id, branch_name")
-        .eq("organization_id", branch.organization_id)
+        .eq("organization_id", org.id)
         .order("branch_name");
       if (!error && data) {
         setBranches(data);
-        // If no branch is selected yet, default to the context branch
+        // Default to current branch if none selected and branchId exists
         if (!form.branch_id && data.length > 0) {
-          setForm(prev => ({ ...prev, branch_id: branch.id || data[0].id }));
+          setForm(prev => ({ ...prev, branch_id: branchId || data[0].id }));
         }
       }
     };
     fetchBranches();
-  }, [branch?.organization_id]);
+  }, [org?.id]);
 
   // Filter levels and subjects based on selected courses
   const filteredCourseLevels = allCourseLevels.filter(
@@ -230,7 +235,6 @@ export default function TeacherForm({ initialData = null, onSubmit, onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // ─── Validation ──────────────────────
     if (!form.branch_id) {
       toast.error("Please select a branch");
       return;

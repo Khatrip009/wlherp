@@ -8,7 +8,7 @@ import { Calendar, Download, FileText, TrendingUp, IndianRupee, AlertCircle } fr
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { getOrganization } from "../services/organizationService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 // ─── Helper: Create rupee symbol as image ──────────────
 function createRupeeSymbolImage() {
@@ -54,8 +54,10 @@ export default function SalaryReport() {
   const [year, setYear] = useState(today.getFullYear());
   const tableRef = useRef();
 
-  // ── Get current organization from context ──
-  const { org: currentOrg } = useOrg();   // NEW
+  // ── Organisation, Branch & Financial Year context ──
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
@@ -65,15 +67,16 @@ export default function SalaryReport() {
   });
 
   const { data: payments = [], isLoading, refetch } = useQuery({
-    queryKey: ["salary-report", month, year],
+    queryKey: ["salary-report", month, year, branchId, financialYearId],
     queryFn: async () => {
       const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
       const endDate = new Date(year, month, 0).toISOString().split("T")[0];
 
-      const { data: salaryData, error: sErr } = await supabase
+      // 1. Fetch salary payments – scoped
+      let salaryQuery = supabase
         .from("salary_payments")
-        .select(`
-          *,
+        .select(
+          `*,
           teachers!inner (
             id,
             first_name,
@@ -83,23 +86,32 @@ export default function SalaryReport() {
             monthly_salary,
             per_lecture_rate,
             tds_percentage
-          )
-        `)
+          )`
+        )
         .gte("payment_date", startDate)
         .lte("payment_date", endDate)
         .order("payment_date", { ascending: false });
 
+      if (branchId) salaryQuery = salaryQuery.eq("branch_id", branchId);
+      if (financialYearId) salaryQuery = salaryQuery.eq("financial_year_id", financialYearId);
+
+      const { data: salaryData, error: sErr } = await salaryQuery;
       if (sErr) throw sErr;
       if (!salaryData || salaryData.length === 0) return [];
 
+      // 2. Fetch journal entries – scoped (if the table has branch/FY)
       const paymentIds = salaryData.map((p) => p.id);
       const references = paymentIds.map((id) => `Salary #${id}`);
 
-      const { data: journalEntries, error: jErr } = await supabase
+      let journalQuery = supabase
         .from("journal_entries")
         .select("id, reference, is_posted, entry_date")
         .in("reference", references);
 
+      if (branchId) journalQuery = journalQuery.eq("branch_id", branchId);
+      if (financialYearId) journalQuery = journalQuery.eq("financial_year_id", financialYearId);
+
+      const { data: journalEntries, error: jErr } = await journalQuery;
       if (jErr) throw jErr;
 
       const journalMap = {};
@@ -118,6 +130,7 @@ export default function SalaryReport() {
         };
       });
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 

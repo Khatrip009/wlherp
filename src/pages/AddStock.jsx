@@ -5,11 +5,11 @@ import toast from "react-hot-toast";
 import { Plus, Trash2, Save } from "lucide-react";
 import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function AddStock() {
   const queryClient = useQueryClient();
-  const { branch, selectedFinancialYear } = useOrg();      // NEW
+  const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -21,54 +21,68 @@ export default function AddStock() {
     { item_id: "", quantity: "1", unit_price: "", total: 0 },
   ]);
 
-  // Items
+  // Items – scoped
   const { data: items = [] } = useQuery({
-    queryKey: ["inventory-items"],
+    queryKey: ["inventory-items", branchId, financialYearId],
     queryFn: async () => {
       const { data } = await supabase
         .from("inventory_items")
         .select("id, item_name")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .order("item_name");
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
-  // Tax rates
+  // Tax rates – scoped
   const { data: taxRates = [] } = useQuery({
-    queryKey: ["tax-rates"],
+    queryKey: ["tax-rates", branchId, financialYearId],
     queryFn: async () => {
       const { data } = await supabase
         .from("tax_rates")
         .select("id, name, rate")
-        .eq("is_active", true);
+        .eq("is_active", true)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
   });
 
-  // Fetch account IDs (core)
+  // Fetch account IDs – scoped
   const { data: accounts } = useQuery({
-    queryKey: ["account-ids-stock"],
+    queryKey: ["account-ids-stock", branchId, financialYearId],
     queryFn: async () => {
       const inv = await supabase
         .from("chart_of_accounts")
         .select("id")
         .eq("account_code", "1004")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .single();
       const cash = await supabase
         .from("chart_of_accounts")
         .select("id")
         .eq("account_code", "1001")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .single();
       const cgst = await supabase
         .from("chart_of_accounts")
         .select("id")
         .eq("account_code", "2504")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .maybeSingle();
       const sgst = await supabase
         .from("chart_of_accounts")
         .select("id")
         .eq("account_code", "2505")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .maybeSingle();
       return {
         invAssetId: inv.data?.id || null,
@@ -77,6 +91,7 @@ export default function AddStock() {
         inputSgstId: sgst.data?.id || null,
       };
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: Infinity,
   });
 
@@ -98,7 +113,7 @@ export default function AddStock() {
 
         if (!itemId || qty <= 0 || price <= 0) continue;
 
-        // 1. Insert inventory transaction with branch & FY
+        // 1. Insert inventory transaction (already scoped)
         const { data: tx, error: txError } = await supabase
           .from("inventory_transactions")
           .insert({
@@ -119,7 +134,7 @@ export default function AddStock() {
           throw txError;
         }
 
-        // 2. Journal entry
+        // 2. Journal entry (already scoped)
         if (taxRate > 0 && acc.inputCgstId && acc.inputSgstId) {
           const taxAmount = total * (taxRate / 100);
           const taxHalf = Math.round((taxAmount / 2) * 100) / 100;

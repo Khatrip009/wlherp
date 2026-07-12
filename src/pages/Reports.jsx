@@ -1,3 +1,4 @@
+// src/pages/Reports.jsx (or wherever your Reports component lives)
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, GraduationCap, Wallet, Users, BookOpen, Award, FileText, BarChart3 } from 'lucide-react';
@@ -94,6 +95,12 @@ export default function Reports() {
   const { profile } = useAuth();
   const [search, setSearch] = useState('');
 
+  // ── Admin role check – now includes organization_admin ──
+  const isAdmin = ['admin', 'super_admin', 'organization_admin'].includes(profile?.role);
+  if (!profile || !isAdmin) {
+    return <Navigate to="/" replace />;
+  }
+
   const filteredCategories = useMemo(() => {
     const term = search.toLowerCase().trim();
     return Object.entries(CATEGORIES).map(([key, cat]) => {
@@ -109,10 +116,6 @@ export default function Reports() {
       return { ...cat, key, reports: filteredReports };
     }).filter(cat => cat.reports.length > 0);
   }, [search]);
-
-  if (!profile || !['admin', 'super_admin'].includes(profile.role)) {
-    return <Navigate to="/" replace />;
-  }
 
   return (
     <AdminLayout>

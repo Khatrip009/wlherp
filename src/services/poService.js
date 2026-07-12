@@ -1,8 +1,12 @@
 // src/services/poService.js
 import { supabase } from "../api/supabase";
 
-export async function getPurchaseOrders(filters = {}) {
+export async function getPurchaseOrders(filters = {}, branchId, financialYearId) {
   let query = supabase.from("purchase_orders").select("*");
+
+  // Scope by branch & FY
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
   if (filters.status) query = query.eq("status", filters.status);
   if (filters.search) {
@@ -16,12 +20,18 @@ export async function getPurchaseOrders(filters = {}) {
   // Sort client‑side by order_date descending
   pos.sort((a, b) => new Date(b.order_date) - new Date(a.order_date));
 
-  // Fetch items
   const poIds = pos.map((po) => po.id);
-  const { data: items } = await supabase
+
+  // Fetch items – also scoped
+  let itemsQuery = supabase
     .from("purchase_order_items")
     .select("*")
     .in("purchase_order_id", poIds);
+
+  if (branchId) itemsQuery = itemsQuery.eq("branch_id", branchId);
+  if (financialYearId) itemsQuery = itemsQuery.eq("financial_year_id", financialYearId);
+
+  const { data: items } = await itemsQuery;
 
   const itemMap = {};
   (items || []).forEach((item) => {
@@ -40,7 +50,6 @@ export async function createPO(payload, context) {
   const { branchId, financialYearId } = context;
   const { data: poNumber } = await supabase.rpc("generate_po_number");
 
-  // Insert all vendor fields plus branch & FY
   const { data: po, error } = await supabase
     .from("purchase_orders")
     .insert({
@@ -81,7 +90,8 @@ export async function createPO(payload, context) {
 // context: { branchId, financialYearId }
 export async function updatePOStatus(id, status, context) {
   const { branchId, financialYearId } = context;
-  const { error } = await supabase
+
+  let query = supabase
     .from("purchase_orders")
     .update({
       status,
@@ -90,6 +100,11 @@ export async function updatePOStatus(id, status, context) {
       financial_year_id: financialYearId,
     })
     .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { error } = await query;
   if (error) throw error;
 }
 
@@ -97,17 +112,28 @@ export async function updatePOStatus(id, status, context) {
 export async function receivePO(poId, context) {
   const { branchId, financialYearId } = context;
 
-  const { data: po } = await supabase
+  // Fetch PO – scoped
+  let poQuery = supabase
     .from("purchase_orders")
     .select("*")
-    .eq("id", poId)
-    .single();
+    .eq("id", poId);
+
+  if (branchId) poQuery = poQuery.eq("branch_id", branchId);
+  if (financialYearId) poQuery = poQuery.eq("financial_year_id", financialYearId);
+
+  const { data: po } = await poQuery.single();
   if (!po) throw new Error("PO not found");
 
-  const { data: items } = await supabase
+  // Fetch items – scoped
+  let itemsQuery = supabase
     .from("purchase_order_items")
     .select("*")
     .eq("purchase_order_id", poId);
+
+  if (branchId) itemsQuery = itemsQuery.eq("branch_id", branchId);
+  if (financialYearId) itemsQuery = itemsQuery.eq("financial_year_id", financialYearId);
+
+  const { data: items } = await itemsQuery;
 
   for (const item of items || []) {
     if (!item.item_id) continue;
@@ -126,8 +152,8 @@ export async function receivePO(poId, context) {
       financial_year_id: financialYearId,
     });
 
-    // Update received quantity on PO item
-    await supabase
+    // Update received quantity on PO item – scoped update
+    let itemUpdateQuery = supabase
       .from("purchase_order_items")
       .update({
         quantity_received: (item.quantity_received || 0) + qtyToReceive,
@@ -135,19 +161,29 @@ export async function receivePO(poId, context) {
         financial_year_id: financialYearId,
       })
       .eq("id", item.id);
+
+    if (branchId) itemUpdateQuery = itemUpdateQuery.eq("branch_id", branchId);
+    if (financialYearId) itemUpdateQuery = itemUpdateQuery.eq("financial_year_id", financialYearId);
+
+    await itemUpdateQuery;
   }
 
-  // Check if all items fully received
-  const { data: updatedItems } = await supabase
+  // Check if all items fully received – scoped
+  let updatedItemsQuery = supabase
     .from("purchase_order_items")
     .select("quantity_ordered, quantity_received")
     .eq("purchase_order_id", poId);
+
+  if (branchId) updatedItemsQuery = updatedItemsQuery.eq("branch_id", branchId);
+  if (financialYearId) updatedItemsQuery = updatedItemsQuery.eq("financial_year_id", financialYearId);
+
+  const { data: updatedItems } = await updatedItemsQuery;
 
   const fullyReceived = (updatedItems || []).every(
     (it) => (it.quantity_received || 0) >= it.quantity_ordered
   );
 
-  await supabase
+  let poUpdateQuery = supabase
     .from("purchase_orders")
     .update({
       status: fullyReceived ? "Received" : "Partially Received",
@@ -156,30 +192,42 @@ export async function receivePO(poId, context) {
       financial_year_id: financialYearId,
     })
     .eq("id", poId);
+
+  if (branchId) poUpdateQuery = poUpdateQuery.eq("branch_id", branchId);
+  if (financialYearId) poUpdateQuery = poUpdateQuery.eq("financial_year_id", financialYearId);
+
+  await poUpdateQuery;
 }
 
-// Hard delete – RLS protects
-export async function deletePO(id) {
-  const { error } = await supabase.from("purchase_orders").delete().eq("id", id);
+// Hard delete – now scoped
+export async function deletePO(id, branchId, financialYearId) {
+  let query = supabase.from("purchase_orders").delete().eq("id", id);
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+  const { error } = await query;
   if (error) throw error;
 }
 
-// Fetch a single PO with items (read)
-export async function getPOById(poId) {
-  const { data: po } = await supabase
+// Fetch a single PO with items – scoped
+export async function getPOById(poId, branchId, financialYearId) {
+  let query = supabase
     .from("purchase_orders")
     .select("*, purchase_order_items(*)")
-    .eq("id", poId)
-    .single();
+    .eq("id", poId);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data: po } = await query.single();
   return po;
 }
 
-// Update PO header and items – context required
+// Update PO header and items – context required, scoped
 export async function updatePO(poId, payload, context) {
   const { branchId, financialYearId } = context;
 
-  // Update header – include all vendor fields
-  await supabase
+  // Update header – scoped
+  let headerUpdateQuery = supabase
     .from("purchase_orders")
     .update({
       vendor: payload.vendor,
@@ -199,8 +247,21 @@ export async function updatePO(poId, payload, context) {
     })
     .eq("id", poId);
 
-  // Delete old items
-  await supabase.from("purchase_order_items").delete().eq("purchase_order_id", poId);
+  if (branchId) headerUpdateQuery = headerUpdateQuery.eq("branch_id", branchId);
+  if (financialYearId) headerUpdateQuery = headerUpdateQuery.eq("financial_year_id", financialYearId);
+
+  await headerUpdateQuery;
+
+  // Delete old items – scoped
+  let deleteItemsQuery = supabase
+    .from("purchase_order_items")
+    .delete()
+    .eq("purchase_order_id", poId);
+
+  if (branchId) deleteItemsQuery = deleteItemsQuery.eq("branch_id", branchId);
+  if (financialYearId) deleteItemsQuery = deleteItemsQuery.eq("financial_year_id", financialYearId);
+
+  await deleteItemsQuery;
 
   // Insert new items
   const items = (payload.items || []).map((item) => ({

@@ -4,24 +4,36 @@ import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
 import AdminLayout from "../layouts/AdminLayout";
 import { getChartOfAccounts, getAccountLedger } from "../services/accountingService";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 
 export default function Ledger() {
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  // Scoped chart of accounts
   const { data: accounts = [] } = useQuery({
-    queryKey: ["chart-of-accounts"],
-    queryFn: getChartOfAccounts,
+    queryKey: ["chart-of-accounts", branchId, financialYearId],
+    queryFn: () => getChartOfAccounts(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 10 * 60 * 1000,
   });
 
   const [selectedAccount, setSelectedAccount] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
+  // Scoped ledger
   const { data: ledger = [], isLoading } = useQuery({
-    queryKey: ["ledger", selectedAccount, startDate, endDate],
-    queryFn: () => getAccountLedger(selectedAccount, startDate, endDate),
-    enabled: !!selectedAccount,
+    queryKey: ["ledger", selectedAccount, startDate, endDate, branchId, financialYearId],
+    queryFn: () =>
+      getAccountLedger(selectedAccount, startDate, endDate, branchId, financialYearId),
+    enabled: !!selectedAccount && !!branchId && !!financialYearId,
   });
 
-  const selectedAccountName = accounts.find((a) => a.id == selectedAccount)?.account_name || "Ledger";
+  const selectedAccountName =
+    accounts.find((a) => a.id == selectedAccount)?.account_name || "Ledger";
 
   const handlePrint = () => {
     const printContent = document.getElementById("ledger-table")?.outerHTML;

@@ -31,16 +31,19 @@ import {
   getCourseOptions,
   getMediumOptions,
 } from "../services/batchService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function Batches() {
   const queryClient = useQueryClient();
 
   // ── Organization, Branch & Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
   const ctx = {
-    branchId: branch?.id,
-    financialYearId: selectedFinancialYear?.id,
+    branchId,
+    financialYearId,
   };
 
   // Filters
@@ -54,7 +57,7 @@ export default function Batches() {
   const [showFilters, setShowFilters] = useState(false);
   const allFilters = { ...filters, search };
 
-  // Paginated data
+  // Paginated data – now scoped
   const {
     data,
     isLoading,
@@ -62,8 +65,9 @@ export default function Batches() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["batches", allFilters],
-    queryFn: ({ pageParam = 0 }) => getBatches({ pageParam, filters: allFilters }),
+    queryKey: ["batches", allFilters, branchId, financialYearId],
+    queryFn: ({ pageParam = 0 }) =>
+      getBatches({ pageParam, filters: allFilters, branchId, financialYearId }),
     getNextPageParam: (lastPage, allPages) => {
       const totalFetched = allPages.reduce((sum, page) => sum + page.data.length, 0);
       if (lastPage.count && totalFetched < lastPage.count) {
@@ -72,6 +76,7 @@ export default function Batches() {
       return undefined;
     },
     initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -79,18 +84,20 @@ export default function Batches() {
 
   const batchIds = useMemo(() => batches.map((b) => b.id), [batches]);
 
-  // Fetch teacher assignments for displayed batches
+  // Fetch teacher assignments for displayed batches – scoped
   const { data: teacherAssignments = [] } = useQuery({
-    queryKey: ["batch-teachers", batchIds],
+    queryKey: ["batch-teachers", batchIds, branchId, financialYearId],
     queryFn: async () => {
       if (batchIds.length === 0) return [];
       const { data } = await supabase
         .from("batch_teachers")
         .select("batch_id, teachers(first_name, last_name)")
-        .in("batch_id", batchIds);
+        .in("batch_id", batchIds)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
       return data || [];
     },
-    enabled: batchIds.length > 0,
+    enabled: batchIds.length > 0 && !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -110,28 +117,32 @@ export default function Batches() {
     return map;
   }, [teacherAssignments]);
 
-  // Dropdowns for filters
+  // Dropdowns – scoped where applicable
   const { data: courses = [] } = useQuery({
     queryKey: ["coursesDropdown"],
-    queryFn: getCourseOptions,
+    queryFn: getCourseOptions, // organisation‑wide, no parameters
     staleTime: 10 * 60 * 1000,
   });
 
+  // Teachers dropdown – scoped
   const { data: teachers = [] } = useQuery({
-    queryKey: ["teachersDropdown"],
+    queryKey: ["teachersDropdown", branchId, financialYearId],
     queryFn: async () => {
       const { data } = await supabase
         .from("teachers")
         .select("id, first_name, last_name")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .order("first_name");
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediumsDropdown"],
-    queryFn: getMediumOptions,
+    queryFn: getMediumOptions, // organisation‑wide
     staleTime: 10 * 60 * 1000,
   });
 
@@ -162,7 +173,7 @@ export default function Batches() {
   // ── Mutations ──────────────────────────────────────────────
   const createMutation = useMutation({
     mutationFn: async (payload) => {
-      const result = await createBatch(payload, ctx);   // pass context
+      const result = await createBatch(payload, ctx);
       await syncTeacherBatches(result.id, payload, ctx);
       return result;
     },
@@ -176,7 +187,7 @@ export default function Batches() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, payload }) => {
-      const result = await updateBatch(id, payload, ctx);   // pass context
+      const result = await updateBatch(id, payload, ctx);
       await syncTeacherBatches(id, payload, ctx);
       return result;
     },
@@ -189,7 +200,7 @@ export default function Batches() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteBatch,   // soft delete, RLS handles
+    mutationFn: (id) => deleteBatch(id, branchId, financialYearId),
     onSuccess: () => {
       toast.success("Batch deleted");
       queryClient.invalidateQueries({ queryKey: ["batches"] });
@@ -202,7 +213,7 @@ export default function Batches() {
   const [editing, setEditing] = useState(null);
   const fileInputRef = useRef(null);
 
-  // CSV Import – needs context for createBatch
+  // CSV Import – needs context
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -225,7 +236,7 @@ export default function Batches() {
               medium_id: row.medium_id ? Number(row.medium_id) : null,
               teacher_subjects: [], // no assignments in CSV
             };
-            await createBatch(payload, ctx);   // pass context
+            await createBatch(payload, ctx);
             successCount++;
           } catch (err) {
             console.error(err);
@@ -238,10 +249,14 @@ export default function Batches() {
     });
   }
 
-  // CSV Export (unchanged)
+  // CSV Export – now scoped
   async function handleCSVExport() {
     try {
-      const allData = await getAllBatchesForExport(allFilters);
+      const allData = await getAllBatchesForExport(
+        allFilters,       // first argument: filters object
+        branchId,
+        financialYearId
+      );
       const csv = Papa.unparse(
         allData.map((b) => ({
           batch_name: b.batch_name,

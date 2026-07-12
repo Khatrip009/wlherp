@@ -1,8 +1,13 @@
 // src/services/batchService.js
 import { supabase } from "../api/supabase";
 
-// Paginated fetch with filters – now includes medium info
-export async function getBatches({ pageParam = 0, filters = {} } = {}) {
+// Paginated fetch with filters – now scoped by branch & FY
+export async function getBatches({
+  pageParam = 0,
+  filters = {},
+  branchId,
+  financialYearId,
+} = {}) {
   const limit = 10;
   const from = pageParam * limit;
   const to = from + limit - 1;
@@ -21,19 +26,31 @@ export async function getBatches({ pageParam = 0, filters = {} } = {}) {
     .order("id", { ascending: false })
     .range(from, to);
 
+  // Apply branch and FY scope (conditional)
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  // Filters
   if (filters.search) {
     query = query.ilike("batch_name", `%${filters.search}%`);
   }
   if (filters.course_id) query = query.eq("course_id", filters.course_id);
   if (filters.medium_id) query = query.eq("medium_id", filters.medium_id);
   if (filters.teacher_id) {
-    const { data: linkedBatches } = await supabase
+    // Subquery to find batch_ids linked to the teacher, also scoped by branch/FY
+    let subQuery = supabase
       .from("batch_teachers")
       .select("batch_id")
       .eq("teacher_id", filters.teacher_id);
+    if (branchId) subQuery = subQuery.eq("branch_id", branchId);
+    if (financialYearId) subQuery = subQuery.eq("financial_year_id", financialYearId);
+    const { data: linkedBatches } = await subQuery;
     const batchIds = linkedBatches?.map((r) => r.batch_id) || [];
-    if (batchIds.length > 0) query = query.in("id", batchIds);
-    else return { data: [], count: 0 };
+    if (batchIds.length > 0) {
+      query = query.in("id", batchIds);
+    } else {
+      return { data: [], count: 0 };
+    }
   }
   if (filters.status) query = query.eq("status", filters.status);
 
@@ -57,23 +74,39 @@ export async function getBatches({ pageParam = 0, filters = {} } = {}) {
   return { data: enriched, count };
 }
 
-export async function getAllBatchesForExport(filters = {}) {
+// Export all (unpaginated) with same scoping
+export async function getAllBatchesForExport(
+  filters = {},
+  branchId,
+  financialYearId
+) {
   let query = supabase
     .from("batches")
     .select(`*, courses(course_name), mediums(name)`)
     .order("id", { ascending: false });
 
+  // Scope
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  // Filters
   if (filters.search) query = query.ilike("batch_name", `%${filters.search}%`);
   if (filters.course_id) query = query.eq("course_id", filters.course_id);
   if (filters.medium_id) query = query.eq("medium_id", filters.medium_id);
   if (filters.teacher_id) {
-    const { data: linkedBatches } = await supabase
+    let subQuery = supabase
       .from("batch_teachers")
       .select("batch_id")
       .eq("teacher_id", filters.teacher_id);
+    if (branchId) subQuery = subQuery.eq("branch_id", branchId);
+    if (financialYearId) subQuery = subQuery.eq("financial_year_id", financialYearId);
+    const { data: linkedBatches } = await subQuery;
     const batchIds = linkedBatches?.map((r) => r.batch_id) || [];
-    if (batchIds.length > 0) query = query.in("id", batchIds);
-    else return [];
+    if (batchIds.length > 0) {
+      query = query.in("id", batchIds);
+    } else {
+      return [];
+    }
   }
   if (filters.status) query = query.eq("status", filters.status);
 
@@ -136,7 +169,7 @@ async function syncBatchTeachers(batchId, teacherSubjects, singleTeacherId, cont
   const { branchId, financialYearId } = context || {};
   if (teacherSubjects !== undefined) {
     console.log("Syncing teacher_subjects for batch", batchId, teacherSubjects);
-    // Delete existing (RLS allows based on org/branch/FY)
+    // Delete existing (scoped by batch_id – fine because only batch_id is needed)
     await supabase.from("batch_teachers").delete().eq("batch_id", batchId);
     const links = teacherSubjects
       .filter((ts) => ts.teacher_id)
@@ -174,19 +207,29 @@ async function syncBatchTeachers(batchId, teacherSubjects, singleTeacherId, cont
   }
 }
 
-export async function deleteBatch(id) {
-  const { error } = await supabase
+// Soft delete now scoped to prevent cross-branch tampering
+export async function deleteBatch(id, branchId, financialYearId) {
+  // Scope the soft-delete on batches
+  let batchQuery = supabase
     .from("batches")
     .update({ deleted_at: new Date().toISOString() })
     .eq("id", id);
+  if (branchId) batchQuery = batchQuery.eq("branch_id", branchId);
+  if (financialYearId) batchQuery = batchQuery.eq("financial_year_id", financialYearId);
+  const { error } = await batchQuery;
   if (error) throw error;
 
-  await supabase
+  // Soft-delete associated batch_teachers (scoped similarly)
+  let teacherQuery = supabase
     .from("batch_teachers")
     .update({ deleted_at: new Date().toISOString() })
     .eq("batch_id", id);
+  if (branchId) teacherQuery = teacherQuery.eq("branch_id", branchId);
+  if (financialYearId) teacherQuery = teacherQuery.eq("financial_year_id", financialYearId);
+  await teacherQuery;
 }
 
+// Organisation-wide (no branch/FY needed – assume tables have no such columns)
 export async function getCourseOptions() {
   const { data, error } = await supabase
     .from("courses")
@@ -195,20 +238,42 @@ export async function getCourseOptions() {
   return data || [];
 }
 
-export async function getTeacherOptions() {
-  const { data, error } = await supabase
+// Teacher options now scoped to branch (if the table includes branch_id / financial_year_id)
+export async function getTeacherOptions(branchId, financialYearId) {
+  let query = supabase
     .from("teachers")
     .select("id, first_name, last_name");
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
-// NEW – get mediums for filter dropdowns
+// Mediums – organisation-wide (no branch/FY)
 export async function getMediumOptions() {
   const { data, error } = await supabase
     .from("mediums")
     .select("id, name")
     .order("name");
+  if (error) throw error;
+  return data || [];
+}
+
+// Active batches (scoped) – used for dropdowns and reports
+export async function getActiveBatches(branchId, financialYearId) {
+  let query = supabase
+    .from("batches")
+    .select("id, batch_name")
+    .eq("status", "active")
+    .order("batch_name");
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }

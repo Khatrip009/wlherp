@@ -6,14 +6,16 @@ import { getReportConfig } from '../utils/reportConfig';
  * 
  * @param {string} reportId  - key of the report in reportConfig.js
  * @param {object} filters   - key-value pairs of filter values
+ * @param {number|string} branchId - current branch id
+ * @param {number|string} financialYearId - current financial year id
  * @returns {Promise<Array>} - transformed data ready for the table
  */
-export async function fetchReportData(reportId, filters) {
+export async function fetchReportData(reportId, filters = {}, branchId, financialYearId) {
   const config = getReportConfig(reportId);
   if (!config) throw new Error(`Unknown report: ${reportId}`);
 
-  // queryBuilder returns a thenable (Supabase query or plain Promise)
-  const queryPromise = config.queryBuilder(filters);
+  // queryBuilder expects (filters, branchId, financialYearId)
+  const queryPromise = config.queryBuilder(filters, branchId, financialYearId);
 
   if (typeof queryPromise?.then !== 'function') {
     throw new Error('queryBuilder must return a Promise');

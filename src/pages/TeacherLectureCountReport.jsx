@@ -13,8 +13,10 @@ export default function TeacherLectureCountReport() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
 
-  // ── Get current organization from context ──
-  const { org: currentOrg } = useOrg();   // NEW
+  // ── Branch & Financial Year context ──
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();   // NEW
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const today = new Date();
   const [teacherId, setTeacherId] = useState("");
@@ -29,31 +31,40 @@ export default function TeacherLectureCountReport() {
     year: "numeric",
   });
 
-  // Fetch all teachers (for admin dropdown)
+  // Fetch all teachers (for admin dropdown) – scoped to branch & FY
   const { data: teachers = [] } = useQuery({
-    queryKey: ["teachers-list"],
+    queryKey: ["teachers-list", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("teachers")
         .select("id, first_name, last_name, employee_code")
         .order("first_name");
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data } = await query;
       return data || [];
     },
+    enabled: isAdmin && !!branchId && !!financialYearId,
+    staleTime: 10 * 60 * 1000,
   });
 
-  // If user is a teacher, get own teacher id
+  // If user is a teacher, get own teacher id – scoped
   const { data: ownTeacherId } = useQuery({
-    queryKey: ["my-teacher-id", profile?.id],
+    queryKey: ["my-teacher-id", profile?.id, branchId, financialYearId],
     queryFn: async () => {
-      if (!profile?.id || isAdmin) return null;
+      if (!profile?.id || isAdmin || !branchId || !financialYearId) return null;
       const { data } = await supabase
         .from("teachers")
         .select("id")
         .eq("user_id", profile.id)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .single();
       return data?.id || null;
     },
-    enabled: !!profile?.id && !isAdmin,
+    enabled: !!profile?.id && !isAdmin && !!branchId && !!financialYearId,
   });
 
   // Auto‑select the teacher when user is a teacher
@@ -63,21 +74,23 @@ export default function TeacherLectureCountReport() {
     }
   }, [ownTeacherId, isAdmin]);
 
-  // Fetch sessions where teacher_id matches for the selected month
+  // Fetch sessions where teacher_id matches for the selected month – scoped
   const { data: sessions = [], isLoading } = useQuery({
-    queryKey: ["teacher-lectures", teacherId, startDate, endDate],
+    queryKey: ["teacher-lectures", teacherId, startDate, endDate, branchId, financialYearId],
     queryFn: async () => {
-      if (!teacherId) return [];
+      if (!teacherId || !branchId || !financialYearId) return [];
       const { data } = await supabase
         .from("attendance_sessions")
         .select("id, attendance_date")
         .eq("teacher_id", teacherId)
         .gte("attendance_date", startDate)
         .lte("attendance_date", endDate)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .order("attendance_date");
       return data || [];
     },
-    enabled: !!teacherId,
+    enabled: !!teacherId && !!branchId && !!financialYearId,
   });
 
   // Build daily counts

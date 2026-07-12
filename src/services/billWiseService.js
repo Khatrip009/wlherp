@@ -2,12 +2,21 @@
 import { supabase } from "../api/supabase";
 
 // Fetch all bill‑wise entries with optional filters
-export async function getBillWiseEntries(filters = {}) {
+export async function getBillWiseEntries(
+  filters = {},
+  branchId,
+  financialYearId
+) {
   let query = supabase
     .from("bill_wise_entries")
     .select("*")
     .order("due_date", { ascending: true });
 
+  // Scoping
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  // User filters
   if (filters.status) query = query.eq("status", filters.status);
   if (filters.start_date) query = query.gte("due_date", filters.start_date);
   if (filters.end_date) query = query.lte("due_date", filters.end_date);
@@ -59,9 +68,17 @@ export async function updateBillWiseEntry(id, payload, context) {
   return data;
 }
 
-// Delete an entry (RLS protects)
-export async function deleteBillWiseEntry(id) {
-  const { error } = await supabase.from("bill_wise_entries").delete().eq("id", id);
+// Delete an entry – now scoped to prevent cross‑branch deletion
+export async function deleteBillWiseEntry(id, branchId, financialYearId) {
+  let query = supabase
+    .from("bill_wise_entries")
+    .delete()
+    .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { error } = await query;
   if (error) throw error;
 }
 
@@ -70,20 +87,24 @@ export async function deleteBillWiseEntry(id) {
 export async function recordBillPayment(entryId, paymentAmount, context) {
   const { branchId, financialYearId } = context;
 
-  // 1. Fetch current entry (RLS will only return if the user has access)
-  const { data: entry } = await supabase
+  // 1. Fetch current entry – scope with branch/FY
+  let fetchQuery = supabase
     .from("bill_wise_entries")
     .select("outstanding_amount, original_amount, reference")
-    .eq("id", entryId)
-    .single();
+    .eq("id", entryId);
+
+  if (branchId) fetchQuery = fetchQuery.eq("branch_id", branchId);
+  if (financialYearId) fetchQuery = fetchQuery.eq("financial_year_id", financialYearId);
+
+  const { data: entry } = await fetchQuery.single();
   if (!entry) throw new Error("Bill not found");
 
   const newOutstanding = Math.max(entry.outstanding_amount - paymentAmount, 0);
   let newStatus = "Partially Paid";
   if (newOutstanding <= 0) newStatus = "Paid";
 
-  // 2. Update entry – include branch & FY to satisfy RLS policy
-  const { error } = await supabase
+  // 2. Update entry – include branch & FY in payload
+  let updateQuery = supabase
     .from("bill_wise_entries")
     .update({
       outstanding_amount: newOutstanding,
@@ -93,18 +114,29 @@ export async function recordBillPayment(entryId, paymentAmount, context) {
       financial_year_id: financialYearId,
     })
     .eq("id", entryId);
+
+  // Also filter by branch/FY to prevent accidental cross‑branch updates
+  if (branchId) updateQuery = updateQuery.eq("branch_id", branchId);
+  if (financialYearId) updateQuery = updateQuery.eq("financial_year_id", financialYearId);
+
+  const { error } = await updateQuery;
   if (error) throw error;
 
   return { success: true, new_outstanding: newOutstanding, status: newStatus };
 }
 
-// Get aged payables/receivables summary
-export async function getAgedPayablesReceivables() {
-  const { data, error } = await supabase
+// Get aged payables/receivables summary – now scoped
+export async function getAgedPayablesReceivables(branchId, financialYearId) {
+  let query = supabase
     .from("bill_wise_entries")
     .select("*")
     .neq("status", "Paid")
     .order("due_date");
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
 
   const now = new Date();

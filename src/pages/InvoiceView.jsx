@@ -2,12 +2,25 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInvoice, finalizeInvoice, deleteInvoice } from "../services/invoiceService";
+import {
+  getInvoice,
+  finalizeInvoice,
+  deleteInvoice,
+} from "../services/invoiceService";
 import { getOrganization } from "../services/organizationService";
 import { generateInvoicePDF, numberToWords } from "../utils/invoicePdf";
 import toast from "react-hot-toast";
 import AdminLayout from "../layouts/AdminLayout";
-import { ArrowLeft, Printer, Edit3, CheckCircle, Trash2, Loader, FileText } from "lucide-react";
+import {
+  ArrowLeft,
+  Printer,
+  Edit3,
+  CheckCircle,
+  Trash2,
+  Loader,
+  FileText,
+} from "lucide-react";
+import { useOrg } from "../context/OrganizationContext"; // NEW
 
 export default function InvoiceView() {
   const { id } = useParams();
@@ -16,19 +29,28 @@ export default function InvoiceView() {
   const [printing, setPrinting] = useState(false);
   const [generatingPDF, setGeneratingPDF] = useState(false);
 
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg(); // NEW
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
+
+  // Organization details (org-wide, no branch scoping needed)
   const { data: org } = useQuery({
     queryKey: ["organization"],
     queryFn: getOrganization,
   });
 
+  // Fetch invoice – scoped
   const { data: invoice, isLoading } = useQuery({
-    queryKey: ["invoice", id],
-    queryFn: () => getInvoice(id),
-    enabled: !!id,
+    queryKey: ["invoice", id, branchId, financialYearId],
+    queryFn: () => getInvoice(id, branchId, financialYearId),
+    enabled: !!id && !!branchId && !!financialYearId,
   });
 
+  // Mutations – now pass context / IDs
   const finalizeMutation = useMutation({
-    mutationFn: () => finalizeInvoice(id),
+    mutationFn: () => finalizeInvoice(id, ctx),
     onSuccess: () => {
       toast.success("Invoice finalized");
       queryClient.invalidateQueries(["invoice", id]);
@@ -38,7 +60,7 @@ export default function InvoiceView() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => deleteInvoice(id),
+    mutationFn: () => deleteInvoice(id, branchId, financialYearId),
     onSuccess: () => {
       toast.success("Invoice deleted");
       navigate("/invoices");

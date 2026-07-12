@@ -5,7 +5,9 @@ import { Printer, Filter } from "lucide-react";
 import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { getCourseOptions } from "../services/batchService";   // organisation‑wide
+import { getActiveBatches } from "../services/batchService";   // scoped
+import { useOrg } from "../context/OrganizationContext";
 
 const AGE_BUCKETS = [
   { label: "0‑30 days", min: 0, max: 30 },
@@ -15,9 +17,11 @@ const AGE_BUCKETS = [
 ];
 
 export default function AgedReceivables() {
-  const { org: currentOrg } = useOrg();                  // NEW
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
-  // Pass current org id to getOrganization
+  // Fetch organization details
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
     queryFn: () => getOrganization(currentOrg?.id),
@@ -29,21 +33,17 @@ export default function AgedReceivables() {
   const [mediumFilter, setMediumFilter] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
+  // Dropdowns – use service functions with correct scoping
   const { data: courses = [] } = useQuery({
     queryKey: ["courses-dropdown"],
-    queryFn: async () => {
-      const { data } = await supabase.from("courses").select("id, course_name").eq("status", true).order("course_name");
-      return data || [];
-    },
+    queryFn: getCourseOptions, // organisation‑wide, no scoping needed
     staleTime: 10 * 60 * 1000,
   });
 
   const { data: batches = [] } = useQuery({
-    queryKey: ["batches-dropdown"],
-    queryFn: async () => {
-      const { data } = await supabase.from("batches").select("id, batch_name").eq("status", "active").order("batch_name");
-      return data || [];
-    },
+    queryKey: ["batches-dropdown", branchId, financialYearId],
+    queryFn: () => getActiveBatches(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
@@ -56,22 +56,30 @@ export default function AgedReceivables() {
     staleTime: 10 * 60 * 1000,
   });
 
+  // Main receivables query – fully scoped (only tables that actually have branch/FY)
   const { data: receivables = [], isLoading } = useQuery({
-    queryKey: ["aged-receivables", courseFilter, batchFilter, mediumFilter],
+    queryKey: ["aged-receivables", courseFilter, batchFilter, mediumFilter, branchId, financialYearId],
     queryFn: async () => {
-      // 1. Build student_id set from batch/medium filters (if any)
+      if (!branchId || !financialYearId) return [];
+
+      // 1. Build student_id set from batch/medium filters
       let studentIdSet = null;
       if (batchFilter || mediumFilter) {
         let batchQuery = supabase
           .from("student_batches")
           .select("student_id")
-          .eq("status", "active");
+          .eq("status", "active")
+          .eq("branch_id", branchId)
+          .eq("financial_year_id", financialYearId);
+
         if (batchFilter) batchQuery = batchQuery.eq("batch_id", batchFilter);
         if (mediumFilter) {
           const { data: mBatches } = await supabase
             .from("batches")
             .select("id")
-            .eq("medium_id", mediumFilter);
+            .eq("medium_id", mediumFilter)
+            .eq("branch_id", branchId)
+            .eq("financial_year_id", financialYearId);
           const ids = (mBatches || []).map((b) => b.id);
           if (ids.length > 0) batchQuery = batchQuery.in("batch_id", ids);
           else return [];
@@ -81,13 +89,18 @@ export default function AgedReceivables() {
         if (studentIdSet.size === 0) return [];
       }
 
-      // 2. Fetch all student_fees (RLS will filter by current org/branch/FY)
-      let feeQuery = supabase.from("student_fees").select("*");
+      // 2. Fetch all student_fees (scoped)
+      let feeQuery = supabase
+        .from("student_fees")
+        .select("*")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
+
       const { data: allFees, error } = await feeQuery;
       if (error) throw error;
       if (!allFees || allFees.length === 0) return [];
 
-      // 3. Filter client-side
+      // 3. Filter client-side (status, deleted)
       let filtered = allFees.filter(
         (f) => f.status !== "Paid" && !f.deleted_at
       );
@@ -98,13 +111,15 @@ export default function AgedReceivables() {
       const feeIds = filtered.map((f) => f.id);
       const feeStructureIds = [...new Set(filtered.map((f) => f.fee_structure_id))];
 
-      // 4. Get course names (through fee_structures)
+      // 4. Get course names via fee_structures (scoped) and then courses (organisation‑wide)
       let courseIdMap = {};
       if (feeStructureIds.length > 0) {
         const { data: fsData } = await supabase
           .from("fee_structures")
           .select("id, course_id")
-          .in("id", feeStructureIds);
+          .in("id", feeStructureIds)
+          .eq("branch_id", branchId)
+          .eq("financial_year_id", financialYearId);
         (fsData || []).forEach((fs) => {
           courseIdMap[fs.id] = fs.course_id;
         });
@@ -113,6 +128,7 @@ export default function AgedReceivables() {
       const courseIds = [...new Set(Object.values(courseIdMap))];
       let courseNameMap = {};
       if (courseIds.length > 0) {
+        // courses table is organisation‑wide → no branch/FY filter
         const { data: courseList } = await supabase
           .from("courses")
           .select("id, course_name")
@@ -129,31 +145,37 @@ export default function AgedReceivables() {
         });
       }
 
-      // 5. Get student names
+      // 5. Get student names (scoped)
       const studentIds = [...new Set(filtered.map((f) => f.student_id))];
       const { data: studentsData } = await supabase
         .from("students")
         .select("id, admission_no, first_name, last_name, mobile")
-        .in("id", studentIds);
+        .in("id", studentIds)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
       const studentMap = {};
       (studentsData || []).forEach((s) => (studentMap[s.id] = s));
 
-      // 6. Get payments
+      // 6. Get payments (scoped)
       const { data: payments } = await supabase
         .from("fee_payments")
         .select("student_fee_id, amount")
-        .in("student_fee_id", feeIds);
+        .in("student_fee_id", feeIds)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
       const paymentMap = {};
       (payments || []).forEach((p) => {
         paymentMap[p.student_fee_id] = (paymentMap[p.student_fee_id] || 0) + Number(p.amount);
       });
 
-      // 7. Get batch/medium info
+      // 7. Get batch/medium info (scoped)
       const { data: sbData } = await supabase
         .from("student_batches")
         .select("student_id, batches(batch_name, mediums(name))")
         .in("student_id", studentIds)
-        .eq("status", "active");
+        .eq("status", "active")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
       const bmMap = {};
       (sbData || []).forEach((s) => {
         if (!bmMap[s.student_id]) {
@@ -164,7 +186,7 @@ export default function AgedReceivables() {
         }
       });
 
-      // 8. Build final list with NaN safeguards
+      // 8. Build final list
       const now = new Date();
       return filtered
         .map((fee) => {
@@ -204,6 +226,7 @@ export default function AgedReceivables() {
         })
         .filter(Boolean);
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 

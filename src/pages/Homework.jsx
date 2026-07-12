@@ -32,6 +32,7 @@ import {
   getAllHomeworksForExport,
 } from "../services/homeworkService";
 import { useAuth } from "../context/AuthContext";
+import { useOrg } from "../context/OrganizationContext";  // NEW
 
 export default function Homework() {
   const { profile } = useAuth();
@@ -40,17 +41,23 @@ export default function Homework() {
   const isAdmin = role === "admin" || role === "super_admin";
   const isTeacher = role === "teacher";
 
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();  // NEW
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
+
   const queryClient = useQueryClient();
 
   const [batchFilter, setBatchFilter] = useState("");
-  const [mediumFilter, setMediumFilter] = useState("");   // NEW
+  const [mediumFilter, setMediumFilter] = useState("");
   const [search, setSearch] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const allFilters = {
     batchId: batchFilter,
-    medium_id: mediumFilter,    // NEW
+    medium_id: mediumFilter,
     search,
     startDate,
     endDate,
@@ -61,19 +68,22 @@ export default function Homework() {
   const [viewingSubmissions, setViewingSubmissions] = useState(null);
   const fileInputRef = useRef(null);
 
+  // Batches – scoped
   const { data: batches = [] } = useQuery({
-    queryKey: ["batches-dropdown"],
-    queryFn: getBatchOptions,
+    queryKey: ["batches-dropdown", branchId, financialYearId],
+    queryFn: () => getBatchOptions(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
-  // Fetch mediums for filter dropdown
+  // Mediums – org‑wide
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediums-dropdown"],
     queryFn: getMediumOptions,
     staleTime: 10 * 60 * 1000,
   });
 
+  // Homework list – scoped
   const {
     data,
     isLoading,
@@ -81,22 +91,24 @@ export default function Homework() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["homeworks", allFilters],
+    queryKey: ["homeworks", allFilters, branchId, financialYearId],
     queryFn: ({ pageParam = 0 }) =>
-      getHomeworks({ pageParam, filters: allFilters }),
+      getHomeworks({ pageParam, filters: allFilters, branchId, financialYearId }),
     getNextPageParam: (lastPage, allPages) => {
       const totalFetched = allPages.reduce((sum, page) => sum + page.data.length, 0);
       if (lastPage.count && totalFetched < lastPage.count) return allPages.length;
       return undefined;
     },
     initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
   const homeworks = data?.pages.flatMap((page) => page.data) || [];
 
+  // Mutations – pass context
   const createMutation = useMutation({
-    mutationFn: createHomework,
+    mutationFn: (payload) => createHomework(payload, ctx),
     onSuccess: () => {
       toast.success("Homework created");
       queryClient.invalidateQueries({ queryKey: ["homeworks"] });
@@ -106,7 +118,7 @@ export default function Homework() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }) => updateHomework(id, payload),
+    mutationFn: ({ id, payload }) => updateHomework(id, payload, ctx),
     onSuccess: () => {
       toast.success("Homework updated");
       queryClient.invalidateQueries({ queryKey: ["homeworks"] });
@@ -116,7 +128,7 @@ export default function Homework() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteHomework,
+    mutationFn: (id) => deleteHomework(id, branchId, financialYearId),
     onSuccess: () => {
       toast.success("Homework deleted");
       queryClient.invalidateQueries({ queryKey: ["homeworks"] });
@@ -144,7 +156,7 @@ export default function Homework() {
               attachment_url: row.attachment_url || null,
               created_by: row.created_by || null,
             };
-            await createHomework(payload);
+            await createHomework(payload, ctx);
             successCount++;
           } catch (err) {
             console.error(err);
@@ -159,7 +171,7 @@ export default function Homework() {
 
   async function handleCSVExport() {
     try {
-      const allData = await getAllHomeworksForExport(allFilters);
+      const allData = await getAllHomeworksForExport(allFilters, branchId, financialYearId);
       const csv = Papa.unparse(
         allData.map((h) => ({
           title: h.title,
@@ -336,7 +348,7 @@ export default function Homework() {
               <tr>
                 <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Title</th>
                 <th className="text-left text-sm font-montserrat text-secondary-dark">Batch</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Medium</th>   {/* NEW */}
+                <th className="text-left text-sm font-montserrat text-secondary-dark">Medium</th>
                 <th className="text-left text-sm font-montserrat text-secondary-dark">Subject</th>
                 <th className="text-left text-sm font-montserrat text-secondary-dark">Assigned</th>
                 <th className="text-left text-sm font-montserrat text-secondary-dark">Due</th>

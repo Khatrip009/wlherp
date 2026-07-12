@@ -8,14 +8,20 @@ import toast from "react-hot-toast";
 import { Search, Check, Bell } from "lucide-react";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
-import StudentLayout from "../layouts/AdminLayout"; // Reusing AdminLayout for now, can create a separate StudentLayout if needed
+import StudentLayout from "../layouts/AdminLayout"; // Reusing AdminLayout for now
+import { useOrg } from "../context/OrganizationContext";   // NEW
 
 export default function StudentNotifications() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
 
-  // Infinite query – only for the current user
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  // Infinite query – scoped to branch & FY
   const {
     data,
     isLoading,
@@ -23,7 +29,7 @@ export default function StudentNotifications() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["student-notifications", { search, userId: profile?.id }],
+    queryKey: ["student-notifications", { search, userId: profile?.id }, branchId, financialYearId],
     queryFn: async ({ pageParam = 0 }) => {
       const limit = 20;
       const from = pageParam * limit;
@@ -35,6 +41,10 @@ export default function StudentNotifications() {
         .eq("user_id", profile.id)
         .order("created_at", { ascending: false })
         .range(from, to);
+
+      // Scope to current branch and financial year
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
       if (search) {
         query = query.or(
@@ -55,36 +65,45 @@ export default function StudentNotifications() {
     },
     initialPageParam: 0,
     staleTime: 2 * 60 * 1000,
-    enabled: !!profile?.id,
+    enabled: !!profile?.id && !!branchId && !!financialYearId,
   });
 
   const notifications = data?.pages.flatMap((page) => page.data) || [];
 
-  // Mark single as read
+  // Mark single as read – scoped update to prevent cross‑branch changes
   const markReadMutation = useMutation({
     mutationFn: async (id) => {
-      const { error } = await supabase
+      let query = supabase
         .from("notifications")
         .update({ is_read: true })
         .eq("id", id)
         .eq("user_id", profile.id); // extra safety
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { error } = await query;
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["student-notifications"] });
-      // also invalidate the header count
       queryClient.invalidateQueries({ queryKey: ["notification-unread-count", profile.id] });
     },
   });
 
-  // Mark all as read
+  // Mark all as read – scoped
   const markAllReadMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
+      let query = supabase
         .from("notifications")
         .update({ is_read: true })
         .eq("user_id", profile.id)
         .eq("is_read", false);
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { error } = await query;
       if (error) throw error;
     },
     onSuccess: () => {

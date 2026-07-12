@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 import JitsiMeeting from "../components/JitsiMeeting";
 import toast from "react-hot-toast";
 import { Video, ArrowLeft } from "lucide-react";
@@ -12,7 +12,9 @@ import AdminLayout from "../layouts/AdminLayout";
 export default function JoinOnlineClass() {
   const { classId } = useParams();
   const { profile } = useAuth();
-  const { branch, selectedFinancialYear } = useOrg();      // NEW
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
   const navigate = useNavigate();
   const [classData, setClassData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -26,14 +28,18 @@ export default function JoinOnlineClass() {
   const isTeacher = userRole === "teacher";
   const isStudent = userRole === "student";
 
-  // Fetch class details and student/teacher info
+  // Fetch class details and student/teacher info – now scoped
   useEffect(() => {
+    if (!profile?.id || !branchId || !financialYearId) return;
+
     const fetchData = async () => {
       try {
         const { data: classInfo, error: classError } = await supabase
           .from("online_classes")
           .select("*")
           .eq("id", classId)
+          .eq("branch_id", branchId)
+          .eq("financial_year_id", financialYearId)
           .maybeSingle();
 
         if (classError) throw classError;
@@ -47,6 +53,8 @@ export default function JoinOnlineClass() {
             .from("students")
             .select("id")
             .eq("user_id", profile.id)
+            .eq("branch_id", branchId)
+            .eq("financial_year_id", financialYearId)
             .maybeSingle();
           if (studentError) throw studentError;
           if (student) setStudentId(student.id);
@@ -55,6 +63,8 @@ export default function JoinOnlineClass() {
             .from("teachers")
             .select("id")
             .eq("user_id", profile.id)
+            .eq("branch_id", branchId)
+            .eq("financial_year_id", financialYearId)
             .maybeSingle();
           if (teacher) setTeacherId(teacher.id);
         }
@@ -67,14 +77,12 @@ export default function JoinOnlineClass() {
       }
     };
 
-    if (profile?.id) {
-      fetchData();
-    }
-  }, [classId, profile, isStudent, isTeacher]);
+    fetchData();
+  }, [classId, profile, isStudent, isTeacher, branchId, financialYearId]);
 
   // Record attendance when user joins – only for students
   const recordAttendance = async () => {
-    if (!studentId) return;
+    if (!studentId || !branchId || !financialYearId) return;
     try {
       const { error } = await supabase
         .from("online_class_attendance")
@@ -83,8 +91,8 @@ export default function JoinOnlineClass() {
           student_id: studentId,
           joined_at: new Date().toISOString(),
           attended: true,
-          branch_id: branch?.id,                         // NEW
-          financial_year_id: selectedFinancialYear?.id,  // NEW
+          branch_id: branchId,
+          financial_year_id: financialYearId,
         });
       if (error) console.error("Attendance recording error:", error);
     } catch (err) {
@@ -102,22 +110,27 @@ export default function JoinOnlineClass() {
   };
 
   const handleStartClass = async () => {
+    if (!branchId || !financialYearId) return;
     try {
       const { error } = await supabase
         .from("online_classes")
         .update({
           status: "live",
-          branch_id: branch?.id,                         // NEW
-          financial_year_id: selectedFinancialYear?.id,  // NEW
+          branch_id: branchId,
+          financial_year_id: financialYearId,
         })
-        .eq("id", classId);
+        .eq("id", classId)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
       if (error) throw error;
       toast.success("Class started! Students notified.");
-      // Reload class data
+      // Reload class data – scoped
       const { data: updated } = await supabase
         .from("online_classes")
         .select("*")
         .eq("id", classId)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .single();
       setClassData(updated);
       setInMeeting(true);

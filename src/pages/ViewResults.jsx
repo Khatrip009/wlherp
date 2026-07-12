@@ -9,7 +9,7 @@ import {
 import Papa from "papaparse";
 import AdminLayout from "../layouts/AdminLayout";
 import { getExamById, getResultsByExam } from "../services/examService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function ViewResults() {
   const { examId } = useParams();
@@ -17,23 +17,25 @@ export default function ViewResults() {
   const [search, setSearch] = useState("");
   const hasValidExamId = !!examId && examId !== "undefined";
 
-  // Context for multi-tenant readiness (page is read-only)
-  useOrg();
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const {
     data: exam,
     isLoading: examLoading,
     error: examError,
   } = useQuery({
-    queryKey: ["exam", examId],
-    queryFn: () => getExamById(examId),
-    enabled: hasValidExamId,
+    queryKey: ["exam", examId, branchId, financialYearId],
+    queryFn: () => getExamById(examId, branchId, financialYearId),
+    enabled: hasValidExamId && !!branchId && !!financialYearId,
   });
 
   const { data: results = [], isLoading: resultsLoading } = useQuery({
-    queryKey: ["results", examId],
-    queryFn: () => getResultsByExam(examId),
-    enabled: hasValidExamId,
+    queryKey: ["results", examId, branchId, financialYearId],
+    queryFn: () => getResultsByExam(examId, branchId, financialYearId),
+    enabled: hasValidExamId && !!branchId && !!financialYearId,
   });
 
   const courseName = exam?.batches?.courses?.course_name || "-";

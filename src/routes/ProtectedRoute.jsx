@@ -1,3 +1,4 @@
+// src/components/ProtectedRoute.jsx
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -87,8 +88,9 @@ export default function ProtectedRoute({ children }) {
     return <Navigate to="/teacher" replace />;
   }
 
-  // Admin / Super Admin – full access (includes /reports and /reports/:reportId)
-  if (role === "admin" || role === "super_admin") {
+  // All admin roles – full access (includes /reports and /reports/:reportId)
+  const adminRoles = ["admin", "super_admin", "organization_admin", "branch_admin"];
+  if (adminRoles.includes(role)) {
     return children;
   }
 
@@ -98,7 +100,9 @@ export default function ProtectedRoute({ children }) {
       <div className="min-h-screen flex items-center justify-center bg-secondary-bg">
         <div className="text-center p-8">
           <h1 className="text-2xl font-righteous text-primary-dark mb-2">Parent Portal</h1>
-          <p className="text-sm text-secondary font-montserrat">Coming soon. Please contact the academy for updates.</p>
+          <p className="text-sm text-secondary font-montserrat">
+            Coming soon. Please contact the academy for updates.
+          </p>
         </div>
       </div>
     );

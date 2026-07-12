@@ -10,13 +10,18 @@ export default function SalarySetup() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
 
-  // ── Get branch & financial year from context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
+  // Fetch active teachers – scoped to branch & FY
   const { data: teachers = [], isLoading } = useQuery({
-    queryKey: ["active-teachers-salary"],
-    queryFn: getActiveTeachers,
+    queryKey: ["active-teachers-salary", branchId, financialYearId],
+    queryFn: () => getActiveTeachers(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
   const filteredTeachers = useMemo(() => {

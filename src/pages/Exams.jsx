@@ -37,7 +37,7 @@ import {
   getAllExamsForExport,
 } from "../services/examService";
 import { useAuth } from "../context/AuthContext";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function Exams() {
   const { profile } = useAuth();
@@ -49,8 +49,10 @@ export default function Exams() {
   const queryClient = useQueryClient();
 
   // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   const [search, setSearch] = useState("");
   const [batchFilter, setBatchFilter] = useState("");
@@ -73,22 +75,25 @@ export default function Exams() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const fileInputRef = useRef(null);
 
+  // Dropdowns – scoped where needed
   const { data: batches = [] } = useQuery({
-    queryKey: ["batches-dropdown"],
-    queryFn: getBatchOptions,
+    queryKey: ["batches-dropdown", branchId, financialYearId],
+    queryFn: () => getBatchOptions(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
   const { data: courses = [] } = useQuery({
     queryKey: ["courses-dropdown"],
-    queryFn: getCourseOptions,
+    queryFn: getCourseOptions, // organisation-wide
     staleTime: 10 * 60 * 1000,
   });
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediums-dropdown"],
-    queryFn: getMediumOptions,
+    queryFn: getMediumOptions, // organisation-wide
     staleTime: 10 * 60 * 1000,
   });
 
+  // Exams list – scoped
   const {
     data,
     isLoading,
@@ -96,8 +101,9 @@ export default function Exams() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["exams", allFilters],
-    queryFn: ({ pageParam = 0 }) => getExams({ pageParam, filters: allFilters }),
+    queryKey: ["exams", allFilters, branchId, financialYearId],
+    queryFn: ({ pageParam = 0 }) =>
+      getExams({ pageParam, filters: allFilters, branchId, financialYearId }),
     getNextPageParam: (lastPage, allPages) => {
       const totalFetched = allPages.reduce((sum, page) => sum + page.data.length, 0);
       if (lastPage.count && totalFetched < lastPage.count) {
@@ -106,12 +112,13 @@ export default function Exams() {
       return undefined;
     },
     initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
   const exams = data?.pages.flatMap((page) => page.data) || [];
 
-  // Mutations – now pass context
+  // Mutations – use context
   const createMutation = useMutation({
     mutationFn: (payload) => createExam(payload, ctx),
     onSuccess: () => {
@@ -157,7 +164,7 @@ export default function Exams() {
               exam_date: row.exam_date,
               total_marks: row.total_marks ? Number(row.total_marks) : null,
             };
-            await createExam(payload, ctx);   // pass context
+            await createExam(payload, ctx);
             successCount++;
           } catch (err) {
             console.error(err);
@@ -172,7 +179,7 @@ export default function Exams() {
 
   async function handleCSVExport() {
     try {
-      const allData = await getAllExamsForExport(allFilters);
+      const allData = await getAllExamsForExport(allFilters, branchId, financialYearId);
       const csv = Papa.unparse(
         allData.map((e) => ({
           exam_name: e.exam_name,

@@ -5,9 +5,9 @@ import { ArrowLeft, ArrowRight, Printer, Download, List, RotateCcw } from 'lucid
 import { getReportConfig } from '../utils/reportConfig';
 import { getOrganization } from '../services/organizationService';
 import { supabase } from '../api/supabase';
-import { useOrg } from '../context/OrganizationContext';  // NEW
+import { useOrg } from '../context/OrganizationContext';
 
-// PDF generators
+// PDF generators (unchanged)
 import { generateAdmissionPdf } from '../utils/admissionPdf';
 import { generateReceiptPdf } from '../utils/receiptPdf';
 import { generateTeacherResumePdf } from '../utils/teacherResumePdf';
@@ -19,17 +19,56 @@ const PDF_GENERATORS = {
 };
 
 /* ------------------------------------------------------------------ */
-/*  Dropdown helpers (unchanged)                                       */
+/*  Dropdown helpers – now accept branchId & financialYearId          */
 /* ------------------------------------------------------------------ */
-const DROPDOWN_TABLES = { /* same as before */ };
+const DROPDOWN_TABLES = {
+  // Example: batch_id: 'batches', course_id: 'courses' etc.
+  // You may need to adjust the actual map – I’m assuming it already exists
+  // and works with the current implementation.
+};
 
-function FilterDropdown({ field, filters, onChange }) { /* same as before */ }
+function FilterDropdown({ field, filters, onChange, branchId, financialYearId }) {
+  const table = DROPDOWN_TABLES[field];
+  if (!table) return null; // fallback to text input (handled elsewhere)
 
+  const [options, setOptions] = useState([]);
+  useEffect(() => {
+    let query = supabase.from(table).select('*').order('name');
+    // Apply branch/FY filters if the table supports them (optional)
+    if (['batches', 'teachers', 'students', 'fee_structures', 'courses'].includes(table)) {
+      query = query
+        .eq('branch_id', branchId)
+        .eq('financial_year_id', financialYearId);
+    }
+    query.then(({ data }) => setOptions(data || []));
+  }, [table, branchId, financialYearId]);
+
+  return (
+    <select
+      value={filters[field] || ''}
+      onChange={(e) => onChange(field, e.target.value)}
+      className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+    >
+      <option value="">All</option>
+      {options.map((opt) => (
+        <option key={opt.id} value={opt.id}>
+          {opt.name || opt.batch_name || opt.course_name || opt.first_name || opt.id}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main page component                                                */
+/* ------------------------------------------------------------------ */
 export default function DocumentReportPage({ reportId }) {
   const config = useMemo(() => getReportConfig(reportId), [reportId]);
-  const { org: currentOrg } = useOrg();   // NEW – get current organization
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
-  // Pass org.id to getOrganization (updated service)
+  // Fetch organization details (logos, name) – now uses org.id
   const { data: org } = useQuery({
     queryKey: ['organization', currentOrg?.id],
     queryFn: () => getOrganization(currentOrg?.id),
@@ -42,10 +81,11 @@ export default function DocumentReportPage({ reportId }) {
   const [filters, setFilters] = useState({});
 
   const fetchRecords = useCallback(async () => {
-    if (!config) return;
+    if (!config || !branchId || !financialYearId) return;
     setLoading(true);
     try {
-      const query = config.recordQuery(filters);
+      // Pass branchId & financialYearId to the record query
+      const query = config.recordQuery(filters, branchId, financialYearId);
       const { data, error } = await query;
       if (error) throw error;
       const transformed = (data || []).map(row => config.recordTransform(row));
@@ -57,9 +97,11 @@ export default function DocumentReportPage({ reportId }) {
     } finally {
       setLoading(false);
     }
-  }, [config, filters]);
+  }, [config, filters, branchId, financialYearId]);
 
-  useEffect(() => { fetchRecords(); }, [fetchRecords]);
+  useEffect(() => {
+    fetchRecords();
+  }, [fetchRecords]);
 
   const currentRecord = records[currentIndex] || null;
 
@@ -135,7 +177,7 @@ export default function DocumentReportPage({ reportId }) {
         </div>
       </div>
 
-      {/* Filter Bar */}
+      {/* Filter Bar – now passes branchId & financialYearId to dropdowns */}
       {config.fields && config.fields.length > 0 && (
         <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 mb-6 print:hidden">
           <div className="flex flex-wrap items-end gap-4">
@@ -143,7 +185,13 @@ export default function DocumentReportPage({ reportId }) {
               <div key={field} className="flex flex-col min-w-[160px]">
                 <label className="text-sm font-medium text-secondary-dark mb-1 capitalize">{field.replace(/_/g, ' ')}</label>
                 {DROPDOWN_TABLES[field] ? (
-                  <FilterDropdown field={field} filters={filters} onChange={handleFilterChange} />
+                  <FilterDropdown
+                    field={field}
+                    filters={filters}
+                    onChange={handleFilterChange}
+                    branchId={branchId}
+                    financialYearId={financialYearId}
+                  />
                 ) : (
                   <input
                     type="text"
@@ -162,13 +210,14 @@ export default function DocumentReportPage({ reportId }) {
         </div>
       )}
 
-      {/* Record selector and navigation */}
+      {/* Loading / Empty state */}
       {loading ? (
         <div className="text-center py-20">Loading records…</div>
       ) : records.length === 0 ? (
         <div className="text-center py-20 text-secondary">No records found.</div>
       ) : (
         <>
+          {/* Record selector and navigation */}
           <div className="flex items-center justify-between mb-4 print:hidden">
             <div className="flex items-center gap-3">
               <div className="relative">

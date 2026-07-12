@@ -1,7 +1,7 @@
 // src/services/creditNoteService.js
 import { supabase } from "../api/supabase";
 
-export async function getCreditNotes(filters = {}) {
+export async function getCreditNotes(filters = {}, branchId, financialYearId) {
   let query = supabase
     .from("credit_notes")
     .select(`
@@ -14,6 +14,10 @@ export async function getCreditNotes(filters = {}) {
     `)
     .order("date", { ascending: false });
 
+  // Scope to current branch & financial year
+  if (branchId) query = query.eq("credit_notes.branch_id", branchId);
+  if (financialYearId) query = query.eq("credit_notes.financial_year_id", financialYearId);
+
   if (filters.status) query = query.eq("status", filters.status);
   if (filters.invoice_id) query = query.eq("invoice_id", filters.invoice_id);
 
@@ -22,8 +26,8 @@ export async function getCreditNotes(filters = {}) {
   return data || [];
 }
 
-export async function getCreditNote(id) {
-  const { data, error } = await supabase
+export async function getCreditNote(id, branchId, financialYearId) {
+  let query = supabase
     .from("credit_notes")
     .select(`
       *,
@@ -32,8 +36,12 @@ export async function getCreditNote(id) {
         students(first_name, last_name, admission_no, gstin, state_code)
       )
     `)
-    .eq("id", id)
-    .single();
+    .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query.single();
   if (error) throw error;
   return data;
 }
@@ -73,7 +81,15 @@ export async function finalizeCreditNote(id) {
   return data;
 }
 
-export async function deleteCreditNote(id) {
-  const { error } = await supabase.from("credit_notes").delete().eq("id", id);
+export async function deleteCreditNote(id, branchId, financialYearId) {
+  let query = supabase
+    .from("credit_notes")
+    .delete()
+    .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { error } = await query;
   if (error) throw error;
 }

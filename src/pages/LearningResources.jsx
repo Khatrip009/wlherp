@@ -6,6 +6,7 @@ import AdminLayout from "../layouts/AdminLayout";
 import BackButton from "../components/BackButton";
 
 import { Plus, Trash2, ExternalLink } from "lucide-react";
+import { useOrg } from "../context/OrganizationContext"; // NEW
 
 const RESOURCE_TYPES = [
   "textbook",
@@ -32,33 +33,57 @@ export default function LearningResources() {
     chapter_title: "",
     resource_url: "",
     resource_type: "textbook",
-    medium_id: "", // now using FK
+    medium_id: "",
     board: "GSEB",
     is_premium: false,
   });
 
-  // Fetch dropdown data
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  // Fetch dropdown data – scoped where appropriate
+
+  // Subjects – scoped
   const { data: subjects = [] } = useQuery({
-    queryKey: ["subjects-list"],
+    queryKey: ["subjects-list", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("subjects")
-        .select("id, subject_name, courses(course_name)");
+        .select("id, subject_name, courses(course_name)")
+        .order("subject_name");
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 10 * 60 * 1000,
   });
 
+  // Batches – scoped
   const { data: batches = [] } = useQuery({
-    queryKey: ["batches-list"],
+    queryKey: ["batches-list", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("batches")
-        .select("id, batch_name");
+        .select("id, batch_name")
+        .order("batch_name");
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 10 * 60 * 1000,
   });
 
-  // NEW: fetch mediums
+  // Mediums – org‑wide (no branch/FY)
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediums-list"],
     queryFn: async () => {
@@ -68,11 +93,12 @@ export default function LearningResources() {
         .order("name");
       return data || [];
     },
+    staleTime: 10 * 60 * 1000,
   });
 
-  // Fetch resources with filters (now includes medium_id and mediums join)
+  // Fetch resources with filters (scoped)
   const { data: resources = [], isLoading } = useQuery({
-    queryKey: ["learning-resources", filters],
+    queryKey: ["learning-resources", filters, branchId, financialYearId],
     queryFn: async () => {
       let query = supabase
         .from("learning_resources")
@@ -80,6 +106,10 @@ export default function LearningResources() {
           "*, subjects(subject_name, courses(course_name)), batches(batch_name), mediums(name)"
         )
         .order("created_at", { ascending: false });
+
+      // Scope to branch & FY
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
       if (filters.subject_id) query = query.eq("subject_id", filters.subject_id);
       if (filters.batch_id) query = query.eq("batch_id", filters.batch_id);
@@ -90,12 +120,20 @@ export default function LearningResources() {
       const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
-  // Add resource mutation
+  // Add resource mutation – scoped
   const addMutation = useMutation({
     mutationFn: async (payload) => {
-      const { error } = await supabase.from("learning_resources").insert(payload);
+      const { error } = await supabase
+        .from("learning_resources")
+        .insert({
+          ...payload,
+          branch_id: branchId,
+          financial_year_id: financialYearId,
+        });
       if (error) throw error;
     },
     onSuccess: () => {
@@ -106,13 +144,18 @@ export default function LearningResources() {
     onError: () => toast.error("Failed to add"),
   });
 
-  // Delete resource mutation
+  // Delete resource mutation – scoped
   const deleteMutation = useMutation({
     mutationFn: async (id) => {
-      const { error } = await supabase
+      let query = supabase
         .from("learning_resources")
         .delete()
         .eq("id", id);
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { error } = await query;
       if (error) throw error;
     },
     onSuccess: () => {
@@ -128,7 +171,6 @@ export default function LearningResources() {
       toast.error("Subject and URL are required");
       return;
     }
-    // Ensure empty strings become null for FK
     const payload = {
       ...form,
       batch_id: form.batch_id || null,
@@ -199,7 +241,6 @@ export default function LearningResources() {
           ))}
         </select>
 
-        {/* NEW: Medium filter */}
         <select
           className="border p-2 rounded"
           value={filters.medium_id}
@@ -253,7 +294,6 @@ export default function LearningResources() {
                     {r.resource_type.replace("_", " ")}
                   </td>
                   <td className="p-3 text-sm">
-                    {/* Show medium name from join or fallback to text column */}
                     {r.mediums?.name || r.medium || "—"} - {r.board}
                   </td>
                   <td className="p-3 text-sm">
@@ -372,7 +412,6 @@ export default function LearningResources() {
                   ))}
                 </select>
 
-                {/* Replaced medium text with dropdown from mediums table */}
                 <select
                   value={form.medium_id}
                   onChange={(e) =>

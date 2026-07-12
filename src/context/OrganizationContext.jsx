@@ -8,13 +8,14 @@ const OrgContext = createContext();
 export function OrganizationProvider({ children }) {
   const { user } = useAuth();
   const [org, setOrg] = useState(null);
-  const [theme, setTheme] = useState(null);            // ← NEW
+  const [theme, setTheme] = useState(null);
   const [branch, setBranch] = useState(null);
   const [branches, setBranches] = useState([]);
   const [financialYears, setFinancialYears] = useState([]);
   const [selectedFinancialYear, setSelectedFinancialYear] = useState(null);
+  const [mediums, setMediums] = useState([]);   // ← NEW
 
-  // Apply theme CSS variables whenever the theme changes
+  // Apply theme CSS variables
   useEffect(() => {
     if (!theme) return;
     const root = document.documentElement;
@@ -29,7 +30,7 @@ export function OrganizationProvider({ children }) {
   }, [theme]);
 
   useEffect(() => {
-    // ── USER LOGGED OUT ──
+    // ── LOGOUT ──
     if (!user) {
       setOrg(null);
       setTheme(null);
@@ -37,8 +38,8 @@ export function OrganizationProvider({ children }) {
       setBranches([]);
       setFinancialYears([]);
       setSelectedFinancialYear(null);
+      setMediums([]);
 
-      // Domain matching for public pages (only when no user)
       const hostname = window.location.hostname;
       if (hostname !== "app.shreevidhyaerp.online" && hostname !== "localhost") {
         (async () => {
@@ -65,7 +66,7 @@ export function OrganizationProvider({ children }) {
       return;
     }
 
-    // ── USER LOGGED IN ──
+    // ── LOGIN ──
     async function loadOrganization() {
       const { data: profile } = await supabase
         .from("profiles")
@@ -75,12 +76,12 @@ export function OrganizationProvider({ children }) {
 
       if (!profile?.organization_id) return;
 
-      // Fetch org, theme, branches, and financial years in parallel
       const [
         { data: orgData },
         { data: themeData },
         { data: branchList },
         { data: fys },
+        { data: mediumRows },
       ] = await Promise.all([
         supabase.from("organization").select("*").eq("id", profile.organization_id).single(),
         supabase.from("themes").select("*").eq("org_id", profile.organization_id).maybeSingle(),
@@ -89,12 +90,23 @@ export function OrganizationProvider({ children }) {
           .select("*")
           .eq("organization_id", profile.organization_id)
           .order("start_date", { ascending: false }),
+        supabase
+          .from("organization_mediums")
+          .select("medium_id, mediums(name)")   // assuming mediums table has "name"
+          .eq("org_id", profile.organization_id),
       ]);
 
       setOrg(orgData);
       setTheme(themeData || null);
       setBranches(branchList || []);
       setFinancialYears(fys || []);
+
+      // Extract mediums list from mapping
+      const mediumList = (mediumRows || []).map((row) => ({
+        id: row.medium_id,
+        name: row.mediums?.name || "",
+      }));
+      setMediums(mediumList);
 
       if (branchList?.length) setBranch(branchList[0]);
 
@@ -122,17 +134,22 @@ export function OrganizationProvider({ children }) {
     [financialYears, user]
   );
 
+  // ── Derived value: numeric ID for use in .eq("id", orgId) ──
+  const organizationId = org?.id ?? null;
+
   return (
     <OrgContext.Provider
       value={{
         org,
-        theme,   // ← exposed
+        theme,
         branch,
         setBranch,
         branches,
         financialYears,
         selectedFinancialYear,
         switchFinancialYear,
+        mediums,            // now available everywhere
+        organizationId,     // just the number, safe to use in queries
       }}
     >
       {children}

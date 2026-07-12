@@ -1,14 +1,19 @@
 // src/services/documentService.js
 import { supabase } from "../api/supabase";
 
-// Get all documents for a student
-export async function getStudentDocuments(studentId) {
-  const { data, error } = await supabase
+// Get all documents for a student – now scoped to branch & FY
+export async function getStudentDocuments(studentId, branchId, financialYearId) {
+  let query = supabase
     .from("student_documents")
     .select("*")
     .eq("student_id", studentId)
     .order("uploaded_at", { ascending: false });
 
+  // Scope to current branch and financial year
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data;
 }
@@ -56,20 +61,24 @@ export async function uploadStudentDocument(studentId, file, documentType, conte
   return data;
 }
 
-// Delete document (file + record) – RLS handles access
-export async function deleteStudentDocument(documentId, filePath) {
-  // 1. Delete from storage
+// Delete document (file + record) – now scoped to prevent cross‑branch deletion
+export async function deleteStudentDocument(documentId, filePath, branchId, financialYearId) {
+  // 1. Delete from storage (storage is not branch‑scoped, so we rely on record check)
   const { error: storageError } = await supabase.storage
     .from("student-documents")
     .remove([filePath]);
 
   if (storageError) throw storageError;
 
-  // 2. Delete record
-  const { error } = await supabase
+  // 2. Delete record with branch & FY scope
+  let query = supabase
     .from("student_documents")
     .delete()
     .eq("id", documentId);
 
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { error } = await query;
   if (error) throw error;
 }

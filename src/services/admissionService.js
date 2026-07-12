@@ -1,19 +1,18 @@
 // src/services/admissionService.js
 import { supabase } from "../api/supabase";
 
-export async function convertInquiryToStudent(inquiry, financialYearId) {
+export async function convertInquiryToStudent(inquiry, branchId, financialYearId) {
   try {
     // 1. Create Parent
     const { data: parent, error: parentError } = await supabase
       .from("parents")
-      .insert([
-        {
-          father_name: inquiry.parent_name,
-          mobile: inquiry.mobile,
-          whatsapp: inquiry.whatsapp,
-          financial_year_id: financialYearId,
-        },
-      ])
+      .insert([{
+        father_name: inquiry.parent_name,
+        mobile: inquiry.mobile,
+        whatsapp: inquiry.whatsapp,
+        branch_id: branchId,
+        financial_year_id: financialYearId,
+      }])
       .select()
       .single();
 
@@ -26,11 +25,11 @@ export async function convertInquiryToStudent(inquiry, financialYearId) {
       admission_no: admissionNo,
       first_name: inquiry.student_name,
       mobile: inquiry.mobile,
-      joining_date: new Date(),
+      joining_date: new Date().toISOString(),
+      branch_id: branchId,
       financial_year_id: financialYearId,
     };
 
-    // NEW – carry over the medium if the inquiry has one
     if (inquiry.medium_id) {
       studentPayload.medium_id = inquiry.medium_id;
     }
@@ -43,21 +42,20 @@ export async function convertInquiryToStudent(inquiry, financialYearId) {
 
     if (studentError) throw studentError;
 
-    // 3. Create Mapping
+    // 3. Create Student-Parent Mapping
     const { error: mappingError } = await supabase
       .from("student_parents")
-      .insert([
-        {
-          student_id: student.id,
-          parent_id: parent.id,
-          relation: "Father",
-          financial_year_id: financialYearId,
-        },
-      ]);
+      .insert([{
+        student_id: student.id,
+        parent_id: parent.id,
+        relation: "Father",
+        branch_id: branchId,
+        financial_year_id: financialYearId,
+      }]);
 
     if (mappingError) throw mappingError;
 
-    // 4. Update Inquiry
+    // 4. Update Inquiry status
     const { error: inquiryError } = await supabase
       .from("inquiries")
       .update({ status: "Joined" })

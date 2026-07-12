@@ -3,7 +3,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 import toast from "react-hot-toast";
 import AdminLayout from "../layouts/AdminLayout";
 import {
@@ -30,41 +30,59 @@ export default function PurchaseRegister() {
   const [taxRateFilter, setTaxRateFilter] = useState("");
   const [search, setSearch] = useState("");
 
-  // ── Get current organization from context ──
-  const { org: currentOrg } = useOrg();   // NEW
+  // ── Branch & Financial Year context ──
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
+  // Organization details
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
-    queryFn: () => getOrganization(currentOrg?.id),   // pass org id
+    queryFn: () => getOrganization(currentOrg?.id),
     enabled: !!currentOrg?.id,
   });
-  // ─── Fetch vendors for filter dropdown ─────────────────────
+
+  // ─── Fetch vendors for filter dropdown – scoped ─────────────────────
   const { data: vendors = [] } = useQuery({
-    queryKey: ["vendors-dropdown"],
+    queryKey: ["vendors-dropdown", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase.from("vendors").select("id, vendor_name").order("vendor_name");
+      let query = supabase
+        .from("vendors")
+        .select("id, vendor_name")
+        .order("vendor_name");
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
-  // ─── Fetch tax rates for filter dropdown ──────────────────
+  // ─── Fetch tax rates for filter dropdown – scoped ──────────────────
   const { data: taxRates = [] } = useQuery({
-    queryKey: ["tax-rates-dropdown"],
+    queryKey: ["tax-rates-dropdown", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase.from("tax_rates").select("id, name, rate").eq("is_active", true);
+      let query = supabase
+        .from("tax_rates")
+        .select("id, name, rate")
+        .eq("is_active", true);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
-  // ─── Main query: fetch expenses with vendor & tax details ──
+  // ─── Main query: fetch expenses – scoped ──
   const {
     data: expenses = [],
     isLoading,
     refetch,
   } = useQuery({
-    queryKey: ["purchase-register", startDate, endDate, vendorFilter, taxRateFilter, search],
+    queryKey: ["purchase-register", startDate, endDate, vendorFilter, taxRateFilter, search, branchId, financialYearId],
     queryFn: async () => {
       let query = supabase
         .from("expenses")
@@ -76,6 +94,9 @@ export default function PurchaseRegister() {
         .gte("expense_date", startDate)
         .lte("expense_date", endDate)
         .order("expense_date", { ascending: false });
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
       if (vendorFilter) query = query.eq("vendor_id", vendorFilter);
       if (taxRateFilter) query = query.eq("tax_rate_id", taxRateFilter);
@@ -89,10 +110,11 @@ export default function PurchaseRegister() {
       if (error) throw error;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
-  // ─── Summaries ──────────────────────────────────────────────
+  // ─── Summaries (unchanged) ──────────────────────────────────────────
   const summaries = useMemo(() => {
     const totalTaxable = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
     const totalGST = expenses.reduce((s, e) => s + Number(e.gst_amount || 0), 0);
@@ -103,7 +125,6 @@ export default function PurchaseRegister() {
     const invoiceCount = expenses.filter((e) => e.invoice_number).length;
     const vendorCount = new Set(expenses.map((e) => e.vendor_id).filter(Boolean)).size;
 
-    // Tax rate breakdown
     const rateMap = {};
     expenses.forEach((e) => {
       const rateId = e.tax_rate_id || "0";
@@ -126,7 +147,6 @@ export default function PurchaseRegister() {
     });
     const byRate = Object.values(rateMap).sort((a, b) => b.ratePercent - a.ratePercent);
 
-    // Vendor breakdown
     const vendorMap = {};
     expenses.forEach((e) => {
       const vid = e.vendor_id || "0";
@@ -160,7 +180,7 @@ export default function PurchaseRegister() {
     };
   }, [expenses]);
 
-  // ─── Export CSV ─────────────────────────────────────────────
+  // ─── Export CSV (unchanged) ───────────────────────────────────────
   const handleExportCSV = () => {
     if (expenses.length === 0) {
       toast.error("No data to export");
@@ -191,7 +211,7 @@ export default function PurchaseRegister() {
     toast.success("CSV exported");
   };
 
-  // ─── Export PDF ─────────────────────────────────────────────
+  // ─── Export PDF (unchanged) ───────────────────────────────────────
   const handleExportPDF = () => {
     if (expenses.length === 0) {
       toast.error("No data to export");
@@ -203,7 +223,6 @@ export default function PurchaseRegister() {
     const margin = 14;
     let y = 16;
 
-    // Header
     const orgName = org?.company_name || "ShreeVidhya Academy";
     const address = org?.address || "";
     const phone = org?.phone || "";
@@ -222,7 +241,6 @@ export default function PurchaseRegister() {
     doc.text(`Phone: ${phone} | Email: ${email}`, margin, y);
     y += 10;
 
-    // Title
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
     doc.setTextColor("#0D47A1");
@@ -230,7 +248,6 @@ export default function PurchaseRegister() {
     doc.text(title, pageWidth / 2, y, { align: "center" });
     y += 10;
 
-    // Summary cards
     const summaryData = [
       ["Total Taxable", `₹ ${summaries.totalTaxable.toLocaleString("en-IN")}`],
       ["Total GST", `₹ ${summaries.totalGST.toLocaleString("en-IN")}`],
@@ -252,7 +269,6 @@ export default function PurchaseRegister() {
     });
     y = doc.lastAutoTable.finalY + 8;
 
-    // Detailed table
     const tableRows = expenses.map((e) => [
       e.expense_date,
       e.vendors?.vendor_name || "—",
@@ -286,7 +302,6 @@ export default function PurchaseRegister() {
       margin: { left: margin, right: margin },
     });
 
-    // Footer
     const footerY = doc.internal.pageSize.getHeight() - 10;
     doc.setFontSize(7);
     doc.setTextColor("#999");
@@ -298,7 +313,7 @@ export default function PurchaseRegister() {
     toast.success("PDF exported");
   };
 
-  // ─── Handle Print ───────────────────────────────────────────
+  // ─── Handle Print (unchanged) ─────────────────────────────────────
   const handlePrint = () => {
     const content = document.getElementById("purchase-register-content")?.innerHTML;
     if (!content) return;

@@ -7,7 +7,7 @@ import toast from "react-hot-toast";
 import AdminLayout from "../layouts/AdminLayout";
 import { Search, Plus, Edit3, Trash2, X, Save, Loader } from "lucide-react";
 import GSTLookup from "../components/GSTLookup";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function Vendors() {
   const queryClient = useQueryClient();
@@ -29,17 +29,20 @@ export default function Vendors() {
   });
 
   // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
-  // Fetch vendors with optional search
+  // Fetch vendors with optional search – scoped to branch & FY
   const { data: vendors = [], isLoading } = useQuery({
-    queryKey: ["vendors", search],
-    queryFn: () => getVendors({ search }),
+    queryKey: ["vendors", search, branchId, financialYearId],
+    queryFn: () => getVendors({ search }, branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch states for dropdown
+  // Fetch states for dropdown (organisation‑wide)
   const { data: states = [] } = useQuery({
     queryKey: ["states-dropdown"],
     queryFn: async () => {
@@ -49,7 +52,7 @@ export default function Vendors() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Mutations – now pass context
+  // Mutations – now pass context for write / scoped IDs for delete
   const createMutation = useMutation({
     mutationFn: (payload) => createVendor(payload, ctx),
     onSuccess: () => {
@@ -71,7 +74,7 @@ export default function Vendors() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteVendor,   // no context needed
+    mutationFn: (id) => deleteVendor(id, branchId, financialYearId),
     onSuccess: () => {
       toast.success("Vendor deleted");
       queryClient.invalidateQueries(["vendors"]);
@@ -79,7 +82,7 @@ export default function Vendors() {
     onError: (err) => toast.error(err.message),
   });
 
-  // Form handlers
+  // Form handlers (unchanged)
   const openCreate = () => {
     setEditing(null);
     setForm({
@@ -126,7 +129,7 @@ export default function Vendors() {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  // Auto‑fill from GST lookup
+  // Auto‑fill from GST lookup (unchanged)
   const handleGSTLookupSuccess = (data) => {
     setForm((prev) => ({
       ...prev,
@@ -144,7 +147,6 @@ export default function Vendors() {
       return;
     }
     const payload = { ...form };
-    // Clean GSTIN
     if (payload.gstin) {
       payload.gstin = payload.gstin.replace(/\s/g, "").toUpperCase();
     }

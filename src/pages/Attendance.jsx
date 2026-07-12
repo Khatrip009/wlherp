@@ -33,12 +33,13 @@ import {
   getAllAttendanceSessionsForExport,
 } from "../services/attendanceService";
 import { useAuth } from "../context/AuthContext";
-import { useOrg } from "../context/OrganizationContext"; // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function Attendance() {
   const { profile } = useAuth();
-  const { branch, selectedFinancialYear } = useOrg(); // NEW
-  const financialYearId = selectedFinancialYear?.id; // convenience
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const role = (profile?.role || "").toLowerCase().replace(/\s+/g, "_");
   const isAdmin = role === "admin" || role === "super_admin";
@@ -60,9 +61,11 @@ export default function Attendance() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const fileInputRef = useRef(null);
 
+  // Dropdowns – scoped
   const { data: batches = [] } = useQuery({
-    queryKey: ["batches-dropdown"],
-    queryFn: getBatchOptions,
+    queryKey: ["batches-dropdown", branchId, financialYearId],
+    queryFn: () => getBatchOptions(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
@@ -72,6 +75,7 @@ export default function Attendance() {
     staleTime: 10 * 60 * 1000,
   });
 
+  // Main sessions query – scoped
   const {
     data,
     isLoading,
@@ -79,23 +83,29 @@ export default function Attendance() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["attendance-sessions", allFilters],
+    queryKey: ["attendance-sessions", allFilters, branchId, financialYearId],
     queryFn: ({ pageParam = 0 }) =>
-      getAttendanceSessions({ pageParam, filters: allFilters }),
+      getAttendanceSessions({
+        pageParam,
+        filters: allFilters,
+        branchId,
+        financialYearId,
+      }),
     getNextPageParam: (lastPage, allPages) => {
       const totalFetched = allPages.reduce((sum, page) => sum + page.data.length, 0);
       if (lastPage.count && totalFetched < lastPage.count) return allPages.length;
       return undefined;
     },
     initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
   const sessions = data?.pages.flatMap((page) => page.data) || [];
 
-  // Mutations now pass financialYearId where needed
+  // Mutations – now pass branchId and financialYearId to all write functions
   const createMutation = useMutation({
-    mutationFn: (payload) => createAttendanceSession(payload, financialYearId),
+    mutationFn: (payload) => createAttendanceSession(payload, branchId, financialYearId),
     onSuccess: () => {
       toast.success("Session created");
       queryClient.invalidateQueries({ queryKey: ["attendance-sessions"] });
@@ -105,7 +115,7 @@ export default function Attendance() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }) => updateAttendanceSession(id, payload, financialYearId),
+    mutationFn: ({ id, payload }) => updateAttendanceSession(id, payload, branchId, financialYearId),
     onSuccess: () => {
       toast.success("Session updated");
       queryClient.invalidateQueries({ queryKey: ["attendance-sessions"] });
@@ -115,7 +125,7 @@ export default function Attendance() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteAttendanceSession, // no FY needed for soft delete (RLS handles)
+    mutationFn: (id) => deleteAttendanceSession(id, branchId, financialYearId),
     onSuccess: () => {
       toast.success("Session deleted");
       queryClient.invalidateQueries({ queryKey: ["attendance-sessions"] });
@@ -138,8 +148,7 @@ export default function Attendance() {
               attendance_date: row.attendance_date,
               topic_covered: row.topic_covered || "",
             };
-            // Use createAttendanceSession with financialYearId
-            await createAttendanceSession(payload, financialYearId);
+            await createAttendanceSession(payload, branchId, financialYearId);
             successCount++;
           } catch (err) {
             console.error(err);
@@ -154,7 +163,11 @@ export default function Attendance() {
 
   async function handleCSVExport() {
     try {
-      const allData = await getAllAttendanceSessionsForExport(allFilters);
+      const allData = await getAllAttendanceSessionsForExport(
+        allFilters,
+        branchId,
+        financialYearId
+      );
       const csv = Papa.unparse(
         allData.map((s) => ({
           date: s.attendance_date,
@@ -176,12 +189,11 @@ export default function Attendance() {
     }
   }
 
-  function handleCreate(payload, context) {
-    // context contains branchId & financialYearId but we already use financialYearId from hook
+  function handleCreate(payload) {
     createMutation.mutate(payload);
   }
 
-  function handleUpdate(payload, context) {
+  function handleUpdate(payload) {
     updateMutation.mutate({ id: editing.id, payload });
   }
 
@@ -200,7 +212,6 @@ export default function Attendance() {
           </p>
         </div>
 
-        {/* Show New Session button for admins and teachers */}
         {(isAdmin || isTeacher) && (
           <div className="flex flex-wrap gap-2">
             <button
@@ -386,7 +397,6 @@ export default function Attendance() {
                         >
                           Mark
                         </button>
-                        {/* Edit/Delete only for admins */}
                         {isAdmin && (
                           <>
                             <button
@@ -433,7 +443,6 @@ export default function Attendance() {
         />
       )}
 
-      {/* Form modal */}
       {(isAdmin || isTeacher) && showForm && (
         <AttendanceSessionForm
           onSubmit={handleCreate}

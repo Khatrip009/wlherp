@@ -5,7 +5,7 @@ import { Printer } from "lucide-react";
 import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 const GROUP_CONFIG = {
   "Current Assets": { parent: 1000, type: "asset" },
@@ -17,22 +17,30 @@ const GROUP_CONFIG = {
 
 export default function BalanceSheet() {
   const [asOfDate, setAsOfDate] = useState(new Date().toISOString().split("T")[0]);
-  const { org: currentOrg } = useOrg();                  // NEW
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
-  // Pass current org id to getOrganization
+  // Fetch organization details
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
     queryFn: () => getOrganization(currentOrg?.id),
     enabled: !!currentOrg?.id,
   });
 
+  // Fetch balance sheet accounts – now scoped by branch & FY
   const { data: accounts = [], isLoading } = useQuery({
-    queryKey: ["balance-sheet", asOfDate],
+    queryKey: ["balance-sheet", asOfDate, branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase.rpc("get_balance_sheet", { as_of_date: asOfDate });
+      const { data, error } = await supabase.rpc("get_balance_sheet", {
+        as_of_date: asOfDate,
+        p_branch_id: branchId,
+        p_financial_year_id: financialYearId,
+      });
+      if (error) throw error;
       return data || [];
     },
-    enabled: !!asOfDate,
+    enabled: !!asOfDate && !!branchId && !!financialYearId,
   });
 
   // Group accounts by parent (unchanged)

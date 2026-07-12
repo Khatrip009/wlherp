@@ -5,6 +5,7 @@ import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
 import { generateReceiptPdf } from "../utils/receiptPdf";
 import BackButton from "../components/BackButton";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 
 export default function Receipts() {
   const [search, setSearch] = useState("");
@@ -18,7 +19,14 @@ export default function Receipts() {
     end_date: "",
   });
 
-  // Dropdown options
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  // Dropdown options – scoped where appropriate
+
+  // Courses – organisation‑wide (no scoping)
   const { data: courses = [] } = useQuery({
     queryKey: ["courses-dropdown"],
     queryFn: async () => {
@@ -28,15 +36,25 @@ export default function Receipts() {
     staleTime: 10 * 60 * 1000,
   });
 
+  // Batches – scoped to branch & FY
   const { data: batches = [] } = useQuery({
-    queryKey: ["batches-dropdown"],
+    queryKey: ["batches-dropdown", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase.from("batches").select("id, batch_name").eq("status", "active").order("batch_name");
+      let query = supabase
+        .from("batches")
+        .select("id, batch_name")
+        .eq("status", "active")
+        .order("batch_name");
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
+  // Mediums – organisation‑wide
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediums-dropdown"],
     queryFn: async () => {
@@ -46,21 +64,28 @@ export default function Receipts() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Fetch all students for the student dropdown (can be filtered later)
+  // All students – scoped to branch & FY
   const { data: allStudents = [] } = useQuery({
-    queryKey: ["students-list"],
+    queryKey: ["students-list", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase.from("students").select("id, first_name, last_name, admission_no, medium_id").order("first_name");
+      let query = supabase
+        .from("students")
+        .select("id, first_name, last_name, admission_no, medium_id")
+        .order("first_name");
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch all receipts (with student info)
+  // Fetch all receipts – scoped to branch & FY
   const { data: receipts = [], isLoading } = useQuery({
-    queryKey: ["receipts"],
+    queryKey: ["receipts", branchId, financialYearId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("receipts")
         .select(
           `*,
@@ -68,42 +93,52 @@ export default function Receipts() {
           fee_payments ( payment_mode, transaction_no, student_fee_id )`
         )
         .order("receipt_date", { ascending: false })
-        .limit(500); // adjust as needed
+        .limit(500);
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
-  // Compute student IDs that match the filters (course, batch, medium)
+  // Compute student IDs that match the filters (course, batch, medium) – scoped sub‑queries
   const { data: filteredStudentIds = null } = useQuery({
-    queryKey: ["filtered-student-ids", filters.course_id, filters.batch_id, filters.medium_id],
+    queryKey: ["filtered-student-ids", filters.course_id, filters.batch_id, filters.medium_id, branchId, financialYearId],
     queryFn: async () => {
-      // If no filters are set, return null (meaning no filtering needed)
       if (!filters.course_id && !filters.batch_id && !filters.medium_id) return null;
 
       let studentIds = new Set();
 
       // Filter by medium
       if (filters.medium_id) {
-        const { data: studentsByMedium } = await supabase
+        let studentsByMediumQuery = supabase
           .from("students")
           .select("id")
           .eq("medium_id", filters.medium_id);
+        if (branchId) studentsByMediumQuery = studentsByMediumQuery.eq("branch_id", branchId);
+        if (financialYearId) studentsByMediumQuery = studentsByMediumQuery.eq("financial_year_id", financialYearId);
+        const { data: studentsByMedium } = await studentsByMediumQuery;
         studentsByMedium?.forEach((s) => studentIds.add(s.id));
-        if (studentIds.size === 0) return []; // no students match
+        if (studentIds.size === 0) return [];
       }
 
       // Filter by batch
       if (filters.batch_id) {
-        const { data: batchStudents } = await supabase
+        let batchStudentsQuery = supabase
           .from("student_batches")
           .select("student_id")
           .eq("batch_id", filters.batch_id)
           .eq("status", "active");
+        if (branchId) batchStudentsQuery = batchStudentsQuery.eq("branch_id", branchId);
+        if (financialYearId) batchStudentsQuery = batchStudentsQuery.eq("financial_year_id", financialYearId);
+        const { data: batchStudents } = await batchStudentsQuery;
         const batchStudentIds = new Set(batchStudents?.map((bs) => bs.student_id) || []);
         if (studentIds.size > 0) {
-          // Intersect with existing set
           studentIds = new Set([...studentIds].filter((id) => batchStudentIds.has(id)));
         } else {
           studentIds = batchStudentIds;
@@ -113,18 +148,24 @@ export default function Receipts() {
 
       // Filter by course
       if (filters.course_id) {
-        const { data: courseBatches } = await supabase
+        let courseBatchesQuery = supabase
           .from("batches")
           .select("id")
           .eq("course_id", filters.course_id);
+        if (branchId) courseBatchesQuery = courseBatchesQuery.eq("branch_id", branchId);
+        if (financialYearId) courseBatchesQuery = courseBatchesQuery.eq("financial_year_id", financialYearId);
+        const { data: courseBatches } = await courseBatchesQuery;
         const batchIds = courseBatches?.map((b) => b.id) || [];
         if (batchIds.length === 0) return [];
 
-        const { data: courseStudents } = await supabase
+        let courseStudentsQuery = supabase
           .from("student_batches")
           .select("student_id")
           .in("batch_id", batchIds)
           .eq("status", "active");
+        if (branchId) courseStudentsQuery = courseStudentsQuery.eq("branch_id", branchId);
+        if (financialYearId) courseStudentsQuery = courseStudentsQuery.eq("financial_year_id", financialYearId);
+        const { data: courseStudents } = await courseStudentsQuery;
         const courseStudentIds = new Set(courseStudents?.map((cs) => cs.student_id) || []);
         if (studentIds.size > 0) {
           studentIds = new Set([...studentIds].filter((id) => courseStudentIds.has(id)));
@@ -135,6 +176,7 @@ export default function Receipts() {
 
       return Array.from(studentIds);
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 

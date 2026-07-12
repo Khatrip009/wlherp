@@ -45,7 +45,7 @@ export default function UserManagement() {
     role: "admin",
   });
 
-  // 1. Fetch all profiles
+  // 1. Fetch all profiles (organisation‑wide, no branch/FY scoping required)
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ["profiles"],
     queryFn: async () => {
@@ -134,7 +134,6 @@ export default function UserManagement() {
       const userId = signUpData.user.id;
 
       // ---- Restore the admin session immediately ----
-      // This signs out the new user and brings back the admin
       if (adminSession) {
         await supabase.auth.setSession({
           access_token: adminSession.access_token,
@@ -142,7 +141,7 @@ export default function UserManagement() {
         });
       }
 
-      // ---- Update the profile role (trigger already created the row) ----
+      // ---- Update the profile role ----
       const { error: updateError } = await supabase
         .from("profiles")
         .update({ role: formData.role })

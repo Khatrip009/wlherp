@@ -10,11 +10,13 @@ import {
 } from "lucide-react";
 import { getBatchOptions, getMediumOptions } from "../services/examService";
 import { useOrgDarkLogo } from "../hooks/useOrgDarkLogo";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function ExamForm({ onSubmit, onClose, initialData = {} }) {
   const darkLogo = useOrgDarkLogo();
-  const { branch, selectedFinancialYear } = useOrg();      // NEW
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const [batches, setBatches] = useState([]);
   const [mediums, setMediums] = useState([]);
@@ -26,15 +28,17 @@ export default function ExamForm({ onSubmit, onClose, initialData = {} }) {
     total_marks: initialData.total_marks || "",
   });
 
+  // Load dropdowns only when branch & FY are available
   useEffect(() => {
+    if (!branchId || !financialYearId) return;
     loadDropdowns();
-  }, []);
+  }, [branchId, financialYearId]);
 
   async function loadDropdowns() {
     try {
       const [batchData, mediumData] = await Promise.all([
-        getBatchOptions(),
-        getMediumOptions(),
+        getBatchOptions(branchId, financialYearId),   // now scoped
+        getMediumOptions(),                            // org‑wide
       ]);
       setBatches(batchData);
       setMediums(mediumData);
@@ -47,7 +51,7 @@ export default function ExamForm({ onSubmit, onClose, initialData = {} }) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
-  // Filter batches by selected medium (client-side)
+  // Client‑side medium filter (requires batches to have medium_id)
   const filteredBatches = batches.filter((b) =>
     !selectedMediumId ? true : b.medium_id === parseInt(selectedMediumId)
   );
@@ -65,8 +69,8 @@ export default function ExamForm({ onSubmit, onClose, initialData = {} }) {
       };
 
       const context = {
-        branchId: branch?.id,
-        financialYearId: selectedFinancialYear?.id,
+        branchId: branchId,
+        financialYearId: financialYearId,
       };
 
       await onSubmit(payload, context);

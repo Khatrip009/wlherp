@@ -1,11 +1,16 @@
 // src/services/purchaseOrderService.js
 import { supabase } from "../api/supabase";
 
-export async function getPurchaseOrders() {
-  const { data, error } = await supabase
+export async function getPurchaseOrders(branchId, financialYearId) {
+  let query = supabase
     .from("purchase_orders")
     .select("*, purchase_order_items(*, inventory_items(item_name, unit))")
     .order("created_at", { ascending: false });
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
@@ -53,7 +58,7 @@ export async function createPurchaseOrder(payload, context) {
 // context: { branchId, financialYearId }
 export async function updatePurchaseOrderStatus(id, status, context) {
   const { branchId, financialYearId } = context;
-  const { error } = await supabase
+  let query = supabase
     .from("purchase_orders")
     .update({
       status,
@@ -62,6 +67,11 @@ export async function updatePurchaseOrderStatus(id, status, context) {
       financial_year_id: financialYearId,
     })
     .eq("id", id);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { error } = await query;
   if (error) throw error;
 }
 
@@ -72,16 +82,22 @@ export async function receiveStock(poId, itemReceipts, context) {
 
   // itemReceipts: [{ item_id, quantity_received }]
   for (const receipt of itemReceipts) {
-    // 1. Update PO item
-    const { data: poItem } = await supabase
+    // 1. Fetch PO item – scoped
+    let itemQuery = supabase
       .from("purchase_order_items")
       .select("quantity_received, quantity_ordered, unit_price, item_id, tax_rate_id")
       .eq("purchase_order_id", poId)
-      .eq("item_id", receipt.item_id)
-      .single();
+      .eq("item_id", receipt.item_id);
+
+    if (branchId) itemQuery = itemQuery.eq("branch_id", branchId);
+    if (financialYearId) itemQuery = itemQuery.eq("financial_year_id", financialYearId);
+
+    const { data: poItem } = await itemQuery.single();
 
     const newQtyReceived = (poItem.quantity_received || 0) + receipt.quantity_received;
-    await supabase
+
+    // Update PO item – scoped
+    let updateItemQuery = supabase
       .from("purchase_order_items")
       .update({
         quantity_received: newQtyReceived,
@@ -90,6 +106,11 @@ export async function receiveStock(poId, itemReceipts, context) {
       })
       .eq("purchase_order_id", poId)
       .eq("item_id", receipt.item_id);
+
+    if (branchId) updateItemQuery = updateItemQuery.eq("branch_id", branchId);
+    if (financialYearId) updateItemQuery = updateItemQuery.eq("financial_year_id", financialYearId);
+
+    await updateItemQuery;
 
     // 2. Create inventory transaction (stock in)
     await supabase.from("inventory_transactions").insert({
@@ -104,11 +125,16 @@ export async function receiveStock(poId, itemReceipts, context) {
     });
   }
 
-  // 3. Update PO status
-  const { data: items } = await supabase
+  // 3. Recalculate status – scoped select
+  let allItemsQuery = supabase
     .from("purchase_order_items")
     .select("quantity_ordered, quantity_received")
     .eq("purchase_order_id", poId);
+
+  if (branchId) allItemsQuery = allItemsQuery.eq("branch_id", branchId);
+  if (financialYearId) allItemsQuery = allItemsQuery.eq("financial_year_id", financialYearId);
+
+  const { data: items } = await allItemsQuery;
 
   const allFullyReceived = items?.every((i) => i.quantity_received >= i.quantity_ordered);
   const anyReceived = items?.some((i) => i.quantity_received > 0);
@@ -117,6 +143,6 @@ export async function receiveStock(poId, itemReceipts, context) {
   if (allFullyReceived) newStatus = "Received";
   else if (anyReceived) newStatus = "Partially Received";
 
-  // Pass context to the status update
+  // updatePurchaseOrderStatus already scoped internally
   await updatePurchaseOrderStatus(poId, newStatus, context);
 }

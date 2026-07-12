@@ -11,7 +11,11 @@ import { useOrg } from "../context/OrganizationContext";   // NEW (for consisten
 
 export default function TeacherLearningResources() {
   const { user } = useAuth();
-  useOrg();   // context import – no writes on this page
+
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   // Filter states
   const [searchChapter, setSearchChapter] = useState("");
@@ -20,45 +24,55 @@ export default function TeacherLearningResources() {
   const [filterType, setFilterType] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
-  // 1. Get teacher ID
+  // 1. Get teacher ID – scoped to branch & FY
   const { data: teacherId } = useQuery({
-    queryKey: ["teacher-id", user?.id],
+    queryKey: ["teacher-id", user?.id, branchId, financialYearId],
     queryFn: async () => {
+      if (!user?.id || !branchId || !financialYearId) return null;
       const { data } = await supabase
         .from("teachers")
         .select("id")
         .eq("user_id", user.id)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .maybeSingle();
       return data?.id || null;
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
-  // 2. Get batch IDs assigned to this teacher
+  // 2. Get batch IDs assigned to this teacher – scoped
   const { data: batchIds = [] } = useQuery({
-    queryKey: ["teacher-batch-ids", teacherId],
+    queryKey: ["teacher-batch-ids", teacherId, branchId, financialYearId],
     queryFn: async () => {
-      if (!teacherId) return [];
-      const { data } = await supabase
+      if (!teacherId || !branchId || !financialYearId) return [];
+      let query = supabase
         .from("batch_teachers")
         .select("batch_id")
         .eq("teacher_id", teacherId);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
       return data.map((row) => row.batch_id);
     },
-    enabled: !!teacherId,
+    enabled: !!teacherId && !!branchId && !!financialYearId,
   });
 
-  // 3. Fetch resources for those batches
+  // 3. Fetch resources for those batches – scoped
   const { data: allResources = [], isLoading } = useQuery({
-    queryKey: ["teacher-learning-resources", batchIds],
+    queryKey: ["teacher-learning-resources", batchIds, branchId, financialYearId],
     queryFn: async () => {
-      if (batchIds.length === 0) return [];
+      if (batchIds.length === 0 || !branchId || !financialYearId) return [];
 
-      // Get subjects from those batches
-      const { data: batchSubjects } = await supabase
+      // Get subjects from those batches – scoped
+      let batchQuery = supabase
         .from("batches")
         .select("course_id, courses(subjects(id))")
         .in("id", batchIds);
+      if (branchId) batchQuery = batchQuery.eq("branch_id", branchId);
+      if (financialYearId) batchQuery = batchQuery.eq("financial_year_id", financialYearId);
+      const { data: batchSubjects } = await batchQuery;
 
       const subjectIds = [];
       batchSubjects?.forEach((batch) => {
@@ -74,18 +88,23 @@ export default function TeacherLearningResources() {
       }
       if (!orCondition) return [];
 
-      const { data } = await supabase
+      let resourceQuery = supabase
         .from("learning_resources")
         .select("*, subjects(subject_name, courses(course_name)), batches(batch_name)")
         .or(orCondition)
         .order("created_at", { ascending: false });
 
+      // Scope resources to branch & FY
+      if (branchId) resourceQuery = resourceQuery.eq("branch_id", branchId);
+      if (financialYearId) resourceQuery = resourceQuery.eq("financial_year_id", financialYearId);
+
+      const { data } = await resourceQuery;
       return data || [];
     },
-    enabled: batchIds.length > 0,
+    enabled: batchIds.length > 0 && !!branchId && !!financialYearId,
   });
 
-  // Extract unique filter options from the fetched resources
+  // Extract unique filter options (unchanged)
   const uniqueSubjects = allResources
     .filter(r => r.subjects)
     .reduce((acc, r) => {
@@ -98,7 +117,7 @@ export default function TeacherLearningResources() {
   const uniqueBoards = [...new Set(allResources.map(r => r.board).filter(Boolean))];
   const uniqueTypes = [...new Set(allResources.map(r => r.resource_type).filter(Boolean))];
 
-  // Apply client‑side filters
+  // Apply client‑side filters (unchanged)
   const resources = allResources.filter(r => {
     if (searchChapter) {
       const chapterStr = r.chapter_title?.toLowerCase() || '';
@@ -130,7 +149,7 @@ export default function TeacherLearningResources() {
         </button>
       </div>
 
-      {/* Filters */}
+      {/* Filters (unchanged) */}
       <div className={`mb-6 space-y-3 ${showFilters ? 'block' : 'hidden'}`}>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="relative">

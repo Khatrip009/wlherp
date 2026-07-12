@@ -1,5 +1,4 @@
 // src/pages/StudentResultsPage.jsx
-// No changes needed – read‑only page, RLS already scopes the data.
 import { useQuery } from "@tanstack/react-query";
 import { Award } from "lucide-react";
 import AdminLayout from "../layouts/AdminLayout";
@@ -7,22 +6,40 @@ import BackButton from "../components/BackButton";
 
 import { useStudentId } from "../hooks/useStudentId";
 import { supabase } from "../api/supabase";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 
 export default function StudentResultsPage() {
   const { studentId, isLoading: idLoading } = useStudentId();
 
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
   const { data: results = [], isLoading } = useQuery({
-    queryKey: ["student-results-list", studentId],
+    queryKey: ["student-results-list", studentId, branchId, financialYearId],
     queryFn: async () => {
-      if (!studentId) return [];
-      const { data } = await supabase
+      if (!studentId || !branchId || !financialYearId) return [];
+
+      let query = supabase
         .from("student_results")
         .select(`marks_obtained, remarks, exams(exam_name, total_marks, exam_date, subjects(subject_name))`)
         .eq("student_id", studentId)
         .order("exam_id", { ascending: false });
+
+      // Scope the results themselves
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      // Also scope the nested exams table (via foreign table filter)
+      if (branchId) query = query.eq("exams.branch_id", branchId);
+      if (financialYearId) query = query.eq("exams.financial_year_id", financialYearId);
+
+      const { data } = await query;
       return data || [];
     },
-    enabled: !!studentId,
+    enabled: !!studentId && !!branchId && !!financialYearId,
+    staleTime: 2 * 60 * 1000,
   });
 
   if (idLoading || isLoading) {

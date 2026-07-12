@@ -4,15 +4,19 @@ import toast from "react-hot-toast";
 import {
   X, User, Phone, Mail, FileText, BookOpen, Calendar, Tag, Layers,
 } from "lucide-react";
-import { supabase } from "../api/supabase";
+import {
+  getCourseOptions,
+  getMediumOptions,
+} from "../services/inquiryService";
 import { useOrgDarkLogo } from "../hooks/useOrgDarkLogo";
 import { useOrg } from "../context/OrganizationContext";
 
 export default function InquiryForm({ onSubmit, onClose, initialData = {} }) {
-  // ── Dynamic organisation branding ──
   const darkLogo = useOrgDarkLogo();
   const { org, branch, selectedFinancialYear } = useOrg();
   const orgName = org?.company_name || "Academy";
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const [form, setForm] = useState({
     student_name: initialData.student_name || "",
@@ -30,25 +34,30 @@ export default function InquiryForm({ onSubmit, onClose, initialData = {} }) {
 
   const [courses, setCourses] = useState([]);
   const [mediums, setMediums] = useState([]);
-  const [isContextReady, setIsContextReady] = useState(false);
 
-  useEffect(() => { loadDropdowns(); }, []);
+  // Wait until both branch and financial year are loaded
+  if (!branchId || !financialYearId) {
+    return (
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl p-8 shadow-xl">
+          <p className="text-secondary font-montserrat">Loading organisation data…</p>
+        </div>
+      </div>
+    );
+  }
 
-  // Wait until both branch and financial year are fully loaded
   useEffect(() => {
-    if (branch !== undefined && selectedFinancialYear !== undefined) {
-      setIsContextReady(true);
-    }
-  }, [branch, selectedFinancialYear]);
+    loadDropdowns();
+  }, [branchId, financialYearId]);
 
   async function loadDropdowns() {
     try {
-      const [coursesRes, mediumsRes] = await Promise.all([
-        supabase.from("courses").select("id, course_name").eq("status", true),
-        supabase.from("mediums").select("id, name").order("name"),
+      const [courseData, mediumData] = await Promise.all([
+        getCourseOptions(),          // organisation‑wide, no parameters
+        getMediumOptions(),          // organisation‑wide
       ]);
-      setCourses(coursesRes.data || []);
-      setMediums(mediumsRes.data || []);
+      setCourses(courseData);
+      setMediums(mediumData);
     } catch (err) {
       toast.error("Failed to load form data");
     }
@@ -66,33 +75,12 @@ export default function InquiryForm({ onSubmit, onClose, initialData = {} }) {
       return;
     }
 
-    // ── Double‑check that we have a real branch id ──
-    if (!branch?.id) {
-      toast.error("No branch selected – please refresh and try again.");
-      return;
-    }
-    if (!selectedFinancialYear?.id) {
-      toast.error("No financial year selected – please select one first.");
-      return;
-    }
-
     const context = {
-      branchId: branch.id,
-      financialYearId: selectedFinancialYear.id,
+      branchId: branchId,
+      financialYearId: financialYearId,
     };
 
     await onSubmit({ ...form, medium_id: form.medium_id || null }, context);
-  }
-
-  // ── Loading state while context loads ──
-  if (!isContextReady) {
-    return (
-      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl p-8 shadow-xl">
-          <p className="text-secondary font-montserrat">Loading organisation data…</p>
-        </div>
-      </div>
-    );
   }
 
   return (

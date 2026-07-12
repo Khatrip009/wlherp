@@ -11,6 +11,7 @@ import {
 import Papa from "papaparse";
 import AdminLayout from "../layouts/AdminLayout";
 import BackButton from "../components/BackButton";
+import { useOrg } from "../context/OrganizationContext";
 
 import {
   getAttendanceReport,
@@ -19,6 +20,10 @@ import {
 } from "../services/attendanceReportService";
 
 export default function AttendanceReports() {
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
   const [filters, setFilters] = useState({
     batch_id: "",
     start_date: "",
@@ -26,18 +31,22 @@ export default function AttendanceReports() {
     medium_id: "",
   });
 
+  // Batches dropdown – scoped
   const { data: batches = [] } = useQuery({
-    queryKey: ["active-batches"],
-    queryFn: getActiveBatches,
+    queryKey: ["active-batches", branchId, financialYearId],
+    queryFn: () => getActiveBatches(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
+  // Mediums – org‑wide
   const { data: mediums = [] } = useQuery({
     queryKey: ["report-mediums"],
     queryFn: getMediumOptions,
     staleTime: 10 * 60 * 1000,
   });
 
+  // Report generation – scoped
   const {
     mutate: fetchReport,
     data: report = [],
@@ -49,6 +58,8 @@ export default function AttendanceReports() {
         filters.start_date || null,
         filters.end_date || null,
         filters.medium_id || null,
+        branchId,
+        financialYearId,
       ),
     onError: () => toast.error("Failed to load report"),
     onSuccess: (data) => {
@@ -74,8 +85,8 @@ export default function AttendanceReports() {
       report.map((r) => ({
         admission_no: r.admission_no,
         student_name: r.student_name,
-        batch: r.batch_name,         // NEW
-        medium: r.medium_name,       // NEW
+        batch: r.batch_name,
+        medium: r.medium_name,
         total_sessions: r.total_sessions,
         present_count: r.present_count,
         percentage: r.percentage,

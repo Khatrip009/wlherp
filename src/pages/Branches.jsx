@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
-import { useAuth } from "../context/AuthContext";   // to get profile for fallback
+import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
 import {
   Plus,
@@ -37,7 +37,7 @@ export default function Branches() {
     email: "",
   });
 
-  // ── Load organisation if not provided by context (same as Sidebar) ──
+  // Fallback to load organisation if not provided by context
   useEffect(() => {
     if (!org && profile?.id) {
       const loadOrg = async () => {
@@ -66,17 +66,17 @@ export default function Branches() {
 
   const fetchBranches = useCallback(async () => {
     try {
-      const data = await branchService.getBranches();
+      const data = await branchService.getBranches(org?.id);   // optional explicit filter
       setBranches(data);
     } catch (err) {
       toast.error("Failed to load branches");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [org?.id]);
 
   useEffect(() => {
-    fetchBranches();
+    if (org?.id) fetchBranches();
   }, [fetchBranches]);
 
   // Open form for create/edit

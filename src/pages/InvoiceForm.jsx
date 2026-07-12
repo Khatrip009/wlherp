@@ -15,6 +15,7 @@ import toast from "react-hot-toast";
 import AdminLayout from "../layouts/AdminLayout";
 import { ArrowLeft, Save, Plus, Trash2, CheckCircle, Loader } from "lucide-react";
 import GSTLookup from "../components/GSTLookup";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 
 // Helper to split GST
 const splitGST = (rate, placeOfSupply, orgState) => {
@@ -31,6 +32,12 @@ export default function InvoiceForm() {
   const isEditing = !!id;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   const [form, setForm] = useState({
     student_id: "",
@@ -58,79 +65,88 @@ export default function InvoiceForm() {
 
   // Fetch organization state
   const { data: org } = useQuery({
-    queryKey: ["organization"],
-    queryFn: getOrganization,
+    queryKey: ["organization", branchId, financialYearId], // not strictly needed but good for consistency
+    queryFn: () => getOrganization(branchId, financialYearId), // if organizationService accepts, else keep original; but getOrganization is org-wide
+    enabled: !!branchId && !!financialYearId,
   });
 
   useEffect(() => {
     if (org?.state_code) setOrgState(org.state_code);
   }, [org]);
 
-  // ── STUDENTS DROPDOWN (fixed) ──
+  // ── STUDENTS DROPDOWN (scoped) ──
   const {
     data: students = [],
     error: studentsError,
     isLoading: studentsLoading,
   } = useQuery({
-    queryKey: ["students-dropdown"],
+    queryKey: ["students-dropdown", branchId, financialYearId],
     queryFn: async () => {
-      // Try to fetch active students; if status column missing, fetch all.
+      let query = supabase
+        .from("students")
+        .select("id, first_name, last_name, admission_no, gstin, state_code");
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
       try {
-        // First, check if 'status' column exists by attempting to select it
+        // Check if 'status' column exists
         const { data: check } = await supabase
           .from("students")
           .select("status")
           .limit(1);
-        // Column exists – filter for active (case‑insensitive)
-        const { data, error } = await supabase
-          .from("students")
-          .select("id, first_name, last_name, admission_no, gstin, state_code")
-          .ilike("status", "active")
-          .order("first_name");
-        if (error) throw error;
-        return data || [];
+        query = query.ilike("status", "active");
       } catch (e) {
-        // Column doesn't exist or error – fallback: fetch all students
+        // column missing, fetch all
         console.warn("Status column not found, fetching all students", e);
-        const { data, error } = await supabase
-          .from("students")
-          .select("id, first_name, last_name, admission_no, gstin, state_code")
-          .order("first_name");
-        if (error) throw error;
-        return data || [];
       }
+
+      query = query.order("first_name");
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
-  // Log errors if any
   useEffect(() => {
     if (studentsError) console.error("Error loading students:", studentsError);
   }, [studentsError]);
 
-  // Fetch tax rates
+  // Fetch tax rates – scoped
   const { data: taxRates = [] } = useQuery({
-    queryKey: ["tax-rates-invoice"],
-    queryFn: getTaxRates,
+    queryKey: ["tax-rates-invoice", branchId, financialYearId],
+    queryFn: () => getTaxRates(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch fee structures for items
+  // Fetch fee structures – scoped
   const { data: feeStructures = [] } = useQuery({
-    queryKey: ["fee-structures-dropdown"],
+    queryKey: ["fee-structures-dropdown", branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("fee_structures")
-        .select("id, fee_amount, courses(course_name), tax_rate_id")
-        .order("id");
+        .select("id, fee_amount, courses(course_name), tax_rate_id");
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      query = query.order("id");
+      const { data } = await query;
       return data || [];
     },
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
-  // Load existing invoice if editing
+  // Load existing invoice if editing – scoped
   const { data: invoice, isLoading: loadingInvoice } = useQuery({
-    queryKey: ["invoice", id],
-    queryFn: () => getInvoice(id),
-    enabled: isEditing,
+    queryKey: ["invoice", id, branchId, financialYearId],
+    queryFn: () => getInvoice(id, branchId, financialYearId),
+    enabled: isEditing && !!branchId && !!financialYearId,
   });
 
   useEffect(() => {
@@ -158,7 +174,6 @@ export default function InvoiceForm() {
           }))
         );
       }
-      // Load student details if exists
       if (invoice.student_id) {
         const student = students.find((s) => s.id === invoice.student_id);
         if (student) setStudentDetails(student);
@@ -178,7 +193,7 @@ export default function InvoiceForm() {
     setStudentDetails(student || null);
   };
 
-  // Auto-fill from GST lookup for student (if they have a GSTIN)
+  // Auto-fill from GST lookup for student
   const handleGSTLookupSuccess = (data) => {
     if (studentDetails) {
       const updatedStudent = {
@@ -242,9 +257,7 @@ export default function InvoiceForm() {
   const computeTotals = () => {
     let taxableTotal = 0;
     let totalGST = 0;
-    let totalCgst = 0,
-      totalSgst = 0,
-      totalIgst = 0;
+    let totalCgst = 0, totalSgst = 0, totalIgst = 0;
     let totalAmount = 0;
 
     items.forEach((item) => {
@@ -284,9 +297,9 @@ export default function InvoiceForm() {
 
   const totals = computeTotals();
 
-  // Mutations
+  // Mutations – pass context (branchId & financialYearId)
   const createMutation = useMutation({
-    mutationFn: (payload) => createInvoice(payload),
+    mutationFn: (payload) => createInvoice(payload, ctx),
     onSuccess: (data) => {
       toast.success("Invoice created");
       queryClient.invalidateQueries(["invoices"]);
@@ -296,7 +309,7 @@ export default function InvoiceForm() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }) => updateInvoice(id, payload),
+    mutationFn: ({ id, payload }) => updateInvoice(id, payload, ctx),
     onSuccess: (data) => {
       toast.success("Invoice updated");
       queryClient.invalidateQueries(["invoices"]);
@@ -306,7 +319,7 @@ export default function InvoiceForm() {
   });
 
   const finalizeMutation = useMutation({
-    mutationFn: (id) => finalizeInvoice(id),
+    mutationFn: (id) => finalizeInvoice(id, ctx),
     onSuccess: () => {
       toast.success("Invoice finalized");
       queryClient.invalidateQueries(["invoices"]);
@@ -319,7 +332,6 @@ export default function InvoiceForm() {
     e.preventDefault();
     setSaving(true);
 
-    // Validate
     if (!form.student_id) {
       toast.error("Please select a student");
       setSaving(false);

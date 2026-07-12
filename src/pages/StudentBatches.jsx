@@ -23,7 +23,6 @@ import AdminLayout from "../layouts/AdminLayout";
 import BackButton from "../components/BackButton";
 
 import AssignBatchModal from "../components/AssignBatchModal";
-import { supabase } from "../api/supabase";
 import {
   getStudentBatches,
   assignStudentToBatch,
@@ -33,14 +32,16 @@ import {
   getActiveBatches,
   getCoursesForFilter,
 } from "../services/batchAssignmentService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function StudentBatches() {
   const queryClient = useQueryClient();
 
   // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   // ---- Filters ----
   const [search, setSearch] = useState("");
@@ -53,7 +54,7 @@ export default function StudentBatches() {
   const [showFilters, setShowFilters] = useState(false);
   const allFilters = { ...filters, search };
 
-  // ---- Paginated data ----
+  // ---- Paginated data – scoped to branch & FY ----
   const {
     data,
     isLoading,
@@ -61,9 +62,9 @@ export default function StudentBatches() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["studentBatches", allFilters],
+    queryKey: ["studentBatches", allFilters, branchId, financialYearId],
     queryFn: ({ pageParam = 0 }) =>
-      getStudentBatches({ pageParam, filters: allFilters }),
+      getStudentBatches({ pageParam, filters: allFilters, branchId, financialYearId }),
     getNextPageParam: (lastPage, allPages) => {
       const totalFetched = allPages.reduce(
         (sum, page) => sum + page.data.length,
@@ -75,28 +76,23 @@ export default function StudentBatches() {
       return undefined;
     },
     initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
   const assignments = data?.pages.flatMap((page) => page.data) || [];
 
-  // ---- Dropdowns for filters ----
+  // ---- Dropdowns for filters (scoped) ----
   const { data: batches = [] } = useQuery({
-    queryKey: ["activeBatchesWithMedium"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("batches")
-        .select("id, batch_name, medium_id, mediums(name)")
-        .eq("status", "active")
-        .order("batch_name");
-      return data || [];
-    },
+    queryKey: ["activeBatchesWithMedium", branchId, financialYearId],
+    queryFn: () => getActiveBatches(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
   const { data: courses = [] } = useQuery({
     queryKey: ["coursesFilter"],
-    queryFn: getCoursesForFilter,
+    queryFn: getCoursesForFilter,   // organisation‑wide
     staleTime: 10 * 60 * 1000,
   });
 
@@ -120,11 +116,9 @@ export default function StudentBatches() {
     return map;
   }, [batches]);
 
-  // ---- Mutations ----
-  // Note: Single assignment via assignMutation is removed because the modal handles bulk assignment.
-  // CSV import uses assignStudentToBatch with context.
+  // ---- Mutations – scoped where needed ----
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }) => updateStudentBatch(id, payload, ctx),   // pass context
+    mutationFn: ({ id, payload }) => updateStudentBatch(id, payload, ctx),
     onSuccess: () => {
       toast.success("Status updated");
       queryClient.invalidateQueries({ queryKey: ["studentBatches"] });
@@ -134,7 +128,7 @@ export default function StudentBatches() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteStudentBatch,   // no context needed
+    mutationFn: (id) => deleteStudentBatch(id, branchId, financialYearId),
     onSuccess: () => {
       toast.success("Assignment removed");
       queryClient.invalidateQueries({ queryKey: ["studentBatches"] });
@@ -148,7 +142,7 @@ export default function StudentBatches() {
   const [editStatus, setEditStatus] = useState("");
   const fileInputRef = useRef(null);
 
-  // ---- CSV Import – now passes context ----
+  // ---- CSV Import – already uses context ----
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -166,7 +160,7 @@ export default function StudentBatches() {
                 row.enrollment_date || new Date().toISOString().split("T")[0],
               status: row.status || "active",
             };
-            await assignStudentToBatch(payload, ctx);   // pass context
+            await assignStudentToBatch(payload, ctx);
             successCount++;
           } catch (err) {
             console.error(err);
@@ -179,10 +173,10 @@ export default function StudentBatches() {
     });
   }
 
-  // ---- CSV Export ----
+  // ---- CSV Export – now scoped ----
   async function handleCSVExport() {
     try {
-      const allData = await getAllStudentBatchesForExport(allFilters);
+      const allData = await getAllStudentBatchesForExport(allFilters, branchId, financialYearId);
       const csv = Papa.unparse(
         allData.map((a) => ({
           student: `${a.students?.first_name} ${a.students?.last_name}`,

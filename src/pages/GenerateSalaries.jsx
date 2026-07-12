@@ -17,7 +17,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { supabase } from "../api/supabase";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function GenerateSalaries() {
   const qc = useQueryClient();
@@ -30,43 +30,51 @@ export default function GenerateSalaries() {
   const [results, setResults] = useState(null);
 
   // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
-  // Fetch all active teachers with salary settings
+  // Fetch all active teachers with salary settings – scoped
   const { data: teachers = [], isLoading: loadingTeachers } = useQuery({
-    queryKey: ["teachers-for-salary"],
-    queryFn: getTeachersForSalary,
+    queryKey: ["teachers-for-salary", branchId, financialYearId],
+    queryFn: () => getTeachersForSalary(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch existing payments for the selected month to mark already paid
+  // Fetch existing payments for the selected month – scoped
   const { data: existingPayments = [] } = useQuery({
-    queryKey: ["existing-salary-payments", month, year],
-    queryFn: () => getExistingSalaryPayments(month, year),
-    enabled: month > 0 && year > 0,
+    queryKey: ["existing-salary-payments", month, year, branchId, financialYearId],
+    queryFn: () => getExistingSalaryPayments(month, year, branchId, financialYearId),
+    enabled: month > 0 && year > 0 && !!branchId && !!financialYearId,
   });
 
-  // ---------- NEW: Fetch lecture counts for the month ----------
+  // ---------- NEW: Fetch lecture counts for the month – scoped ----------
   const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
   const endDate = `${year}-${String(month).padStart(2, "0")}-${new Date(year, month, 0).getDate()}`;
 
   const { data: lectureCounts = {} } = useQuery({
-    queryKey: ["teacher-lecture-counts", startDate, endDate],
+    queryKey: ["teacher-lecture-counts", startDate, endDate, branchId, financialYearId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("attendance_sessions")
         .select("teacher_id")
         .gte("attendance_date", startDate)
         .lte("attendance_date", endDate)
         .not("teacher_id", "is", null);
 
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data } = await query;
       const counts = {};
       (data || []).forEach((s) => {
         counts[s.teacher_id] = (counts[s.teacher_id] || 0) + 1;
       });
       return counts;
     },
-    enabled: month > 0 && year > 0,
+    enabled: month > 0 && year > 0 && !!branchId && !!financialYearId,
   });
 
   // Map teacher ID to paid status
@@ -137,7 +145,6 @@ export default function GenerateSalaries() {
         try {
           const calc = teacherCalculations.find((tc) => tc.id === teacherId);
           const grossAmount = calc?.estimatedGross || 0;
-          // Pass context as fifth argument
           const result = await generateTeacherSalary(teacherId, month, year, grossAmount, ctx);
           results.push(result);
         } catch (err) {

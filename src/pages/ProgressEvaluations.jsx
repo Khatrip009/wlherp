@@ -33,14 +33,16 @@ import {
   getAllProgressEvaluationsForExport,
   getMediumOptions,
 } from "../services/progressService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function ProgressEvaluations() {
   const queryClient = useQueryClient();
 
   // ── Organization, Branch & Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   // Filters
   const [batchFilter, setBatchFilter] = useState("");
@@ -64,18 +66,19 @@ export default function ProgressEvaluations() {
 
   // Dropdown for batches & mediums
   const { data: batches = [] } = useQuery({
-    queryKey: ["active-batches"],
-    queryFn: getActiveBatches,
+    queryKey: ["active-batches", branchId, financialYearId],
+    queryFn: () => getActiveBatches(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediums"],
-    queryFn: getMediumOptions,
+    queryFn: getMediumOptions, // organisation‑wide
     staleTime: 10 * 60 * 1000,
   });
 
-  // Infinite query for evaluations
+  // Infinite query for evaluations – now scoped
   const {
     data,
     isLoading,
@@ -83,9 +86,9 @@ export default function ProgressEvaluations() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["progress-evaluations", allFilters],
+    queryKey: ["progress-evaluations", allFilters, branchId, financialYearId],
     queryFn: ({ pageParam = 0 }) =>
-      getProgressEvaluations({ pageParam, filters: allFilters }),
+      getProgressEvaluations({ pageParam, filters: allFilters, branchId, financialYearId }),
     getNextPageParam: (lastPage, allPages) => {
       const totalFetched = allPages.reduce((sum, page) => sum + page.data.length, 0);
       if (lastPage.count && totalFetched < lastPage.count) {
@@ -94,6 +97,7 @@ export default function ProgressEvaluations() {
       return undefined;
     },
     initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
@@ -113,7 +117,7 @@ export default function ProgressEvaluations() {
     };
   }, [evaluations]);
 
-  // Mutations – now pass context
+  // Mutations – now pass context or explicit IDs
   const createMutation = useMutation({
     mutationFn: (payload) => createProgressEvaluation(payload, ctx),
     onSuccess: () => {
@@ -135,7 +139,7 @@ export default function ProgressEvaluations() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteProgressEvaluation,   // hard delete, RLS protects
+    mutationFn: (id) => deleteProgressEvaluation(id, branchId, financialYearId),
     onSuccess: () => {
       toast.success("Evaluation deleted");
       queryClient.invalidateQueries({ queryKey: ["progress-evaluations"] });
@@ -143,7 +147,7 @@ export default function ProgressEvaluations() {
     onError: () => toast.error("Delete failed"),
   });
 
-  // CSV Import – now passes context to createProgressEvaluation
+  // CSV Import – pass context
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -162,7 +166,7 @@ export default function ProgressEvaluations() {
               performance_score: row.performance_score ? Number(row.performance_score) : null,
               teacher_remarks: row.teacher_remarks || "",
             };
-            await createProgressEvaluation(payload, ctx);   // pass context
+            await createProgressEvaluation(payload, ctx);
             successCount++;
           } catch (err) {
             console.error(err);
@@ -175,10 +179,14 @@ export default function ProgressEvaluations() {
     });
   }
 
-  // CSV Export
+  // CSV Export – scoped
   async function handleCSVExport() {
     try {
-      const allData = await getAllProgressEvaluationsForExport(allFilters);
+      const allData = await getAllProgressEvaluationsForExport(
+        allFilters,
+        branchId,
+        financialYearId
+      );
       const csv = Papa.unparse(
         allData.map((e) => ({
           student: `${e.students?.first_name} ${e.students?.last_name}`,

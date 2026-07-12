@@ -7,54 +7,62 @@ import { generateDailyTeacherAttendancePDF } from "../utils/teacherDailyAttendan
 import toast from "react-hot-toast";
 import AdminLayout from "../layouts/AdminLayout";
 import { Calendar, Download } from "lucide-react";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function TeacherDailyAttendanceReport() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
 
-  // ── Get current organization from context ──
-  const { org: currentOrg } = useOrg();   // NEW
+  // ── Branch & Financial Year context ──
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const today = new Date().toISOString().split("T")[0];
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
 
-  // Fetch teacher ID if user is a teacher
+  // Fetch teacher ID if user is a teacher – scoped
   const { data: ownTeacherId } = useQuery({
-    queryKey: ["my-teacher-id", profile?.id],
+    queryKey: ["my-teacher-id", profile?.id, branchId, financialYearId],
     queryFn: async () => {
       if (!profile?.id || isAdmin) return null;
       const { data } = await supabase
         .from("teachers")
         .select("id")
         .eq("user_id", profile.id)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .single();
       return data?.id || null;
     },
-    enabled: !!profile?.id && !isAdmin,
+    enabled: !!profile?.id && !isAdmin && !!branchId && !!financialYearId,
   });
 
-  // Fetch teachers (admin sees all, teacher sees only self)
+  // Fetch teachers (admin sees all, teacher sees only self) – scoped
   const { data: teachers = [] } = useQuery({
-    queryKey: ["active-teachers-list", isAdmin, ownTeacherId],
+    queryKey: ["active-teachers-list", isAdmin, ownTeacherId, branchId, financialYearId],
     queryFn: async () => {
       let query = supabase
         .from("teachers")
         .select("id, first_name, last_name, employee_code")
         .eq("status", "active")
         .order("first_name");
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
       if (!isAdmin && ownTeacherId) query = query.eq("id", ownTeacherId);
       if (!isAdmin && !ownTeacherId) return [];
       const { data } = await query;
       return data || [];
     },
-    enabled: isAdmin || !!ownTeacherId,
+    enabled: (isAdmin || !!ownTeacherId) && !!branchId && !!financialYearId,
   });
 
-  // Fetch attendance records for the selected date range
+  // Fetch attendance records for the selected date range – scoped
   const { data: attendance = [], isLoading } = useQuery({
-    queryKey: ["teacher-attendance-range", startDate, endDate, isAdmin, ownTeacherId],
+    queryKey: ["teacher-attendance-range", startDate, endDate, isAdmin, ownTeacherId, branchId, financialYearId],
     queryFn: async () => {
       let query = supabase
         .from("teacher_attendance")
@@ -63,12 +71,15 @@ export default function TeacherDailyAttendanceReport() {
         .lte("attendance_date", endDate)
         .order("attendance_date");
 
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
       if (!isAdmin && ownTeacherId) query = query.eq("teacher_id", ownTeacherId);
 
       const { data } = await query;
       return data || [];
     },
-    enabled: !!startDate && !!endDate && (isAdmin || !!ownTeacherId),
+    enabled: !!startDate && !!endDate && (isAdmin || !!ownTeacherId) && !!branchId && !!financialYearId,
   });
 
   // Merge attendance with teacher details
@@ -91,7 +102,7 @@ export default function TeacherDailyAttendanceReport() {
       toast.error("No data to export");
       return;
     }
-    // Fetch organisation info for PDF header – now uses current org id
+    // Fetch organisation info for PDF header – uses current org id
     const { data: org } = await supabase
       .from("organization")
       .select("*")

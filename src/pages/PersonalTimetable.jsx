@@ -5,10 +5,17 @@ import AdminLayout from "../layouts/AdminLayout";
 import BackButton from "../components/BackButton";
 
 import { useAuth } from "../context/AuthContext";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 import { Clock, AlertCircle } from "lucide-react";
 
 export default function PersonalTimetable() {
   const { user } = useAuth();
+
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
   const [debug, setDebug] = useState({});
 
   // Log mount/unmount
@@ -17,19 +24,22 @@ export default function PersonalTimetable() {
     return () => console.log("PersonalTimetable unmounted");
   }, []);
 
+  // Fetch student ID – scoped to branch & FY
   const {
     data: studentId,
     isLoading: idLoading,
     error: idError,
   } = useQuery({
-    queryKey: ["student-id", user?.id],
+    queryKey: ["student-id", user?.id, branchId, financialYearId],
     queryFn: async () => {
       try {
-        if (!user?.id) return null;
+        if (!user?.id || !branchId || !financialYearId) return null;
         const { data, error } = await supabase
           .from("students")
           .select("id")
           .eq("user_id", user.id)
+          .eq("branch_id", branchId)
+          .eq("financial_year_id", financialYearId)
           .maybeSingle();
         if (error) throw error;
         return data?.id ?? null;
@@ -38,23 +48,27 @@ export default function PersonalTimetable() {
         throw e;
       }
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
+  // Fetch active batch IDs – scoped
   const {
     data: batchIds = [],
     isLoading: batchesLoading,
     error: batchesError,
   } = useQuery({
-    queryKey: ["student-batch-ids", studentId],
+    queryKey: ["student-batch-ids", studentId, branchId, financialYearId],
     queryFn: async () => {
       try {
-        if (!studentId) return [];
+        if (!studentId || !branchId || !financialYearId) return [];
         const { data, error } = await supabase
           .from("student_batches")
           .select("batch_id")
           .eq("student_id", studentId)
-          .eq("status", "active");
+          .eq("status", "active")
+          .eq("branch_id", branchId)
+          .eq("financial_year_id", financialYearId);
         if (error) throw error;
         return data.map((row) => row.batch_id);
       } catch (e) {
@@ -62,25 +76,28 @@ export default function PersonalTimetable() {
         throw e;
       }
     },
-    enabled: !!studentId,
+    enabled: !!studentId && !!branchId && !!financialYearId,
   });
 
+  // Fetch batch details – scoped
   const {
     data: batches = [],
     isLoading: dataLoading,
     error: dataError,
   } = useQuery({
-    queryKey: ["student-timetable-batches", batchIds],
+    queryKey: ["student-timetable-batches", batchIds, branchId, financialYearId],
     queryFn: async () => {
       try {
-        if (batchIds.length === 0) return [];
+        if (batchIds.length === 0 || !branchId || !financialYearId) return [];
         const { data, error } = await supabase
           .from("batches")
           .select(
             `id, batch_name, start_time, end_time, days, courses(course_name), mediums(name), batch_teachers(teacher_id, subject_id, day, teachers(first_name, last_name), subjects(subject_name))`
           )
           .in("id", batchIds)
-          .eq("status", "active");
+          .eq("status", "active")
+          .eq("branch_id", branchId)
+          .eq("financial_year_id", financialYearId);
         if (error) throw error;
         return data ?? [];
       } catch (e) {
@@ -88,7 +105,7 @@ export default function PersonalTimetable() {
         throw e;
       }
     },
-    enabled: batchIds.length > 0,
+    enabled: batchIds.length > 0 && !!branchId && !!financialYearId,
   });
 
   // Capture debug info
@@ -136,7 +153,7 @@ export default function PersonalTimetable() {
     return (
       <AdminLayout>
         <div className="p-8 text-center">
-          <p>Your account is not linked to a student record.</p>
+          <p>Your account is not linked to a student record in the current branch/financial year.</p>
         </div>
       </AdminLayout>
     );

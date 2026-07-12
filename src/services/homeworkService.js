@@ -1,8 +1,13 @@
 // src/services/homeworkService.js
 import { supabase } from "../api/supabase";
 
-// Paginated fetch with filters – now includes medium name
-export async function getHomeworks({ pageParam = 0, filters = {} } = {}) {
+// Paginated fetch with filters – now scoped to branch & FY
+export async function getHomeworks({
+  pageParam = 0,
+  filters = {},
+  branchId,
+  financialYearId,
+} = {}) {
   const limit = 10;
   const from = pageParam * limit;
   const to = from + limit - 1;
@@ -19,14 +24,21 @@ export async function getHomeworks({ pageParam = 0, filters = {} } = {}) {
     .order("assigned_date", { ascending: false })
     .range(from, to);
 
+  // Scope to current branch & FY
+  if (branchId) query = query.eq("homework.branch_id", branchId);
+  if (financialYearId) query = query.eq("homework.financial_year_id", financialYearId);
+
   // Apply filters
   if (filters.batchId) query = query.eq("batch_id", filters.batchId);
   if (filters.subjectId) query = query.eq("subject_id", filters.subjectId);
   if (filters.medium_id) {
-    const { data: mediumBatches } = await supabase
+    let mediumQuery = supabase
       .from("batches")
       .select("id")
       .eq("medium_id", filters.medium_id);
+    if (branchId) mediumQuery = mediumQuery.eq("branch_id", branchId);
+    if (financialYearId) mediumQuery = mediumQuery.eq("financial_year_id", financialYearId);
+    const { data: mediumBatches } = await mediumQuery;
     const batchIds = mediumBatches?.map((b) => b.id) || [];
     if (batchIds.length > 0) query = query.in("batch_id", batchIds);
     else return { data: [], count: 0 };
@@ -64,8 +76,12 @@ export async function getHomeworks({ pageParam = 0, filters = {} } = {}) {
   return { data: enriched, count };
 }
 
-// Export all homework matching filters (for CSV) – now includes medium name
-export async function getAllHomeworksForExport(filters = {}) {
+// Export all homework (unpaginated) – same scoping
+export async function getAllHomeworksForExport({
+  filters = {},
+  branchId,
+  financialYearId,
+} = {}) {
   let query = supabase
     .from("homework")
     .select(
@@ -76,13 +92,19 @@ export async function getAllHomeworksForExport(filters = {}) {
     )
     .order("assigned_date", { ascending: false });
 
+  if (branchId) query = query.eq("homework.branch_id", branchId);
+  if (financialYearId) query = query.eq("homework.financial_year_id", financialYearId);
+
   if (filters.batchId) query = query.eq("batch_id", filters.batchId);
   if (filters.subjectId) query = query.eq("subject_id", filters.subjectId);
   if (filters.medium_id) {
-    const { data: mediumBatches } = await supabase
+    let mediumQuery = supabase
       .from("batches")
       .select("id")
       .eq("medium_id", filters.medium_id);
+    if (branchId) mediumQuery = mediumQuery.eq("branch_id", branchId);
+    if (financialYearId) mediumQuery = mediumQuery.eq("financial_year_id", financialYearId);
+    const { data: mediumBatches } = await mediumQuery;
     const batchIds = mediumBatches?.map((b) => b.id) || [];
     if (batchIds.length > 0) query = query.in("batch_id", batchIds);
     else return [];
@@ -156,9 +178,9 @@ export async function deleteHomework(id, context) {
   if (error) throw error;
 }
 
-// Submissions
-export async function getSubmissionsByHomework(homeworkId) {
-  const { data, error } = await supabase
+// Submissions – now scoped
+export async function getSubmissionsByHomework(homeworkId, branchId, financialYearId) {
+  let query = supabase
     .from("homework_submissions")
     .select(
       `id, student_id, submission_file, submitted_at, remarks, marks, status,
@@ -166,6 +188,11 @@ export async function getSubmissionsByHomework(homeworkId) {
     )
     .eq("homework_id", homeworkId)
     .order("submitted_at", { ascending: false });
+
+  if (branchId) query = query.eq("homework_submissions.branch_id", branchId);
+  if (financialYearId) query = query.eq("homework_submissions.financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data;
 }
@@ -182,40 +209,60 @@ export async function updateSubmission(id, payload, context) {
   return data;
 }
 
-// Dropdowns
-export async function getBatchOptions() {
-  const { data, error } = await supabase
+// Dropdowns – now scoped (except global ones)
+export async function getBatchOptions(branchId, financialYearId) {
+  let query = supabase
     .from("batches")
     .select("id, batch_name")
     .eq("status", "active")
     .order("batch_name");
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
-export async function getSubjectsByCourse(courseId) {
-  const { data, error } = await supabase
+export async function getSubjectsByCourse(courseId, branchId, financialYearId) {
+  let query = supabase
     .from("subjects")
     .select("id, subject_name")
     .eq("course_id", courseId);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
-export async function getTeacherOptions() {
-  const { data, error } = await supabase
+export async function getTeacherOptions(branchId, financialYearId) {
+  let query = supabase
     .from("teachers")
     .select("id, first_name, last_name");
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
-export async function getBatchStudents(batchId) {
-  const { data, error } = await supabase
+export async function getBatchStudents(batchId, branchId, financialYearId) {
+  let query = supabase
     .from("student_batches")
     .select("student_id, students(id, first_name, last_name, admission_no)")
     .eq("batch_id", batchId)
     .eq("status", "active");
+
+  if (branchId) query = query.eq("student_batches.branch_id", branchId);
+  if (financialYearId) query = query.eq("student_batches.financial_year_id", financialYearId);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data.map((item) => item.students);
 }
@@ -256,7 +303,7 @@ export async function submitHomework({ homeworkId, studentId, file, remarks }, c
   return data;
 }
 
-// NEW – get mediums for filter dropdown
+// Mediums – global, no branch/FY filter
 export async function getMediumOptions() {
   const { data, error } = await supabase
     .from("mediums")

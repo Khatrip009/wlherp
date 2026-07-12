@@ -1,3 +1,4 @@
+// src/components/AssignBatchModal.jsx
 import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import { Search, X, Users, Calendar, CheckSquare, Layers } from "lucide-react";
@@ -7,11 +8,12 @@ import {
   getMediumOptions,
   bulkAssignStudents,
 } from "../services/batchAssignmentService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function AssignBatchModal({ onSubmit, onClose }) {
-  const { branch, selectedFinancialYear } = useOrg();      // NEW
-  const context = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };  // NEW
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const [students, setStudents] = useState([]);
   const [batches, setBatches] = useState([]);
@@ -27,14 +29,15 @@ export default function AssignBatchModal({ onSubmit, onClose }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    if (!branchId || !financialYearId) return;
     loadDropdownData();
-  }, []);
+  }, [branchId, financialYearId]);
 
   async function loadDropdownData() {
     try {
       const [studentData, batchData, mediumData] = await Promise.all([
-        getActiveStudents(),
-        getActiveBatches(),
+        getActiveStudents(branchId, financialYearId),
+        getActiveBatches(branchId, financialYearId),
         getMediumOptions(),
       ]);
       setStudents(studentData);
@@ -56,8 +59,8 @@ export default function AssignBatchModal({ onSubmit, onClose }) {
   });
 
   // Filter batches by medium
-  const filteredBatches = batches.filter((b) =>
-    !selectedMediumId ? true : b.medium_id === parseInt(selectedMediumId)
+  const filteredBatches = batches.filter(
+    (b) => !selectedMediumId || b.medium_id === parseInt(selectedMediumId)
   );
 
   function toggleStudent(studentId) {
@@ -89,8 +92,10 @@ export default function AssignBatchModal({ onSubmit, onClose }) {
 
     setLoading(true);
     try {
-      // Pass context as 4th argument (branchId, financialYearId)
-      await bulkAssignStudents(batchId, selectedStudents, enrollmentDate, context);
+      await bulkAssignStudents(batchId, selectedStudents, enrollmentDate, {
+        branchId,
+        financialYearId,
+      });
       toast.success(`${selectedStudents.length} student(s) assigned to batch`);
       if (onSubmit) onSubmit();
       onClose();

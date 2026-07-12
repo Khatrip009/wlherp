@@ -14,11 +14,15 @@ export default function TeacherSalarySettings() {
 
   // ── Branch & financial year context ──
   const { branch, selectedFinancialYear } = useOrg();
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   const { data: teacher, isLoading } = useQuery({
-    queryKey: ["teacher-salary", id],
-    queryFn: () => getTeacherWithSalary(id),
+    queryKey: ["teacher-salary", id, branchId, financialYearId],
+    queryFn: () => getTeacherWithSalary(id, branchId, financialYearId),
+    enabled: !!id && !!branchId && !!financialYearId,
+    staleTime: 10 * 60 * 1000,
   });
 
   const [form, setForm] = useState({

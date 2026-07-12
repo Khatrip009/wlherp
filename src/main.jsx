@@ -1,9 +1,11 @@
+// src/main.jsx
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "./context/ThemeContext";
 import { OrganizationProvider } from "./context/OrganizationContext";
+import { ScopeProvider } from "./context/ScopeContext";   // ← new
 import { Toaster } from "react-hot-toast";
 import "./index.css";
 import App from "./App";
@@ -25,13 +27,15 @@ ReactDOM.createRoot(document.getElementById("root")).render(
       <HashRouter>
         <AuthProvider>
           <OrganizationProvider>
-            <ThemeProvider>   {/* ← moved inside OrganizationProvider */}
-              <Toaster position="top-right" />
-              <App />
-            </ThemeProvider>
+            <ScopeProvider>               {/* ← new – watches branch/FY changes */}
+              <ThemeProvider>
+                <Toaster position="top-right" />
+                <App />
+              </ThemeProvider>
+            </ScopeProvider>
           </OrganizationProvider>
         </AuthProvider>
       </HashRouter>
     </QueryClientProvider>
   </React.StrictMode>
-);  
+);

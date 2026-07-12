@@ -10,8 +10,11 @@ import { useOrg } from "../context/OrganizationContext";   // NEW
 
 export default function StudentLearningResources() {
   const { user } = useAuth();
-  // Context import for consistency (page is read‑only)
-  useOrg();
+
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   // Filter states
   const [searchChapter, setSearchChapter] = useState("");
@@ -21,36 +24,43 @@ export default function StudentLearningResources() {
   const [filterMedium, setFilterMedium] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
-  // 1. Get student ID
+  // 1. Get student ID – scoped to current branch & FY
   const { data: studentId } = useQuery({
-    queryKey: ["student-id", user?.id],
+    queryKey: ["student-id", user?.id, branchId, financialYearId],
     queryFn: async () => {
+      if (!user?.id || !branchId || !financialYearId) return null;
       const { data } = await supabase
         .from("students")
         .select("id")
         .eq("user_id", user.id)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .maybeSingle();
       return data?.id || null;
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
-  // 2. Get active batch IDs
+  // 2. Get active batch IDs – scoped
   const { data: batchIds = [] } = useQuery({
-    queryKey: ["student-batch-ids", studentId],
+    queryKey: ["student-batch-ids", studentId, branchId, financialYearId],
     queryFn: async () => {
-      if (!studentId) return [];
+      if (!studentId || !branchId || !financialYearId) return [];
       const { data } = await supabase
         .from("student_batches")
         .select("batch_id")
         .eq("student_id", studentId)
-        .eq("status", "active");
+        .eq("status", "active")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
       return data.map((row) => row.batch_id);
     },
-    enabled: !!studentId,
+    enabled: !!studentId && !!branchId && !!financialYearId,
+    staleTime: 5 * 60 * 1000,
   });
 
-  // 3. Fetch all mediums for filter dropdown
+  // 3. Fetch all mediums for filter dropdown (org‑wide)
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediums-list"],
     queryFn: async () => {
@@ -62,24 +72,27 @@ export default function StudentLearningResources() {
     },
   });
 
-  // 4. Fetch resources for those batches – now includes medium name
+  // 4. Fetch resources for those batches – now scoped with branch & FY
   const { data: allResources = [], isLoading } = useQuery({
-    queryKey: ["student-learning-resources", batchIds],
+    queryKey: ["student-learning-resources", batchIds, branchId, financialYearId],
     queryFn: async () => {
       if (batchIds.length === 0) return [];
 
-      // Get subjects from those batches
-      const { data: batchSubjects } = await supabase
+      // Get subjects from those batches – scoped
+      let batchQuery = supabase
         .from("batches")
         .select("course_id, courses(subjects(id))")
         .in("id", batchIds);
+      if (branchId) batchQuery = batchQuery.eq("branch_id", branchId);
+      if (financialYearId) batchQuery = batchQuery.eq("financial_year_id", financialYearId);
+      const { data: batchSubjects } = await batchQuery;
 
       const subjectIds = [];
       batchSubjects?.forEach((batch) => {
         batch.courses?.subjects?.forEach((subj) => subjectIds.push(subj.id));
       });
 
-      // Build the OR condition safely
+      // Build the OR condition
       let orCondition = "";
       if (batchIds.length > 0)
         orCondition += `batch_id.in.(${batchIds.join(",")})`;
@@ -90,7 +103,7 @@ export default function StudentLearningResources() {
 
       if (!orCondition) return [];
 
-      const { data } = await supabase
+      let resourceQuery = supabase
         .from("learning_resources")
         .select(
           "*, subjects(subject_name, courses(course_name)), batches(batch_name), mediums(name)"
@@ -98,12 +111,18 @@ export default function StudentLearningResources() {
         .or(orCondition)
         .order("created_at", { ascending: false });
 
+      // Scope to branch & FY
+      if (branchId) resourceQuery = resourceQuery.eq("branch_id", branchId);
+      if (financialYearId) resourceQuery = resourceQuery.eq("financial_year_id", financialYearId);
+
+      const { data } = await resourceQuery;
       return data || [];
     },
-    enabled: batchIds.length > 0,
+    enabled: batchIds.length > 0 && !!branchId && !!financialYearId,
+    staleTime: 2 * 60 * 1000,
   });
 
-  // Extract unique filter options from the fetched resources
+  // Extract unique filter options
   const uniqueSubjects = allResources
     .filter((r) => r.subjects)
     .reduce((acc, r) => {
@@ -209,7 +228,7 @@ export default function StudentLearningResources() {
               </option>
             ))}
           </select>
-          {/* NEW: Medium filter */}
+          {/* Medium filter */}
           <select
             value={filterMedium}
             onChange={(e) => setFilterMedium(e.target.value)}

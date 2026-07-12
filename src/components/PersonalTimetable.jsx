@@ -14,92 +14,88 @@ export default function PersonalTimetable() {
     return () => console.log("PersonalTimetable unmounted");
   }, []);
 
+  // 1. Fetch student ID + branch/FY from their record
   const {
-    data: studentId,
+    data: student,
     isLoading: idLoading,
     error: idError,
   } = useQuery({
-    queryKey: ["student-id", user?.id],
+    queryKey: ["student-data", user?.id],
     queryFn: async () => {
-      try {
-        if (!user?.id) return null;
-        const { data, error } = await supabase
-          .from("students")
-          .select("id")
-          .eq("user_id", user.id)
-          .maybeSingle();
-        if (error) throw error;
-        return data?.id ?? null;
-      } catch (e) {
-        console.error("student-id query error", e);
-        throw e;
-      }
+      if (!user?.id) return null;
+      const { data, error } = await supabase
+        .from("students")
+        .select("id, branch_id, financial_year_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data; // { id, branch_id, financial_year_id }
     },
     enabled: !!user?.id,
   });
 
+  const studentId = student?.id;
+  const branchId = student?.branch_id;
+  const financialYearId = student?.financial_year_id;
+
+  // 2. Get batch IDs from student_batches (scoped)
   const {
     data: batchIds = [],
     isLoading: batchesLoading,
     error: batchesError,
   } = useQuery({
-    queryKey: ["student-batch-ids", studentId],
+    queryKey: ["student-batch-ids", studentId, branchId, financialYearId],
     queryFn: async () => {
-      try {
-        if (!studentId) return [];
-        const { data, error } = await supabase
-          .from("student_batches")
-          .select("batch_id")
-          .eq("student_id", studentId)
-          .eq("status", "active");
-        if (error) throw error;
-        return data.map((row) => row.batch_id);
-      } catch (e) {
-        console.error("batch-ids query error", e);
-        throw e;
-      }
+      if (!studentId) return [];
+      const { data, error } = await supabase
+        .from("student_batches")
+        .select("batch_id")
+        .eq("student_id", studentId)
+        .eq("status", "active")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
+      if (error) throw error;
+      return data.map((row) => row.batch_id);
     },
-    enabled: !!studentId,
+    enabled: !!studentId && !!branchId && !!financialYearId,
   });
 
+  // 3. Fetch batch details (scoped)
   const {
     data: batches = [],
     isLoading: dataLoading,
     error: dataError,
   } = useQuery({
-    queryKey: ["student-timetable-batches", batchIds],
+    queryKey: ["student-timetable-batches", batchIds, branchId, financialYearId],
     queryFn: async () => {
-      try {
-        if (batchIds.length === 0) return [];
-        const { data, error } = await supabase
-          .from("batches")
-          .select(
-            `id, batch_name, start_time, end_time, days, courses(course_name), mediums(name), batch_teachers(teacher_id, subject_id, day, teachers(first_name, last_name), subjects(subject_name))`
-          )
-          .in("id", batchIds)
-          .eq("status", "active");
-        if (error) throw error;
-        return data ?? [];
-      } catch (e) {
-        console.error("batches query error", e);
-        throw e;
-      }
+      if (batchIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from("batches")
+        .select(
+          `id, batch_name, start_time, end_time, days, courses(course_name), mediums(name), batch_teachers(teacher_id, subject_id, day, teachers(first_name, last_name), subjects(subject_name))`
+        )
+        .in("id", batchIds)
+        .eq("status", "active")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
+      if (error) throw error;
+      return data ?? [];
     },
-    enabled: batchIds.length > 0,
+    enabled: batchIds.length > 0 && !!branchId && !!financialYearId,
   });
 
-  // Capture debug info
+  // Debug info
   useEffect(() => {
     setDebug({
       user: user?.id,
-      studentId,
+      student,
       batchIds,
       batches: batches?.length,
       idError: idError?.message,
       batchesError: batchesError?.message,
       dataError: dataError?.message,
     });
-  }, [user, studentId, batchIds, batches, idError, batchesError, dataError]);
+  }, [user, student, batchIds, batches, idError, batchesError, dataError]);
 
   const allErrors = [idError, batchesError, dataError].filter(Boolean);
   if (allErrors.length > 0) {

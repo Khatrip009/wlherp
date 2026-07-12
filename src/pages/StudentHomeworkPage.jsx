@@ -16,50 +16,65 @@ export default function StudentHomeworkPage() {
   const { studentId, isLoading: idLoading } = useStudentId();
   const queryClient = useQueryClient();
 
-  // ── Get branch & financial year for context ──
+  // ── Branch & Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();   // NEW
-  const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   const [uploadingFor, setUploadingFor] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState(null);
   const [submissionRemarks, setSubmissionRemarks] = useState("");
 
-  // Fetch homework assignments – now includes medium via batches
+  // Fetch homework assignments – scoped to branch & FY
   const { data: homeworks = [], isLoading } = useQuery({
-    queryKey: ["student-homeworks-list", studentId],
+    queryKey: ["student-homeworks-list", studentId, branchId, financialYearId],
     queryFn: async () => {
-      if (!studentId) return [];
+      if (!studentId || !branchId || !financialYearId) return [];
+
+      // Get active batch IDs for the student (scoped)
       const { data: batchRows } = await supabase
         .from("student_batches")
         .select("batch_id")
         .eq("student_id", studentId)
-        .eq("status", "active");
+        .eq("status", "active")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
+
       const batchIds = batchRows?.map((b) => b.batch_id) || [];
       if (!batchIds.length) return [];
 
+      // Fetch homeworks for those batches (scoped)
       const { data } = await supabase
         .from("homework")
         .select(`*, subjects(subject_name), batches(batch_name, mediums(name))`)
         .in("batch_id", batchIds)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .order("due_date", { ascending: true });
+
       return data || [];
     },
-    enabled: !!studentId,
+    enabled: !!studentId && !!branchId && !!financialYearId,
+    staleTime: 2 * 60 * 1000,
   });
 
-  // Fetch existing submissions for this student
+  // Fetch existing submissions for this student – scoped
   const { data: submissions = [], isLoading: submissionsLoading } = useQuery({
-    queryKey: ["student-submissions", studentId],
+    queryKey: ["student-submissions", studentId, branchId, financialYearId],
     queryFn: async () => {
-      if (!studentId) return [];
+      if (!studentId || !branchId || !financialYearId) return [];
       const { data } = await supabase
         .from("homework_submissions")
         .select("*")
-        .eq("student_id", studentId);
+        .eq("student_id", studentId)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
       return data || [];
     },
-    enabled: !!studentId,
+    enabled: !!studentId && !!branchId && !!financialYearId,
+    staleTime: 2 * 60 * 1000,
   });
 
   // Map submissions by homework_id
@@ -71,7 +86,7 @@ export default function StudentHomeworkPage() {
     submissionMap[s.homework_id].push(s);
   });
 
-  // Upload mutation – now passes context to submitHomework
+  // Upload mutation – uses context already
   const uploadMutation = useMutation({
     mutationFn: ({ homeworkId, file, remarks }) =>
       submitHomework({ homeworkId, studentId, file, remarks }, ctx),

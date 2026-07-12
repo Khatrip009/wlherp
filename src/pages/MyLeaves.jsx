@@ -6,7 +6,7 @@ import AdminLayout from "../layouts/AdminLayout";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../api/supabase";
 import BackButton from "../components/BackButton";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function MyLeaves() {
   const { user } = useAuth();
@@ -15,42 +15,58 @@ export default function MyLeaves() {
   const [form, setForm] = useState({ start_date: "", end_date: "", reason: "" });
 
   // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
+  // Teacher ID for the current user – scoped to branch & FY
   const { data: teacherId } = useQuery({
-    queryKey: ["teacher-id", user?.id],
+    queryKey: ["teacher-id", user?.id, branchId, financialYearId],
     queryFn: async () => {
       if (!user?.id) return null;
-      const { data, error } = await supabase
+      let query = supabase
         .from("teachers")
         .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
+        .eq("user_id", user.id);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data, error } = await query.maybeSingle();
       if (error) throw error;
       return data?.id || null;
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!branchId && !!financialYearId,
+    staleTime: 10 * 60 * 1000,
   });
 
+  // My leaves – scoped to branch & FY
   const { data: leaves = [], isLoading } = useQuery({
-    queryKey: ["my-leaves", teacherId],
+    queryKey: ["my-leaves", teacherId, branchId, financialYearId],
     queryFn: async () => {
       if (!teacherId) return [];
-      const { data: d1, error: e1 } = await supabase
+
+      // Try teacher_leaves first, then leaves, both scoped
+      let query1 = supabase
         .from("teacher_leaves")
         .select("*")
         .eq("teacher_id", teacherId)
         .order("created_at", { ascending: false });
+      if (branchId) query1 = query1.eq("branch_id", branchId);
+      if (financialYearId) query1 = query1.eq("financial_year_id", financialYearId);
+      const { data: d1, error: e1 } = await query1;
       if (!e1) return d1 || [];
 
-      const { data: d2 } = await supabase
+      let query2 = supabase
         .from("leaves")
         .select("*")
         .eq("teacher_id", teacherId)
         .order("created_at", { ascending: false });
+      if (branchId) query2 = query2.eq("branch_id", branchId);
+      if (financialYearId) query2 = query2.eq("financial_year_id", financialYearId);
+      const { data: d2 } = await query2;
       return d2 || [];
     },
-    enabled: !!teacherId,
+    enabled: !!teacherId && !!branchId && !!financialYearId,
+    staleTime: 2 * 60 * 1000,
   });
 
   const createMutation = useMutation({
@@ -59,8 +75,8 @@ export default function MyLeaves() {
         ...payload,
         teacher_id: teacherId,
         status: "Pending",
-        branch_id: branch?.id,                         // NEW
-        financial_year_id: selectedFinancialYear?.id,  // NEW
+        branch_id: branchId,
+        financial_year_id: financialYearId,
       };
       // Try teacher_leaves first, fall back to leaves
       const { error: e1 } = await supabase

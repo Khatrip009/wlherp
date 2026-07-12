@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 import AdminLayout from "../layouts/AdminLayout";
 import BackButton from "../components/BackButton";
 
@@ -29,16 +29,18 @@ export default function OnlineClassList() {
   const [editingClass, setEditingClass] = useState(null);
 
   // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const { branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
 
   const userRole = profile?.role?.toLowerCase() || "student";
   const isAdmin = userRole === "admin" || userRole === "super_admin";
   const isTeacher = userRole === "teacher";
   const isStudent = userRole === "student";
 
-  // ---------- Fetch classes ----------
+  // ---------- Fetch classes (scoped) ----------
   const { data: classes = [], isLoading, error } = useQuery({
-    queryKey: ["online-classes", filterStatus, search],
+    queryKey: ["online-classes", filterStatus, search, branchId, financialYearId],
     queryFn: async () => {
       let query = supabase
         .from("online_classes")
@@ -49,21 +51,30 @@ export default function OnlineClassList() {
         `)
         .order("start_time", { ascending: true });
 
+      // Scope to current branch and financial year
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
       if (isStudent) {
         try {
-          const { data: student, error: studentError } = await supabase
+          let studentQuery = supabase
             .from("students")
             .select("id")
-            .eq("user_id", profile.id)
-            .maybeSingle();
+            .eq("user_id", profile.id);
+          if (branchId) studentQuery = studentQuery.eq("branch_id", branchId);
+          if (financialYearId) studentQuery = studentQuery.eq("financial_year_id", financialYearId);
+          const { data: student, error: studentError } = await studentQuery.maybeSingle();
           if (studentError) throw studentError;
           if (!student) return [];
 
-          const { data: enrollments } = await supabase
+          let enrollmentQuery = supabase
             .from("student_batches")
             .select("batch_id")
             .eq("student_id", student.id)
             .eq("status", "active");
+          if (branchId) enrollmentQuery = enrollmentQuery.eq("branch_id", branchId);
+          if (financialYearId) enrollmentQuery = enrollmentQuery.eq("financial_year_id", financialYearId);
+          const { data: enrollments } = await enrollmentQuery;
           const batchIds = enrollments?.map(e => e.batch_id) || [];
           if (batchIds.length === 0) return [];
           query = query.in("batch_id", batchIds);
@@ -73,11 +84,13 @@ export default function OnlineClassList() {
         }
       } else if (isTeacher) {
         try {
-          const { data: teacher, error: teacherError } = await supabase
+          let teacherQuery = supabase
             .from("teachers")
             .select("id")
-            .eq("user_id", profile.id)
-            .maybeSingle();
+            .eq("user_id", profile.id);
+          if (branchId) teacherQuery = teacherQuery.eq("branch_id", branchId);
+          if (financialYearId) teacherQuery = teacherQuery.eq("financial_year_id", financialYearId);
+          const { data: teacher, error: teacherError } = await teacherQuery.maybeSingle();
           if (teacherError) throw teacherError;
           if (!teacher) return [];
           query = query.eq("teacher_id", teacher.id);
@@ -99,16 +112,19 @@ export default function OnlineClassList() {
       return data || [];
     },
     staleTime: 2 * 60 * 1000,
-    enabled: !!profile?.id,
+    enabled: !!profile?.id && !!branchId && !!financialYearId,
   });
 
-  // ---------- Delete mutation ----------
+  // ---------- Delete mutation (scoped) ----------
   const deleteMutation = useMutation({
     mutationFn: async (classId) => {
-      const { error } = await supabase
+      let query = supabase
         .from("online_classes")
         .delete()
         .eq("id", classId);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { error } = await query;
       if (error) throw error;
     },
     onSuccess: () => {
@@ -118,15 +134,15 @@ export default function OnlineClassList() {
     onError: (err) => toast.error(err.message),
   });
 
-  // ---------- Start mutation – now includes branch & FY ----------
+  // ---------- Start mutation – already includes branch & FY ----------
   const startClassMutation = useMutation({
     mutationFn: async (classId) => {
       const { error } = await supabase
         .from("online_classes")
         .update({
           status: "live",
-          branch_id: branch?.id,                         // NEW
-          financial_year_id: selectedFinancialYear?.id,  // NEW
+          branch_id: branchId,
+          financial_year_id: financialYearId,
         })
         .eq("id", classId);
       if (error) throw error;

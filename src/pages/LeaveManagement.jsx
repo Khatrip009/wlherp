@@ -17,11 +17,18 @@ import AdminLayout from "../layouts/AdminLayout";
 import BackButton from "../components/BackButton";
 
 import { getLeaves, updateLeaveStatus } from "../services/leaveService";
+import { useOrg } from "../context/OrganizationContext";   // NEW
 
 export default function LeaveManagement() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
+
+  // ── Branch & Financial Year context ──
+  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   const {
     data,
@@ -30,20 +37,29 @@ export default function LeaveManagement() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["leaves", { status: statusFilter, search }],
-    queryFn: ({ pageParam = 0 }) => getLeaves({ pageParam, filters: { status: statusFilter, search } }),
+    queryKey: ["leaves", { status: statusFilter, search }, branchId, financialYearId],
+    queryFn: ({ pageParam = 0 }) =>
+      getLeaves({
+        pageParam,
+        filters: { status: statusFilter, search },
+        branchId,
+        financialYearId,
+      }),
     getNextPageParam: (lastPage, allPages) => {
       const totalFetched = allPages.reduce((sum, page) => sum + page.data.length, 0);
       if (lastPage.count && totalFetched < lastPage.count) return allPages.length;
       return undefined;
     },
     initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 2 * 60 * 1000,
   });
 
   const leaves = data?.pages.flatMap((page) => page.data) || [];
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, status, adminRemarks }) => updateLeaveStatus(id, status, adminRemarks),
+    mutationFn: ({ id, status, adminRemarks }) =>
+      updateLeaveStatus(id, status, adminRemarks, ctx),   // pass context
     onSuccess: () => {
       toast.success("Leave updated");
       queryClient.invalidateQueries({ queryKey: ["leaves"] });

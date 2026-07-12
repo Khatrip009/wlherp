@@ -10,9 +10,18 @@ import { useOrg } from "../context/OrganizationContext";   // NEW
 export default function PaymentVoucher() {
   const queryClient = useQueryClient();
   const { branch, selectedFinancialYear } = useOrg();      // NEW
-  const context = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const context = { branchId, financialYearId };
 
-  const { data: accounts = [] } = useQuery({ queryKey: ["chart-of-accounts"], queryFn: getChartOfAccounts });
+  // Scoped chart of accounts
+  const { data: accounts = [] } = useQuery({
+    queryKey: ["chart-of-accounts", branchId, financialYearId],
+    queryFn: () => getChartOfAccounts(branchId, financialYearId),
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 10 * 60 * 1000,
+  });
+
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [reference, setReference] = useState("");
   const [description, setDescription] = useState("");
