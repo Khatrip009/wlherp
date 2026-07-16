@@ -1,8 +1,8 @@
+// src/pages/ActivityLogs.jsx
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
-import AdminLayout from "../layouts/AdminLayout";
-import { Search, Download, Filter, X, User, Activity, Calendar } from "lucide-react";
+import { Search, Download } from "lucide-react";
 import { useOrg } from "../context/OrganizationContext";
 
 export default function ActivityLogs() {
@@ -42,6 +42,7 @@ export default function ActivityLogs() {
   });
 
   const exportCSV = () => {
+    if (logs.length === 0) return;
     const rows = logs.map((l) => [
       l.created_at,
       l.action,
@@ -60,48 +61,58 @@ export default function ActivityLogs() {
   };
 
   return (
-    <AdminLayout>
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-        <h1 className="text-3xl font-righteous text-primary-dark">Activity Logs</h1>
-        <div className="flex items-center gap-3">
-          <button onClick={exportCSV} className="border px-4 py-2 rounded-lg text-sm flex items-center gap-2">
-            <Download size={16} /> Export
-          </button>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+            Activity Logs
+          </h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>
+            Track all system events and user actions
+          </p>
         </div>
+        <button
+          onClick={exportCSV}
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm font-medium"
+          style={{ fontFamily: "var(--font-body)" }}
+        >
+          <Download size={16} /> Export CSV
+        </button>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
-        <div className="relative flex-1">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="relative">
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
           <input
             type="text"
-            placeholder="Search by action or entity..."
+            placeholder="Search action or entity..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border rounded-lg text-sm"
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg text-sm"
+            style={{ fontFamily: "var(--font-body)" }}
           />
         </div>
-        <div>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="border rounded-lg p-2.5 text-sm"
-          />
-        </div>
-        <div>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="border rounded-lg p-2.5 text-sm"
-          />
-        </div>
+        <input
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+          style={{ fontFamily: "var(--font-body)" }}
+        />
+        <input
+          type="date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+          style={{ fontFamily: "var(--font-body)" }}
+        />
         <select
           value={actionFilter}
           onChange={(e) => setActionFilter(e.target.value)}
-          className="border rounded-lg px-4 py-2.5 text-sm"
+          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg px-4 py-2.5 text-sm"
+          style={{ fontFamily: "var(--font-body)" }}
         >
           <option value="">All Actions</option>
           <option value="create_student">Create Student</option>
@@ -115,35 +126,61 @@ export default function ActivityLogs() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[700px]">
-            <thead className="bg-slate-100">
+            <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
-                <th className="p-3 text-left text-sm">Timestamp</th>
-                <th className="p-3 text-left text-sm">Action</th>
-                <th className="p-3 text-left text-sm">Entity</th>
-                <th className="p-3 text-left text-sm">Details</th>
-                <th className="p-3 text-left text-sm">IP Address</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" style={{ fontFamily: "var(--font-body)" }}>
+                  Timestamp
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" style={{ fontFamily: "var(--font-body)" }}>
+                  Action
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" style={{ fontFamily: "var(--font-body)" }}>
+                  Entity
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" style={{ fontFamily: "var(--font-body)" }}>
+                  Details
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" style={{ fontFamily: "var(--font-body)" }}>
+                  IP Address
+                </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {isLoading ? (
-                <tr><td colSpan={5} className="p-6 text-center">Loading…</td></tr>
+                <tr>
+                  <td colSpan={5} className="p-6 text-center text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+                    Loading…
+                  </td>
+                </tr>
               ) : logs.length === 0 ? (
-                <tr><td colSpan={5} className="p-6 text-center text-secondary">No logs found.</td></tr>
+                <tr>
+                  <td colSpan={5} className="p-6 text-center text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+                    No logs found.
+                  </td>
+                </tr>
               ) : (
                 logs.map((log) => (
-                  <tr key={log.id} className="border-t hover:bg-gray-50">
-                    <td className="p-3 text-sm">{new Date(log.created_at).toLocaleString()}</td>
-                    <td className="p-3 text-sm">{log.action}</td>
+                  <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>
+                      {new Date(log.created_at).toLocaleString()}
+                    </td>
                     <td className="p-3 text-sm">
+                      <span className="inline-block px-2 py-1 rounded-full text-xs font-medium capitalize bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200">
+                        {log.action}
+                      </span>
+                    </td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>
                       {log.entity_type}{log.entity_id ? ` #${log.entity_id}` : ""}
                     </td>
-                    <td className="p-3 text-sm max-w-xs truncate">
+                    <td className="p-3 text-sm max-w-xs truncate text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>
                       {log.details ? JSON.stringify(log.details) : "—"}
                     </td>
-                    <td className="p-3 text-sm">{log.ip_address || "—"}</td>
+                    <td className="p-3 text-sm text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+                      {log.ip_address || "—"}
+                    </td>
                   </tr>
                 ))
               )}
@@ -151,6 +188,6 @@ export default function ActivityLogs() {
           </table>
         </div>
       </div>
-    </AdminLayout>
+    </div>
   );
 }

@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Plus, Trash2, Save, ArrowLeft } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import { supabase } from "../api/supabase";
 import { getPOById, createPO } from "../services/poService";
 import { useOrg } from "../context/OrganizationContext";   // NEW
@@ -193,7 +193,7 @@ export default function POForm() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <Link to="/purchase-orders" className="inline-flex items-center gap-2 text-secondary hover:text-primary-dark mb-4 text-sm">
         <ArrowLeft size={18} /> Back to POs
       </Link>
@@ -300,6 +300,6 @@ export default function POForm() {
           </button>
         </div>
       </form>
-    </AdminLayout>
+    </>
   );
 }

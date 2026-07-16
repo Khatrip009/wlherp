@@ -28,7 +28,6 @@ export default function GenerateSalaries() {
   const [generating, setGenerating] = useState(false);
   const [results, setResults] = useState(null);
 
-  // ── Organisation / Branch / Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
@@ -49,7 +48,7 @@ export default function GenerateSalaries() {
     enabled: month > 0 && year > 0 && !!branchId && !!financialYearId,
   });
 
-  // ---------- NEW: Fetch lecture counts for the month – scoped ----------
+  // Lecture counts for the month – scoped
   const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
   const endDate = `${year}-${String(month).padStart(2, "0")}-${new Date(year, month, 0).getDate()}`;
 
@@ -85,7 +84,7 @@ export default function GenerateSalaries() {
     return map;
   }, [existingPayments]);
 
-  // Compute gross, TDS, net for each teacher (with lecture counts)
+  // Compute gross, TDS, net for each teacher
   const teacherCalculations = useMemo(() => {
     return teachers.map((t) => {
       let gross = 0;
@@ -105,12 +104,8 @@ export default function GenerateSalaries() {
     });
   }, [teachers, lectureCounts]);
 
-  // Check if a teacher is already paid for the selected month
-  const isAlreadyPaid = (teacherId) => {
-    return !!paidStatus[teacherId];
-  };
+  const isAlreadyPaid = (teacherId) => !!paidStatus[teacherId];
 
-  // Handle selection
   const toggleSelect = (teacherId) => {
     setSelectedTeachers((prev) =>
       prev.includes(teacherId)
@@ -129,13 +124,12 @@ export default function GenerateSalaries() {
     setSelectAll(!selectAll);
   };
 
-  // Reset selection when teachers change
   useEffect(() => {
     setSelectedTeachers([]);
     setSelectAll(false);
   }, [teachers]);
 
-  // Generate mutation – now passes context (branch & financial year)
+  // Generate mutation
   const generateMutation = useMutation({
     mutationFn: async () => {
       setGenerating(true);
@@ -172,12 +166,7 @@ export default function GenerateSalaries() {
       toast.error("Please select at least one teacher");
       return;
     }
-    if (
-      !window.confirm(
-        `Generate salaries for ${selectedTeachers.length} teacher(s)?`
-      )
-    )
-      return;
+    if (!window.confirm(`Generate salaries for ${selectedTeachers.length} teacher(s)?`)) return;
     generateMutation.mutate();
   };
 
@@ -189,23 +178,30 @@ export default function GenerateSalaries() {
   const totalCount = teachers.length;
 
   return (
-    <>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-righteous text-primary-dark">
+          <h1
+            className="text-2xl sm:text-3xl font-bold"
+            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+          >
             Generate Salaries
           </h1>
-          <p className="text-secondary-dark text-sm mt-1">
+          <p
+            className="text-sm text-gray-600 dark:text-gray-400 mt-1"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
             Select teachers and generate salary for the chosen month
           </p>
         </div>
         <div className="flex items-center gap-3 mt-2 sm:mt-0">
           <div className="flex items-center gap-2">
-            <Calendar className="text-secondary-light w-4 h-4" />
+            <Calendar className="text-gray-500 dark:text-gray-400 w-4 h-4" />
             <select
               value={month}
               onChange={(e) => setMonth(Number(e.target.value))}
-              className="border rounded-lg p-2 text-sm focus:ring-1 focus:ring-primary"
+              className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2 text-sm"
             >
               {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
                 <option key={m} value={m}>
@@ -219,13 +215,14 @@ export default function GenerateSalaries() {
               max="2030"
               value={year}
               onChange={(e) => setYear(Number(e.target.value))}
-              className="border rounded-lg p-2 text-sm w-24 focus:ring-1 focus:ring-primary"
+              className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2 text-sm w-24"
             />
           </div>
           <button
             onClick={handleGenerate}
             disabled={generating || selectedCount === 0}
             className="bg-primary hover:bg-primary-light text-white px-6 py-2 rounded-lg font-medium transition disabled:opacity-50 flex items-center gap-2"
+            style={{ fontFamily: "var(--font-body)" }}
           >
             {generating ? (
               <>
@@ -242,60 +239,60 @@ export default function GenerateSalaries() {
         </div>
       </div>
 
-      {/* Teacher Table (unchanged) */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      {/* Teacher Table */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b">
+          <table className="w-full min-w-[700px]">
+            <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-secondary-dark">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   <button
                     onClick={toggleSelectAll}
-                    className="flex items-center gap-1 hover:text-primary transition"
+                    className="flex items-center gap-1 hover:text-primary dark:hover:text-primary-light transition"
                   >
                     {selectAll ? (
                       <CheckSquare className="w-4 h-4 text-primary" />
                     ) : (
-                      <Square className="w-4 h-4 text-secondary-light" />
+                      <Square className="w-4 h-4 text-gray-400 dark:text-gray-500" />
                     )}
                   </button>
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-secondary-dark">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Teacher
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-secondary-dark">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Type
                 </th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-secondary-dark">
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Rate
                 </th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-secondary-dark">
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Lectures
                 </th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-secondary-dark">
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Est. Gross
                 </th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-secondary-dark">
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   TDS %
                 </th>
-                <th className="px-4 py-3 text-center text-sm font-medium text-secondary-dark">
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-4 py-3 text-center text-sm font-medium text-secondary-dark">
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Details
                 </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {loadingTeachers ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-8 text-secondary">
+                  <td colSpan={9} className="text-center py-8 text-gray-500 dark:text-gray-400">
                     Loading teachers...
                   </td>
                 </tr>
               ) : teachers.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-8 text-secondary">
+                  <td colSpan={9} className="text-center py-8 text-gray-500 dark:text-gray-400">
                     No active teachers found.
                   </td>
                 </tr>
@@ -309,7 +306,7 @@ export default function GenerateSalaries() {
                   return (
                     <tr
                       key={t.id}
-                      className="border-t hover:bg-gray-50 transition"
+                      className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                     >
                       <td className="px-4 py-3">
                         <button
@@ -322,47 +319,47 @@ export default function GenerateSalaries() {
                           ) : selected ? (
                             <CheckSquare className="w-4 h-4 text-primary" />
                           ) : (
-                            <Square className="w-4 h-4 text-secondary-light" />
+                            <Square className="w-4 h-4 text-gray-400 dark:text-gray-500" />
                           )}
                         </button>
                       </td>
-                      <td className="px-4 py-3 text-sm font-medium">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-800 dark:text-gray-100">
                         {t.first_name} {t.last_name}
                       </td>
                       <td className="px-4 py-3 text-sm">
                         <span
                           className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                             t.salary_type === "fixed"
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-purple-100 text-purple-700"
+                              ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200"
+                              : "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-200"
                           }`}
                         >
                           {t.salary_type === "fixed" ? "Fixed" : "Lecture"}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right text-sm">
+                      <td className="px-4 py-3 text-right text-sm text-gray-700 dark:text-gray-200">
                         {t.salary_type === "fixed"
                           ? `₹ ${t.monthly_salary?.toLocaleString("en-IN")}`
                           : `₹ ${t.per_lecture_rate?.toLocaleString("en-IN")} / lecture`}
                       </td>
-                      <td className="px-4 py-3 text-right text-sm">
+                      <td className="px-4 py-3 text-right text-sm text-gray-700 dark:text-gray-200">
                         {t.salary_type === "lecture_based" ? calc?.lectureCount || 0 : "—"}
                       </td>
-                      <td className="px-4 py-3 text-right text-sm">
+                      <td className="px-4 py-3 text-right text-sm text-gray-700 dark:text-gray-200">
                         {calc?.estimatedGross
                           ? `₹ ${calc.estimatedGross.toLocaleString("en-IN")}`
                           : "—"}
                       </td>
-                      <td className="px-4 py-3 text-right text-sm">
+                      <td className="px-4 py-3 text-right text-sm text-gray-700 dark:text-gray-200">
                         {t.tds_percentage || 10}%
                       </td>
                       <td className="px-4 py-3 text-center text-sm">
                         {paid ? (
-                          <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">
+                          <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-200">
                             Paid
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-700">
+                          <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-200">
                             Pending
                           </span>
                         )}
@@ -370,7 +367,7 @@ export default function GenerateSalaries() {
                       <td className="px-4 py-3 text-center text-sm">
                         <button
                           onClick={() => toggleExpand(t.id)}
-                          className="text-secondary-light hover:text-primary transition"
+                          className="text-gray-400 dark:text-gray-500 hover:text-primary dark:hover:text-primary-light transition"
                         >
                           {isExpanded ? (
                             <ChevronUp className="w-4 h-4" />
@@ -388,16 +385,15 @@ export default function GenerateSalaries() {
         </div>
 
         {/* Summary Footer */}
-        <div className="px-4 py-3 border-t flex flex-col sm:flex-row justify-between items-start sm:items-center text-sm">
-          <span className="text-secondary-dark">
+        <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row justify-between items-start sm:items-center text-sm">
+          <span className="text-gray-600 dark:text-gray-400">
             {selectedCount} of {totalCount} teachers selected
           </span>
-          <div className="flex gap-4 text-xs">
-            <span className="text-green-600">
-              {teachers.filter((t) => isAlreadyPaid(t.id)).length} paid this
-              month
+          <div className="flex gap-4 text-xs mt-1 sm:mt-0">
+            <span className="text-green-600 dark:text-green-400">
+              {teachers.filter((t) => isAlreadyPaid(t.id)).length} paid this month
             </span>
-            <span className="text-yellow-600">
+            <span className="text-yellow-600 dark:text-yellow-400">
               {teachers.filter((t) => !isAlreadyPaid(t.id)).length} pending
             </span>
           </div>
@@ -406,16 +402,16 @@ export default function GenerateSalaries() {
 
       {/* Results summary */}
       {results && (
-        <div className="mt-6 bg-white rounded-xl shadow-sm p-4 border">
-          <h3 className="font-medium text-primary-dark mb-2">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+          <h3 className="font-medium mb-2" style={{ color: "var(--color-primary)" }}>
             Generation Results
           </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm text-gray-700 dark:text-gray-200">
             <div>Total: {results.length}</div>
-            <div className="text-green-600">
+            <div className="text-green-600 dark:text-green-400">
               Success: {results.filter((r) => !r.error).length}
             </div>
-            <div className="text-red-600">
+            <div className="text-red-600 dark:text-red-400">
               Failed: {results.filter((r) => r.error).length}
             </div>
             <div>
@@ -427,7 +423,7 @@ export default function GenerateSalaries() {
             </div>
           </div>
           {results.some((r) => r.error) && (
-            <div className="mt-2 text-xs text-red-600">
+            <div className="mt-2 text-xs text-red-600 dark:text-red-400">
               {results
                 .filter((r) => r.error)
                 .map((r) => (
@@ -439,6 +435,6 @@ export default function GenerateSalaries() {
           )}
         </div>
       )}
-    </>
+    </div>
   );
 }

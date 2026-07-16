@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Save, RotateCcw } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import BackButton from "../components/BackButton";
 
 import { supabase } from "../api/supabase";
@@ -85,7 +85,7 @@ export default function ThemeSettings() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <BackButton to="/settings-hub" label="Settings" />
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-righteous text-primary-dark mb-6">Theme Settings</h1>
@@ -186,6 +186,6 @@ export default function ThemeSettings() {
           </div>
         </form>
       </div>
-    </AdminLayout>
+    </>
   );
 }

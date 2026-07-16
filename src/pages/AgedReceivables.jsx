@@ -2,7 +2,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Printer, Filter } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
 import { getCourseOptions } from "../services/batchService";   // organisation‑wide
@@ -33,10 +32,10 @@ export default function AgedReceivables() {
   const [mediumFilter, setMediumFilter] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
-  // Dropdowns – use service functions with correct scoping
+  // Dropdowns
   const { data: courses = [] } = useQuery({
     queryKey: ["courses-dropdown"],
-    queryFn: getCourseOptions, // organisation‑wide, no scoping needed
+    queryFn: getCourseOptions,
     staleTime: 10 * 60 * 1000,
   });
 
@@ -56,13 +55,12 @@ export default function AgedReceivables() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Main receivables query – fully scoped (only tables that actually have branch/FY)
+  // Main receivables query (unchanged logic)
   const { data: receivables = [], isLoading } = useQuery({
     queryKey: ["aged-receivables", courseFilter, batchFilter, mediumFilter, branchId, financialYearId],
     queryFn: async () => {
       if (!branchId || !financialYearId) return [];
 
-      // 1. Build student_id set from batch/medium filters
       let studentIdSet = null;
       if (batchFilter || mediumFilter) {
         let batchQuery = supabase
@@ -89,7 +87,6 @@ export default function AgedReceivables() {
         if (studentIdSet.size === 0) return [];
       }
 
-      // 2. Fetch all student_fees (scoped)
       let feeQuery = supabase
         .from("student_fees")
         .select("*")
@@ -100,7 +97,6 @@ export default function AgedReceivables() {
       if (error) throw error;
       if (!allFees || allFees.length === 0) return [];
 
-      // 3. Filter client-side (status, deleted)
       let filtered = allFees.filter(
         (f) => f.status !== "Paid" && !f.deleted_at
       );
@@ -111,7 +107,6 @@ export default function AgedReceivables() {
       const feeIds = filtered.map((f) => f.id);
       const feeStructureIds = [...new Set(filtered.map((f) => f.fee_structure_id))];
 
-      // 4. Get course names via fee_structures (scoped) and then courses (organisation‑wide)
       let courseIdMap = {};
       if (feeStructureIds.length > 0) {
         const { data: fsData } = await supabase
@@ -128,7 +123,6 @@ export default function AgedReceivables() {
       const courseIds = [...new Set(Object.values(courseIdMap))];
       let courseNameMap = {};
       if (courseIds.length > 0) {
-        // courses table is organisation‑wide → no branch/FY filter
         const { data: courseList } = await supabase
           .from("courses")
           .select("id, course_name")
@@ -145,7 +139,6 @@ export default function AgedReceivables() {
         });
       }
 
-      // 5. Get student names (scoped)
       const studentIds = [...new Set(filtered.map((f) => f.student_id))];
       const { data: studentsData } = await supabase
         .from("students")
@@ -156,7 +149,6 @@ export default function AgedReceivables() {
       const studentMap = {};
       (studentsData || []).forEach((s) => (studentMap[s.id] = s));
 
-      // 6. Get payments (scoped)
       const { data: payments } = await supabase
         .from("fee_payments")
         .select("student_fee_id, amount")
@@ -168,7 +160,6 @@ export default function AgedReceivables() {
         paymentMap[p.student_fee_id] = (paymentMap[p.student_fee_id] || 0) + Number(p.amount);
       });
 
-      // 7. Get batch/medium info (scoped)
       const { data: sbData } = await supabase
         .from("student_batches")
         .select("student_id, batches(batch_name, mediums(name))")
@@ -186,7 +177,6 @@ export default function AgedReceivables() {
         }
       });
 
-      // 8. Build final list
       const now = new Date();
       return filtered
         .map((fee) => {
@@ -287,88 +277,150 @@ export default function AgedReceivables() {
   };
 
   return (
-    <AdminLayout>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">Aged Receivables</h1>
-        <button onClick={handlePrint} className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+            Aged Receivables
+          </h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>
+            Outstanding student fee balances by ageing bucket
+          </p>
+        </div>
+        <button
+          onClick={handlePrint}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
+          style={{ fontFamily: "var(--font-body)" }}
+        >
           <Printer size={16} /> Print
         </button>
       </div>
 
-      <div className="mb-4">
-        <button onClick={() => setShowFilters(!showFilters)} className="border px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+      {/* Filter toggle */}
+      <div>
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+          style={{ fontFamily: "var(--font-body)" }}
+        >
           <Filter size={16} /> Filters
         </button>
       </div>
 
+      {/* Filter fields */}
       {showFilters && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <select value={courseFilter} onChange={e => setCourseFilter(e.target.value)} className="border rounded p-2 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <select
+            value={courseFilter}
+            onChange={(e) => setCourseFilter(e.target.value)}
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
             <option value="">All Courses</option>
-            {courses.map(c => <option key={c.id} value={c.id}>{c.course_name}</option>)}
+            {courses.map((c) => (
+              <option key={c.id} value={c.id}>{c.course_name}</option>
+            ))}
           </select>
-          <select value={batchFilter} onChange={e => setBatchFilter(e.target.value)} className="border rounded p-2 text-sm">
+          <select
+            value={batchFilter}
+            onChange={(e) => setBatchFilter(e.target.value)}
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
             <option value="">All Batches</option>
-            {batches.map(b => <option key={b.id} value={b.id}>{b.batch_name}</option>)}
+            {batches.map((b) => (
+              <option key={b.id} value={b.id}>{b.batch_name}</option>
+            ))}
           </select>
-          <select value={mediumFilter} onChange={e => setMediumFilter(e.target.value)} className="border rounded p-2 text-sm">
+          <select
+            value={mediumFilter}
+            onChange={(e) => setMediumFilter(e.target.value)}
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
             <option value="">All Mediums</option>
-            {mediums.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            {mediums.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
           </select>
         </div>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        {AGE_BUCKETS.map(b => (
-          <div key={b.label} className="bg-white rounded-xl p-4 shadow-sm border text-center">
-            <p className="text-xs text-secondary-dark">{b.label}</p>
-            <p className="text-lg font-bold text-primary-dark">₹ {(bucketTotals[b.label]?.amount || 0).toLocaleString('en-IN')}</p>
-            <p className="text-xs text-secondary">{bucketTotals[b.label]?.count || 0} students</p>
+      {/* Bucket summary cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {AGE_BUCKETS.map((b) => (
+          <div
+            key={b.label}
+            className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 text-center"
+          >
+            <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+              {b.label}
+            </p>
+            <p className="text-lg font-bold" style={{ color: "var(--color-primary)" }}>
+              ₹ {(bucketTotals[b.label]?.amount || 0).toLocaleString('en-IN')}
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+              {bucketTotals[b.label]?.count || 0} students
+            </p>
           </div>
         ))}
       </div>
 
+      {/* Main table */}
       {isLoading ? (
-        <p className="text-center py-8">Loading…</p>
+        <div className="text-center py-8 text-gray-500 dark:text-gray-400">Loading…</div>
       ) : receivables.length === 0 ? (
-        <div className="bg-white rounded-xl p-10 text-center text-secondary"><p>No outstanding fees found.</p></div>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-10 text-center text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+          <p>No outstanding fees found.</p>
+        </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div id="aged-table">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-100">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div id="aged-table" className="overflow-x-auto">
+            <table className="w-full min-w-[800px] text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>
-                  <th className="p-3 text-left">Admission No</th>
-                  <th className="p-3 text-left">Student</th>
-                  <th className="p-3 text-left">Course</th>
-                  <th className="p-3 text-left">Batch</th>
-                  <th className="p-3 text-left">Medium</th>
-                  <th className="p-3 text-right">Balance</th>
-                  <th className="p-3 text-right">Age (Days)</th>
-                  <th className="p-3 text-left">Bucket</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Admission No</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Student</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Course</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Batch</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Medium</th>
+                  <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Balance</th>
+                  <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Age (Days)</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Bucket</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {receivables.map((r, idx) => (
-                  <tr key={idx} className="border-t hover:bg-gray-50">
-                    <td className="p-3">{r.admission_no}</td>
+                  <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    <td className="p-3 text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>{r.admission_no}</td>
                     <td className="p-3">
-                      <div className="font-medium">{r.student_name}</div>
-                      <div className="text-xs text-secondary">{r.mobile}</div>
+                      <div className="font-medium text-gray-800 dark:text-gray-100" style={{ fontFamily: "var(--font-heading)" }}>
+                        {r.student_name}
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+                        {r.mobile}
+                      </div>
                     </td>
-                    <td className="p-3">{r.course}</td>
-                    <td className="p-3">{r.batch}</td>
-                    <td className="p-3">{r.medium}</td>
-                    <td className="p-3 text-right font-medium">₹ {r.balance.toLocaleString('en-IN')}</td>
-                    <td className="p-3 text-right">{r.ageDays}</td>
-                    <td className="p-3">{r.bucket}</td>
+                    <td className="p-3 text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>{r.course}</td>
+                    <td className="p-3 text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>{r.batch}</td>
+                    <td className="p-3 text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>{r.medium}</td>
+                    <td className="p-3 text-right font-medium text-gray-800 dark:text-gray-100">
+                      ₹ {r.balance.toLocaleString('en-IN')}
+                    </td>
+                    <td className="p-3 text-right text-gray-700 dark:text-gray-300">{r.ageDays}</td>
+                    <td className="p-3 text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>{r.bucket}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr className="bg-gray-100 font-bold">
-                  <td colSpan={5} className="p-3 text-right">Grand Total</td>
-                  <td className="p-3 text-right">₹ {grandTotal.toLocaleString('en-IN')}</td>
+                <tr className="bg-gray-100 dark:bg-gray-700 font-bold">
+                  <td colSpan={5} className="p-3 text-right text-gray-800 dark:text-gray-100" style={{ fontFamily: "var(--font-heading)" }}>
+                    Grand Total
+                  </td>
+                  <td className="p-3 text-right" style={{ color: "var(--color-primary)" }}>
+                    ₹ {grandTotal.toLocaleString('en-IN')}
+                  </td>
                   <td colSpan={2}></td>
                 </tr>
               </tfoot>
@@ -376,6 +428,6 @@ export default function AgedReceivables() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </div>
   );
 }

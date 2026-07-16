@@ -2,7 +2,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
 import { getChartOfAccounts, getAccountLedger } from "../services/accountingService";
 import { useOrg } from "../context/OrganizationContext";   // NEW
 
@@ -75,7 +74,7 @@ export default function Ledger() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <h1 className="text-3xl font-righteous text-primary-dark mb-6">Account Ledger</h1>
 
       {/* Filters & Print */}
@@ -161,6 +160,6 @@ export default function Ledger() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

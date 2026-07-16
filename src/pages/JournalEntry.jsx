@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Plus, Trash2 } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import {
   getChartOfAccounts,
   createJournalEntry,
@@ -85,7 +85,7 @@ export default function JournalEntry() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <h1 className="text-3xl font-righteous text-primary-dark mb-6">
         Journal Entry
       </h1>
@@ -209,6 +209,6 @@ export default function JournalEntry() {
           </button>
         </div>
       </form>
-    </AdminLayout>
+    </>
   );
 }

@@ -2,7 +2,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Package, TrendingDown, TrendingUp } from "lucide-react";
 import { Link } from "react-router-dom";
-import AdminLayout from "../layouts/AdminLayout";
+
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
 
@@ -37,7 +37,7 @@ export default function StockDashboard() {
   const totalStockValue = items.reduce((s, item) => s + item.current_stock * parseFloat(item.unit_price), 0);
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">Stock Dashboard</h1>
         <Link to="/add-stock" className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
@@ -139,6 +139,6 @@ export default function StockDashboard() {
           </table>
         )}
       </div>
-    </AdminLayout>
+    </>
   );
 }

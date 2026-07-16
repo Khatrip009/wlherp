@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Plus, Eye, Trash2, Truck, Edit3 } from "lucide-react";
 import toast from "react-hot-toast";
-import AdminLayout from "../layouts/AdminLayout";
+
 import BackButton from "../components/BackButton";
 
 import { getPurchaseOrders, receivePO, deletePO } from "../services/poService";
@@ -49,7 +49,7 @@ export default function PurchaseOrders() {
   });
 
   return (
-    <AdminLayout>
+    <>
       <BackButton to="/accounting" label="Finance & Accounting" />
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">Purchase Orders</h1>
@@ -122,6 +122,6 @@ export default function PurchaseOrders() {
           </tbody>
         </table>
       </div>
-    </AdminLayout>
+    </>
   );
 }

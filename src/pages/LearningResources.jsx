@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { supabase } from "../api/supabase";
-import AdminLayout from "../layouts/AdminLayout";
+
 import BackButton from "../components/BackButton";
 
 import { Plus, Trash2, ExternalLink } from "lucide-react";
@@ -180,7 +180,7 @@ export default function LearningResources() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <BackButton to="/communication-hub" label="Communication" />
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">
@@ -472,6 +472,6 @@ export default function LearningResources() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

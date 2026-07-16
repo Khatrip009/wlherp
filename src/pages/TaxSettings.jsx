@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
-import AdminLayout from "../layouts/AdminLayout";
+
 import toast from "react-hot-toast";
 import {
   Plus,
@@ -191,7 +191,7 @@ export default function TaxSettings() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
           <h1 className="text-3xl font-righteous text-primary-dark">Tax Settings</h1>
@@ -394,6 +394,6 @@ export default function TaxSettings() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

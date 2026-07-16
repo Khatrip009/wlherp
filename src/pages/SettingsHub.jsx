@@ -1,4 +1,4 @@
-import AdminLayout from "../layouts/AdminLayout";
+
 import HubCard from "../components/HubCard";
 import {
   Settings, Building, Shield, Palette, Percent,
@@ -31,7 +31,7 @@ const groups = [
 
 export default function SettingsHub() {
   return (
-    <AdminLayout>
+    <>
       <div className="mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">Settings Hub</h1>
         <p className="text-sm text-secondary-dark mt-1">Organization, theme, tax, GST and user management</p>
@@ -46,6 +46,6 @@ export default function SettingsHub() {
           </div>
         ))}
       </div>
-    </AdminLayout>
+    </>
   );
 }

@@ -1,4 +1,3 @@
-// src/pages/EnterResults.jsx
 import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -15,7 +14,7 @@ import {
   FileDown,
 } from "lucide-react";
 import Papa from "papaparse";
-import AdminLayout from "../layouts/AdminLayout";
+
 import {
   getExamById,
   getBatchStudents,
@@ -28,7 +27,6 @@ export default function EnterResults() {
   const { examId } = useParams();
   const navigate = useNavigate();
 
-  // ── Organisation / Branch / Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();
   const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
   const branchId = ctx.branchId;
@@ -183,7 +181,6 @@ export default function EnterResults() {
 
     setSaving(true);
     try {
-      // Pass context as third argument (branch & financial year)
       await saveResults(examId, resultsPayload, ctx);
       toast.success("Results saved");
       navigate("/results");
@@ -198,64 +195,103 @@ export default function EnterResults() {
 
   if (loading) {
     return (
-      <AdminLayout>
-        <div className="p-8 text-center text-secondary font-montserrat">
-          Loading exam details…
-        </div>
-      </AdminLayout>
+      <div className="p-8 text-center text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+        Loading exam details…
+      </div>
     );
   }
 
   return (
-    <AdminLayout>
-      <div className="mb-6">
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+      {/* Header */}
+      <div>
         <button
           onClick={() => navigate("/results")}
-          className="flex items-center gap-2 text-secondary hover:text-primary-dark mb-2 font-montserrat text-sm transition"
+          className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-primary dark:hover:text-primary-light mb-2 text-sm transition-colors"
+          style={{ fontFamily: "var(--font-body)" }}
         >
           <ArrowLeft size={18} />
           Back to Results
         </button>
-        <h1 className="text-3xl font-righteous text-primary-dark">Enter Results</h1>
+        <h1
+          className="text-2xl sm:text-3xl font-bold"
+          style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+        >
+          Enter Results
+        </h1>
         {exam && (
-          <div className="flex flex-wrap gap-2 mt-2 text-sm text-secondary-dark font-montserrat">
-            <span className="flex items-center gap-1 bg-primary-bg text-primary px-3 py-1 rounded-full">
+          <div className="flex flex-wrap gap-2 mt-2 text-sm">
+            <span
+              className="flex items-center gap-1 px-3 py-1 rounded-full"
+              style={{
+                backgroundColor: "var(--color-primary-light)",
+                color: "var(--color-primary)",
+              }}
+            >
               <FileText size={14} /> {exam.exam_name}
             </span>
-            <span className="flex items-center gap-1 bg-primary-bg text-primary px-3 py-1 rounded-full">
+            <span
+              className="flex items-center gap-1 px-3 py-1 rounded-full"
+              style={{
+                backgroundColor: "var(--color-primary-light)",
+                color: "var(--color-primary)",
+              }}
+            >
               <Layers size={14} /> {exam.batches?.batch_name}
             </span>
             {mediumName && (
-              <span className="flex items-center gap-1 bg-accent/10 text-accent px-3 py-1 rounded-full text-xs">
+              <span
+                className="flex items-center gap-1 px-3 py-1 rounded-full text-xs"
+                style={{
+                  backgroundColor: "var(--color-accent-light)",
+                  color: "var(--color-accent)",
+                }}
+              >
                 {mediumName}
               </span>
             )}
-            <span className="flex items-center gap-1 bg-primary-bg text-primary px-3 py-1 rounded-full">
+            <span
+              className="flex items-center gap-1 px-3 py-1 rounded-full"
+              style={{
+                backgroundColor: "var(--color-primary-light)",
+                color: "var(--color-primary)",
+              }}
+            >
               <Calendar size={14} /> {exam.exam_date}
             </span>
-            <span className="flex items-center gap-1 bg-primary-bg text-primary px-3 py-1 rounded-full">
+            <span
+              className="flex items-center gap-1 px-3 py-1 rounded-full"
+              style={{
+                backgroundColor: "var(--color-primary-light)",
+                color: "var(--color-primary)",
+              }}
+            >
               Total: {exam.total_marks || "N/A"}
             </span>
           </div>
         )}
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 mb-4">
+      {/* Actions */}
+      <div className="flex flex-wrap items-end gap-3">
         <button
           onClick={handleExportCSV}
-          className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+          style={{ fontFamily: "var(--font-body)" }}
         >
           <Download size={18} /> Export CSV
         </button>
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+          style={{ fontFamily: "var(--font-body)" }}
         >
           <Upload size={18} /> Import CSV
         </button>
         <button
           onClick={handleDownloadTemplate}
-          className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+          style={{ fontFamily: "var(--font-body)" }}
         >
           <FileDown size={18} /> Template
         </button>
@@ -268,9 +304,13 @@ export default function EnterResults() {
         />
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-secondary-light flex justify-between items-center">
-          <h2 className="text-lg font-semibold font-righteous text-primary-dark flex items-center gap-2">
+      {/* Students Table */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+          <h2
+            className="text-lg font-semibold flex items-center gap-2"
+            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+          >
             <User size={18} />
             Students ({allStudents.length})
           </h2>
@@ -278,44 +318,48 @@ export default function EnterResults() {
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[600px]">
-            <thead className="bg-slate-50 border-b border-secondary-light">
+            <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <tr>
-                <th className="text-left p-3 text-sm font-montserrat text-secondary-dark">
+                <th className="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   <Hash size={14} className="inline mr-1" />
                   Admission No
                 </th>
-                <th className="text-left p-3 text-sm font-montserrat text-secondary-dark">
+                <th className="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   <User size={14} className="inline mr-1" />
                   Name
                 </th>
-                <th className="text-left p-3 text-sm font-montserrat text-secondary-dark">
+                <th className="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Course
                 </th>
-                <th className="text-center p-3 text-sm font-montserrat text-secondary-dark w-40">
+                <th className="text-center p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-40">
                   Marks Obtained
                 </th>
-                <th className="text-left p-3 text-sm font-montserrat text-secondary-dark w-48">
+                <th className="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-48">
                   Remarks
                 </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {allStudents.map((student) => (
                 <tr
                   key={student.id}
-                  className="border-b border-secondary-light hover:bg-primary-bg transition"
+                  className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                 >
-                  <td className="p-3 text-sm">{student.admission_no}</td>
-                  <td className="p-3 text-sm font-medium">
+                  <td className="p-3 text-sm text-gray-700 dark:text-gray-200">
+                    {student.admission_no}
+                  </td>
+                  <td className="p-3 text-sm font-medium text-gray-800 dark:text-gray-100">
                     {student.first_name} {student.last_name}
                   </td>
-                  <td className="p-3 text-sm">{courseName}</td>
+                  <td className="p-3 text-sm text-gray-700 dark:text-gray-200">
+                    {courseName}
+                  </td>
                   <td className="p-3 text-center">
                     <input
                       type="number"
                       value={marks[student.id] ?? ""}
                       onChange={(e) => handleMarksChange(student.id, e.target.value)}
-                      className="border border-secondary-light rounded p-2 w-24 text-center focus:ring-1 focus:ring-primary focus:border-primary outline-none text-sm"
+                      className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 w-24 text-center focus:ring-2 focus:ring-[var(--color-primary)] outline-none text-sm"
                       placeholder="0"
                     />
                   </td>
@@ -325,14 +369,14 @@ export default function EnterResults() {
                       placeholder="Remark..."
                       value={remarks[student.id] || ""}
                       onChange={(e) => handleRemarksChange(student.id, e.target.value)}
-                      className="border border-secondary-light rounded p-2 w-full focus:ring-1 focus:ring-primary focus:border-primary outline-none text-sm"
+                      className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 w-full focus:ring-2 focus:ring-[var(--color-primary)] outline-none text-sm"
                     />
                   </td>
                 </tr>
               ))}
               {allStudents.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-6 text-center text-secondary text-sm">
+                  <td colSpan={5} className="p-6 text-center text-gray-500 dark:text-gray-400 text-sm">
                     No students enrolled in this batch.
                   </td>
                 </tr>
@@ -341,23 +385,25 @@ export default function EnterResults() {
           </table>
         </div>
 
-        <div className="p-4 border-t border-secondary-light flex flex-col sm:flex-row justify-end gap-3">
+        <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row justify-end gap-3">
           <button
             onClick={() => navigate("/results")}
-            className="w-full sm:w-auto px-5 py-2.5 border border-secondary-light rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm transition"
+            className="w-full sm:w-auto px-5 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+            style={{ fontFamily: "var(--font-body)" }}
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="w-full sm:w-auto px-6 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg font-montserrat text-sm transition disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full sm:w-auto px-6 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+            style={{ fontFamily: "var(--font-body)" }}
           >
             <Save size={18} />
             {saving ? "Saving..." : "Save Results"}
           </button>
         </div>
       </div>
-    </AdminLayout>
+    </div>
   );
 }

@@ -1,3 +1,4 @@
+// src/pages/Homework.jsx
 import React, { useState, useRef } from "react";
 import {
   useInfiniteQuery,
@@ -18,7 +19,7 @@ import {
   Layers,
 } from "lucide-react";
 import Papa from "papaparse";
-import AdminLayout from "../layouts/AdminLayout";
+
 import HomeworkForm from "../components/HomeworkForm";
 import ViewSubmissionsModal from "../components/ViewSubmissionsModal";
 import BackButton from "../components/BackButton";
@@ -32,7 +33,7 @@ import {
   getAllHomeworksForExport,
 } from "../services/homeworkService";
 import { useAuth } from "../context/AuthContext";
-import { useOrg } from "../context/OrganizationContext";  // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function Homework() {
   const { profile } = useAuth();
@@ -41,8 +42,7 @@ export default function Homework() {
   const isAdmin = role === "admin" || role === "super_admin";
   const isTeacher = role === "teacher";
 
-  // ── Branch & Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();  // NEW
+  const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
@@ -210,13 +210,22 @@ export default function Homework() {
   }
 
   return (
-    <AdminLayout>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
       <BackButton to="/academics-hub" label="Academics Hub" />
+
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-righteous text-primary-dark">Homework</h1>
-          <p className="text-sm text-secondary-dark font-montserrat mt-1">
+          <h1
+            className="text-2xl sm:text-3xl font-bold"
+            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+          >
+            Homework
+          </h1>
+          <p
+            className="text-sm text-gray-600 dark:text-gray-400 mt-1"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
             Assign and manage homework
           </p>
         </div>
@@ -225,19 +234,22 @@ export default function Homework() {
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setShowForm(true)}
-              className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
+              style={{ fontFamily: "var(--font-body)" }}
             >
               <BookOpen size={18} /> Add Homework
             </button>
             <button
               onClick={handleCSVExport}
-              className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+              className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+              style={{ fontFamily: "var(--font-body)" }}
             >
               <Download size={18} /> Export
             </button>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+              className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+              style={{ fontFamily: "var(--font-body)" }}
             >
               <Upload size={18} /> Import
             </button>
@@ -253,36 +265,43 @@ export default function Homework() {
       </div>
 
       {/* Search & Filter Toggle */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+      <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search
             size={18}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
           />
           <input
             type="text"
             placeholder="Search by title or description..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-secondary-light rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg pl-10 pr-4 py-2.5 text-sm"
+            style={{ fontFamily: "var(--font-body)" }}
           />
         </div>
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+          style={{ fontFamily: "var(--font-body)" }}
         >
           <Filter size={18} /> Filters {showFilters && <X size={16} />}
         </button>
       </div>
 
       {showFilters && (
-        <div className="bg-white rounded-xl p-4 shadow-sm mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 border border-secondary-light">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">Batch</label>
+            <label
+              className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block"
+              style={{ fontFamily: "var(--font-body)" }}
+            >
+              Batch
+            </label>
             <select
               value={batchFilter}
               onChange={(e) => setBatchFilter(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
             >
               <option value="">All Batches</option>
               {batches.map((b) => (
@@ -293,34 +312,51 @@ export default function Homework() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">Medium</label>
+            <label
+              className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block"
+              style={{ fontFamily: "var(--font-body)" }}
+            >
+              Medium
+            </label>
             <select
               value={mediumFilter}
               onChange={(e) => setMediumFilter(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
             >
               <option value="">All Mediums</option>
               {mediums.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
               ))}
             </select>
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">From Date</label>
+            <label
+              className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block"
+              style={{ fontFamily: "var(--font-body)" }}
+            >
+              From Date
+            </label>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
             />
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">To Date</label>
+            <label
+              className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block"
+              style={{ fontFamily: "var(--font-body)" }}
+            >
+              To Date
+            </label>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
             />
           </div>
           <div className="flex items-end">
@@ -332,7 +368,8 @@ export default function Homework() {
                 setStartDate("");
                 setEndDate("");
               }}
-              className="text-primary text-sm hover:underline"
+              className="text-sm text-primary hover:underline"
+              style={{ fontFamily: "var(--font-body)" }}
             >
               Clear Filters
             </button>
@@ -341,33 +378,51 @@ export default function Homework() {
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px]">
-            <thead className="bg-slate-100 border-b border-secondary-light">
+            <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
-                <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Title</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Batch</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Medium</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Subject</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Assigned</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Due</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Submissions</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Actions</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Title
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Batch
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Medium
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Subject
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Assigned
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Due
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Submissions
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Actions
+                </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="p-6 text-center text-secondary">Loading homework…</td>
+                  <td colSpan={8} className="p-6 text-center text-gray-500 dark:text-gray-400">
+                    Loading homework…
+                  </td>
                 </tr>
               ) : homeworks.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-6 text-center text-secondary">
+                  <td colSpan={8} className="p-6 text-center text-gray-500 dark:text-gray-400">
                     <div className="flex flex-col items-center gap-2">
-                      <BookOpen size={32} className="text-secondary-light" />
+                      <BookOpen size={32} className="text-gray-400 dark:text-gray-500" />
                       <span>No homework found</span>
-                      <span className="text-xs text-secondary-light">
+                      <span className="text-xs">
                         {search || batchFilter || mediumFilter || startDate || endDate
                           ? "Try adjusting your filters"
                           : "Add new homework to get started"}
@@ -379,26 +434,44 @@ export default function Homework() {
                 homeworks.map((hw) => (
                   <tr
                     key={hw.id}
-                    className="border-b border-secondary-light hover:bg-primary-bg transition"
+                    className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
-                    <td className="p-3 text-sm font-medium">{hw.title}</td>
-                    <td className="text-sm">{hw.batches?.batch_name}</td>
+                    <td className="p-3 text-sm font-medium text-gray-800 dark:text-gray-100">
+                      {hw.title}
+                    </td>
+                    <td className="text-sm text-gray-700 dark:text-gray-300">
+                      {hw.batches?.batch_name}
+                    </td>
                     <td className="text-sm">
                       {hw.medium_name ? (
-                        <span className="bg-primary-bg text-primary px-2 py-0.5 rounded-full text-xs">
+                        <span
+                          className="px-2 py-0.5 rounded-full text-xs"
+                          style={{
+                            backgroundColor: "var(--color-primary-light)",
+                            color: "var(--color-primary)",
+                          }}
+                        >
                           {hw.medium_name}
                         </span>
-                      ) : "-"}
+                      ) : (
+                        "-"
+                      )}
                     </td>
-                    <td className="text-sm">{hw.subjects?.subject_name}</td>
-                    <td className="text-sm">{hw.assigned_date}</td>
-                    <td className="text-sm">{hw.due_date || "-"}</td>
-                    <td className="text-sm">{hw.submission_count}</td>
+                    <td className="text-sm text-gray-700 dark:text-gray-300">
+                      {hw.subjects?.subject_name}
+                    </td>
+                    <td className="text-sm text-gray-700 dark:text-gray-300">{hw.assigned_date}</td>
+                    <td className="text-sm text-gray-700 dark:text-gray-300">
+                      {hw.due_date || "-"}
+                    </td>
+                    <td className="text-sm text-gray-700 dark:text-gray-300">
+                      {hw.submission_count}
+                    </td>
                     <td className="text-sm">
                       <div className="flex gap-2">
                         <button
                           onClick={() => setViewingSubmissions(hw)}
-                          className="text-purple-600 hover:underline flex items-center gap-1"
+                          className="text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1"
                         >
                           <Layers size={15} /> Submissions
                         </button>
@@ -406,13 +479,13 @@ export default function Homework() {
                           <>
                             <button
                               onClick={() => setEditing(hw)}
-                              className="text-blue-600 hover:underline"
+                              className="text-blue-600 dark:text-blue-400 hover:underline"
                             >
                               <Edit3 size={15} />
                             </button>
                             <button
                               onClick={() => handleDelete(hw.id)}
-                              className="text-red-600 hover:underline"
+                              className="text-red-600 dark:text-red-400 hover:underline"
                             >
                               <Trash2 size={15} />
                             </button>
@@ -433,7 +506,8 @@ export default function Homework() {
           <button
             onClick={() => fetchNextPage()}
             disabled={isFetchingNextPage}
-            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat text-sm transition disabled:opacity-60"
+            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-60"
+            style={{ fontFamily: "var(--font-body)" }}
           >
             {isFetchingNextPage ? "Loading more…" : "Load More"}
           </button>
@@ -442,10 +516,7 @@ export default function Homework() {
 
       {/* Modals */}
       {(isAdmin || isTeacher) && showForm && (
-        <HomeworkForm
-          onSubmit={handleCreate}
-          onClose={() => setShowForm(false)}
-        />
+        <HomeworkForm onSubmit={handleCreate} onClose={() => setShowForm(false)} />
       )}
       {isAdmin && editing && (
         <HomeworkForm
@@ -460,6 +531,6 @@ export default function Homework() {
           onClose={() => setViewingSubmissions(null)}
         />
       )}
-    </AdminLayout>
+    </div>
   );
 }

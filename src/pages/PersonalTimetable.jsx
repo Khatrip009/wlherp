@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
-import AdminLayout from "../layouts/AdminLayout";
+
 import BackButton from "../components/BackButton";
 
 import { useAuth } from "../context/AuthContext";
@@ -125,7 +125,7 @@ export default function PersonalTimetable() {
   const allErrors = [idError, batchesError, dataError].filter(Boolean);
   if (allErrors.length > 0) {
     return (
-      <AdminLayout>
+      <>
       <BackButton to="/student" label="My Dashboard" />
         <div className="p-8 text-red-600">
           <AlertCircle size={32} className="mx-auto mb-2" />
@@ -137,48 +137,48 @@ export default function PersonalTimetable() {
             {JSON.stringify(debug, null, 2)}
           </pre>
         </div>
-      </AdminLayout>
+      </>
     );
   }
 
   if (idLoading || batchesLoading || dataLoading) {
     return (
-      <AdminLayout>
+      <>
         <div className="p-8 text-center">Loading timetable…</div>
-      </AdminLayout>
+      </>
     );
   }
 
   if (!studentId) {
     return (
-      <AdminLayout>
+      <>
         <div className="p-8 text-center">
           <p>Your account is not linked to a student record in the current branch/financial year.</p>
         </div>
-      </AdminLayout>
+      </>
     );
   }
 
   if (batchIds.length === 0) {
     return (
-      <AdminLayout>
+      <>
         <div className="p-8 text-center">
           <Clock size={32} className="text-secondary-light mx-auto mb-2" />
           <p>You are not enrolled in any active batch.</p>
         </div>
-      </AdminLayout>
+      </>
     );
   }
 
   // If no batches data (shouldn't happen if batchIds not empty, but just in case)
   if (batches.length === 0) {
     return (
-      <AdminLayout>
+      <>
         <div className="p-8 text-center">
           <p>No batch details found for your batches.</p>
           <pre className="mt-4 text-xs">{JSON.stringify({ batchIds, batches }, null, 2)}</pre>
         </div>
-      </AdminLayout>
+      </>
     );
   }
 
@@ -211,7 +211,7 @@ export default function PersonalTimetable() {
 
   // Full timetable grid
   return (
-    <AdminLayout>
+    <>
       <div className="mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">My Timetable</h1>
         <p className="text-sm text-secondary-dark font-montserrat mt-1">
@@ -269,6 +269,6 @@ export default function PersonalTimetable() {
           })}
         </div>
       </div>
-    </AdminLayout>
+    </>
   );
 }

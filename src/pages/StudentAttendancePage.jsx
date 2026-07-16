@@ -1,7 +1,7 @@
 // src/pages/StudentAttendancePage.jsx
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, CheckCircle, XCircle, BookOpen } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import BackButton from "../components/BackButton";
 
 import { useStudentId } from "../hooks/useStudentId";
@@ -92,10 +92,10 @@ export default function StudentAttendancePage({ studentId: propStudentId = null,
       return <div className="p-8 text-center">Loading...</div>;
     }
     return (
-      <AdminLayout>
+      <>
         <BackButton to="/student" label="My Dashboard" />
         <div className="p-8 text-center">Loading...</div>
-      </AdminLayout>
+      </>
     );
   }
 

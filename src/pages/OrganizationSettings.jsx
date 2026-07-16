@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
 import toast from "react-hot-toast";
-import AdminLayout from "../layouts/AdminLayout";
+
 import { Building, Phone, Mail, Globe, MapPin, Eye, EyeOff, Save, FileText } from "lucide-react";
 import { getMediums } from "../services/mediumService";
 import { updateOrganization } from "../services/organizationService";
@@ -151,14 +151,14 @@ export default function OrganizationSettings() {
 
   if (loadingOrg || !org) {
     return (
-      <AdminLayout>
+      <>
         <div className="p-8 text-center text-secondary">Loading organization…</div>
-      </AdminLayout>
+      </>
     );
   }
 
   return (
-    <AdminLayout>
+    <>
       <h1 className="text-3xl font-righteous text-primary-dark mb-2">Organization Settings</h1>
       <p className="text-sm text-secondary-dark mb-6">Update academy details</p>
 
@@ -297,6 +297,6 @@ export default function OrganizationSettings() {
           {saving ? "Saving..." : "Save Changes"}
         </button>
       </div>
-    </AdminLayout>
+    </>
   );
 }

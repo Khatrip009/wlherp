@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Award, Edit3, Eye, AlertCircle } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import BackButton from "../components/BackButton";
 import { getAllExams } from "../services/examService";
 import { useAuth } from "../context/AuthContext";
@@ -44,18 +44,18 @@ export default function Results() {
 
   if (isError) {
     return (
-      <AdminLayout>
+      < >
         <div className="p-8 text-center text-red-600">
           <AlertCircle size={32} className="mx-auto mb-2" />
           <p>Failed to load exams.</p>
           <p className="text-sm mt-1">{error?.message || "Unknown error"}</p>
         </div>
-      </AdminLayout>
+      </ >
     );
   }
 
   return (
-    <AdminLayout>
+    < >
       <BackButton to="/academics-hub" label="Academics Hub" />
       <div className="mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">Results</h1>
@@ -143,6 +143,6 @@ export default function Results() {
           </table>
         </div>
       </div>
-    </AdminLayout>
+    </ >
   );
 }

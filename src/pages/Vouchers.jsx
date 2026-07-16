@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Filter, Search, Printer, Plus } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import BackButton from "../components/BackButton";
 import { getVoucherTypes, getVouchers } from "../services/voucherService";
 import { getOrganization } from "../services/organizationService";
@@ -170,5 +170,5 @@ export default function Vouchers({ noLayout = false }) {
     </>
   );
 
-  return noLayout ? content : <AdminLayout>{content}</AdminLayout>;
+  return noLayout ? content : <>{content}</>;
 }

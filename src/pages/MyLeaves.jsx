@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Plus, Calendar, FileText, X } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../api/supabase";
 import BackButton from "../components/BackButton";
@@ -107,7 +107,7 @@ export default function MyLeaves() {
   const approved = leaves.filter((l) => l.status === "Approved").length;
 
   return (
-    <AdminLayout>
+    <>
       <BackButton to="/teacher" label="Dashboard" />
       <div className="flex justify-between items-center mb-6">
         <div>
@@ -213,6 +213,6 @@ export default function MyLeaves() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

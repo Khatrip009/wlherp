@@ -2,7 +2,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
 import { useOrg } from "../context/OrganizationContext";
@@ -17,19 +16,16 @@ export default function CashBook() {
   const [endDate, setEndDate] = useState(today);
   const [selectedAccount, setSelectedAccount] = useState("all");
 
-  // ── Current organisation, branch, and financial year ──
   const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  // Fetch organization details
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
     queryFn: () => getOrganization(currentOrg?.id),
     enabled: !!currentOrg?.id,
   });
 
-  // Cash/bank accounts – scoped
   const { data: cashBankAccounts = [] } = useQuery({
     queryKey: ["cash-bank-accounts", branchId, financialYearId],
     queryFn: async () => {
@@ -46,7 +42,6 @@ export default function CashBook() {
     staleTime: Infinity,
   });
 
-  // Compute account IDs based on filter
   const getAccountIds = useMemo(() => {
     if (selectedAccount === "all") return cashBankAccounts.map((a) => a.id);
     if (selectedAccount === "cash")
@@ -56,7 +51,6 @@ export default function CashBook() {
     return [parseInt(selectedAccount)];
   }, [selectedAccount, cashBankAccounts]);
 
-  // Opening balance – fully scoped (lines + journal entry)
   const { data: openingBalance = 0 } = useQuery({
     queryKey: ["cash-book-opening", startDate, selectedAccount, branchId, financialYearId],
     queryFn: async () => {
@@ -69,8 +63,8 @@ export default function CashBook() {
         .in("account_id", accountIds)
         .eq("branch_id", branchId)
         .eq("financial_year_id", financialYearId)
-        .eq("journal_entries.branch_id", branchId)         // ← scoped inner table
-        .eq("journal_entries.financial_year_id", financialYearId) // ← scoped inner table
+        .eq("journal_entries.branch_id", branchId)
+        .eq("journal_entries.financial_year_id", financialYearId)
         .lt("journal_entries.entry_date", startDate);
 
       const { data } = await query;
@@ -81,7 +75,6 @@ export default function CashBook() {
     enabled: !!startDate && cashBankAccounts.length > 0 && !!branchId && !!financialYearId,
   });
 
-  // Main entries for the period – fully scoped (lines + journal entry)
   const { data: entries = [], isLoading } = useQuery({
     queryKey: ["cash-book-entries", startDate, endDate, selectedAccount, branchId, financialYearId],
     queryFn: async () => {
@@ -100,8 +93,8 @@ export default function CashBook() {
         .in("account_id", accountIds)
         .eq("branch_id", branchId)
         .eq("financial_year_id", financialYearId)
-        .eq("journal_entries.branch_id", branchId)         // ← scoped inner table
-        .eq("journal_entries.financial_year_id", financialYearId) // ← scoped inner table
+        .eq("journal_entries.branch_id", branchId)
+        .eq("journal_entries.financial_year_id", financialYearId)
         .gte("journal_entries.entry_date", startDate)
         .lte("journal_entries.entry_date", endDate)
         .order("journal_entries(entry_date)", { ascending: true })
@@ -113,7 +106,6 @@ export default function CashBook() {
     enabled: !!startDate && !!endDate && cashBankAccounts.length > 0 && !!branchId && !!financialYearId,
   });
 
-  // Fetch voucher numbers – scoped
   const journalEntryIds = useMemo(
     () => entries.map((e) => e.journal_entries?.id).filter(Boolean),
     [entries]
@@ -137,7 +129,6 @@ export default function CashBook() {
     enabled: journalEntryIds.length > 0 && !!branchId && !!financialYearId,
   });
 
-  // Running balance
   const ledgerWithBalance = useMemo(() => {
     let running = openingBalance;
     return entries.map((entry) => {
@@ -160,7 +151,6 @@ export default function CashBook() {
   const totalReceipts = entries.reduce((s, e) => s + (parseFloat(e.debit) || 0), 0);
   const totalPayments = entries.reduce((s, e) => s + (parseFloat(e.credit) || 0), 0);
 
-  // Print
   const handlePrint = () => {
     const printContent = document.getElementById("cash-book-table")?.outerHTML;
     if (!printContent) return;
@@ -221,94 +211,152 @@ export default function CashBook() {
   };
 
   return (
-    <AdminLayout>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">Cash / Bank Book</h1>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+            Cash / Bank Book
+          </h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>
+            Day‑wise cash and bank transaction summary
+          </p>
+        </div>
         <button
           onClick={handlePrint}
-          className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
+          style={{ fontFamily: "var(--font-body)" }}
         >
           <Printer size={16} /> Print
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-4 mb-6">
+      {/* Controls */}
+      <div className="flex flex-wrap gap-4 items-end">
         <div>
-          <label className="text-sm font-medium mr-2">From:</label>
-          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="border rounded p-2 text-sm" />
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2" style={{ fontFamily: "var(--font-body)" }}>
+            From:
+          </label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+          />
         </div>
         <div>
-          <label className="text-sm font-medium mr-2">To:</label>
-          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="border rounded p-2 text-sm" />
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2" style={{ fontFamily: "var(--font-body)" }}>
+            To:
+          </label>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+          />
         </div>
         <div>
-          <label className="text-sm font-medium mr-2">Account:</label>
-          <select value={selectedAccount} onChange={(e) => setSelectedAccount(e.target.value)} className="border rounded p-2 text-sm">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2" style={{ fontFamily: "var(--font-body)" }}>
+            Account:
+          </label>
+          <select
+            value={selectedAccount}
+            onChange={(e) => setSelectedAccount(e.target.value)}
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+          >
             <option value="all">All Cash & Bank</option>
             <option value="cash">Cash in Hand Only</option>
             <option value="bank">Bank Account Only</option>
             {cashBankAccounts.map((acc) => (
-              <option key={acc.id} value={acc.id}>{acc.account_name}</option>
+              <option key={acc.id} value={acc.id}>
+                {acc.account_name}
+              </option>
             ))}
           </select>
         </div>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-xl p-4 shadow-sm border text-center">
-          <p className="text-xs text-secondary-dark">Opening Balance</p>
-          <p className="text-xl font-bold text-primary-dark">₹ {openingBalance.toLocaleString("en-IN")}</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 text-center">
+          <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+            Opening Balance
+          </p>
+          <p className="text-xl font-bold" style={{ color: "var(--color-primary)" }}>
+            ₹ {openingBalance.toLocaleString("en-IN")}
+          </p>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border text-center">
-          <p className="text-xs text-secondary-dark">Total Receipts</p>
-          <p className="text-xl font-bold text-green-600">₹ {totalReceipts.toLocaleString("en-IN")}</p>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 text-center">
+          <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+            Total Receipts
+          </p>
+          <p className="text-xl font-bold text-green-600 dark:text-green-400">
+            ₹ {totalReceipts.toLocaleString("en-IN")}
+          </p>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border text-center">
-          <p className="text-xs text-secondary-dark">Total Payments</p>
-          <p className="text-xl font-bold text-red-600">₹ {totalPayments.toLocaleString("en-IN")}</p>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 text-center">
+          <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+            Total Payments
+          </p>
+          <p className="text-xl font-bold text-red-600 dark:text-red-400">
+            ₹ {totalPayments.toLocaleString("en-IN")}
+          </p>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border text-center">
-          <p className="text-xs text-secondary-dark">Closing Balance</p>
-          <p className="text-xl font-bold text-primary-dark">₹ {closingBalance.toLocaleString("en-IN")}</p>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 text-center">
+          <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+            Closing Balance
+          </p>
+          <p className="text-xl font-bold" style={{ color: "var(--color-primary)" }}>
+            ₹ {closingBalance.toLocaleString("en-IN")}
+          </p>
         </div>
       </div>
 
       {/* Table */}
       {isLoading ? (
-        <p className="text-center py-8">Loading…</p>
+        <div className="text-center py-8 text-gray-500 dark:text-gray-400">Loading…</div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div id="cash-book-table">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-100">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div id="cash-book-table" className="overflow-x-auto">
+            <table className="w-full min-w-[800px] text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>
-                  <th className="p-3 text-left">Date</th>
-                  <th className="p-3 text-left">Voucher No</th>
-                  <th className="p-3 text-left">Reference</th>
-                  <th className="p-3 text-left">Description</th>
-                  <th className="p-3 text-right">Receipt (₹)</th>
-                  <th className="p-3 text-right">Payment (₹)</th>
-                  <th className="p-3 text-right">Balance (₹)</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Voucher No</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Reference</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</th>
+                  <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Receipt (₹)</th>
+                  <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Payment (₹)</th>
+                  <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Balance (₹)</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {ledgerWithBalance.length === 0 ? (
-                  <tr><td colSpan={7} className="p-6 text-center text-secondary">No transactions found for this period.</td></tr>
+                  <tr>
+                    <td colSpan={7} className="p-6 text-center text-gray-500 dark:text-gray-400">
+                      No transactions found for this period.
+                    </td>
+                  </tr>
                 ) : (
                   ledgerWithBalance.map((entry, idx) => (
-                    <tr key={idx} className="border-t hover:bg-gray-50">
-                      <td className="p-3">{entry.journal_entries?.entry_date}</td>
-                      <td className="p-3 text-sm font-medium">{entry.voucherNo || "—"}</td>
-                      <td className="p-3">{entry.journal_entries?.reference || "—"}</td>
-                      <td className="p-3">{entry.description}</td>
-                      <td className="p-3 text-right text-green-600">
+                    <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                      <td className="p-3 text-gray-700 dark:text-gray-200">
+                        {entry.journal_entries?.entry_date}
+                      </td>
+                      <td className="p-3 text-sm font-medium text-gray-800 dark:text-gray-100">
+                        {entry.voucherNo || "—"}
+                      </td>
+                      <td className="p-3 text-gray-700 dark:text-gray-200">
+                        {entry.journal_entries?.reference || "—"}
+                      </td>
+                      <td className="p-3 text-gray-700 dark:text-gray-200">{entry.description}</td>
+                      <td className="p-3 text-right text-green-600 dark:text-green-400">
                         {entry.debit > 0 ? `₹ ${Number(entry.debit).toLocaleString("en-IN")}` : "—"}
                       </td>
-                      <td className="p-3 text-right text-red-600">
+                      <td className="p-3 text-right text-red-600 dark:text-red-400">
                         {entry.credit > 0 ? `₹ ${Number(entry.credit).toLocaleString("en-IN")}` : "—"}
                       </td>
-                      <td className="p-3 text-right font-medium">
+                      <td className="p-3 text-right font-medium text-gray-800 dark:text-gray-100">
                         ₹ {entry.balance.toLocaleString("en-IN")}
                       </td>
                     </tr>
@@ -319,6 +367,6 @@ export default function CashBook() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </div>
   );
 }

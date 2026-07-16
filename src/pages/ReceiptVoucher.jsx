@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Plus, Trash2 } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import { getChartOfAccounts } from "../services/accountingService";
 import { createVoucher } from "../services/voucherService";
 import { useOrg } from "../context/OrganizationContext";
@@ -63,7 +63,7 @@ export default function ReceiptVoucher() {
   };
 
   return (
-    <AdminLayout>
+    < >
       <h1 className="text-3xl font-righteous text-primary-dark mb-6">Receipt Voucher</h1>
       <form onSubmit={handleSubmit} className="bg-white rounded-xl p-6 shadow-sm space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -99,6 +99,6 @@ export default function ReceiptVoucher() {
         <button type="button" onClick={addLine} className="text-primary flex items-center gap-1 text-sm"><Plus size={16} /> Add Line</button>
         <div className="flex justify-end"><button type="submit" className="bg-primary text-white px-6 py-2.5 rounded-lg">Save Voucher</button></div>
       </form>
-    </AdminLayout>
+    </ >
   );
 }

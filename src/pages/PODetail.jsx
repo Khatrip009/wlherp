@@ -4,7 +4,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { ArrowLeft, Printer, Truck } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import { supabase } from "../api/supabase";
 import { receivePO } from "../services/poService";
 import { getOrganization } from "../services/organizationService";
@@ -132,8 +132,8 @@ export default function PODetail() {
     printWindow.document.close();
   };
 
-  if (isLoading) return <AdminLayout><div className="p-8 text-center">Loading PO…</div></AdminLayout>;
-  if (!po) return <AdminLayout><div className="p-8 text-center text-red-600">PO not found</div></AdminLayout>;
+  if (isLoading) return <><div className="p-8 text-center">Loading PO…</div></>;
+  if (!po) return <><div className="p-8 text-center text-red-600">PO not found</div></>;
 
   const items = po.purchase_order_items || [];
   const subtotal = items.reduce((s, i) => s + i.quantity_ordered * i.unit_price, 0);
@@ -158,7 +158,7 @@ export default function PODetail() {
   const amountWords = numberToWords(Math.round(grandTotal)) + " Only";
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex justify-between items-center mb-6 no-print">
         <Link to="/purchase-orders" className="inline-flex items-center gap-2 text-secondary hover:text-primary-dark text-sm">
           <ArrowLeft size={18} /> Back to POs
@@ -292,6 +292,6 @@ export default function PODetail() {
           </div>
         </div>
       </div>
-    </AdminLayout>
+    </>
   );
 }

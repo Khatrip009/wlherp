@@ -5,7 +5,7 @@ import { Search, GraduationCap, Wallet, Users, BookOpen, Award, FileText, BarCha
 import { reportTypes } from '../utils/reportConfig';
 import { useAuth } from '../context/AuthContext';
 import { Navigate } from 'react-router-dom';
-import AdminLayout from '../layouts/AdminLayout';
+
 
 const CATEGORIES = {
   admissions: {
@@ -118,7 +118,7 @@ export default function Reports() {
   }, [search]);
 
   return (
-    <AdminLayout>
+    < >
       <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
@@ -191,6 +191,6 @@ export default function Reports() {
           );
         })}
       </div>
-    </AdminLayout>
+    </ >
   );
 }

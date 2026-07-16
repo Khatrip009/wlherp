@@ -1,6 +1,6 @@
 // src/pages/ProfitLossStatement.jsx
 import { useQuery } from "@tanstack/react-query";
-import AdminLayout from "../layouts/AdminLayout";
+
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";   // NEW
 
@@ -23,7 +23,7 @@ export default function ProfitLossStatement() {
   });
 
   return (
-    <AdminLayout>
+    <>
       <h1 className="text-3xl font-righteous text-primary-dark mb-6">Profit & Loss Statement</h1>
       {isLoading ? <p>Loading…</p> :
         <div className="bg-white rounded-xl shadow-sm p-6 max-w-xl">
@@ -35,6 +35,6 @@ export default function ProfitLossStatement() {
           ))}
         </div>
       }
-    </AdminLayout>
+    </>
   );
 }

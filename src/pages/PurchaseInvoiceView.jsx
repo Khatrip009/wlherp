@@ -11,7 +11,7 @@ import { getOrganization } from "../services/organizationService";
 import { generateInvoicePDF, numberToWords } from "../utils/invoicePdf";
 import { useOrg } from "../context/OrganizationContext";
 import toast from "react-hot-toast";
-import AdminLayout from "../layouts/AdminLayout";
+
 import {
   ArrowLeft,
   Printer,
@@ -233,17 +233,17 @@ export default function PurchaseInvoiceView() {
 
   if (isLoading) {
     return (
-      <AdminLayout>
+      <>
         <div className="p-8 text-center">Loading invoice…</div>
-      </AdminLayout>
+      </>
     );
   }
 
   if (!invoice) {
     return (
-      <AdminLayout>
+      <>
         <div className="p-8 text-center text-red-600">Invoice not found</div>
-      </AdminLayout>
+      </>
     );
   }
 
@@ -279,7 +279,7 @@ export default function PurchaseInvoiceView() {
   const reverseCharge = invoice.reverse_charge;
 
   return (
-    <AdminLayout>
+    <>
       {/* Action buttons – hidden during print */}
       <div className="no-print flex justify-between items-center mb-6">
         <button
@@ -649,6 +649,6 @@ export default function PurchaseInvoiceView() {
           body { background: white; }
         }
       `}</style>
-    </AdminLayout>
+    </>
   );
 }

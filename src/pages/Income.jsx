@@ -24,7 +24,7 @@ import {
   Receipt,
 } from "lucide-react";
 import Papa from "papaparse";
-import AdminLayout from "../layouts/AdminLayout";
+
 import BackButton from "../components/BackButton";
 
 import {
@@ -288,7 +288,7 @@ export default function Income() {
   }
 
   return (
-    <AdminLayout>
+    <>
       <BackButton to="/accounting" label="Finance & Accounting" />
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
@@ -672,6 +672,6 @@ export default function Income() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

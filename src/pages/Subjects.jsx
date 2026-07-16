@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import Papa from "papaparse";
-import AdminLayout from "../layouts/AdminLayout";
+
 import {
   getSubjects,
   getCoursesForDropdown,
@@ -202,7 +202,7 @@ export default function Subjects() {
   }, {});
 
   return (
-    <AdminLayout>
+    < >
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
@@ -397,6 +397,6 @@ export default function Subjects() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </ >
   );
 }

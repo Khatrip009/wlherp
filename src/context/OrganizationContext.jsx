@@ -8,26 +8,14 @@ const OrgContext = createContext();
 export function OrganizationProvider({ children }) {
   const { user } = useAuth();
   const [org, setOrg] = useState(null);
-  const [theme, setTheme] = useState(null);
+  const [theme, setTheme] = useState(null);          // still available for useOrg()
   const [branch, setBranch] = useState(null);
   const [branches, setBranches] = useState([]);
   const [financialYears, setFinancialYears] = useState([]);
   const [selectedFinancialYear, setSelectedFinancialYear] = useState(null);
   const [mediums, setMediums] = useState([]);
 
-  // Apply theme CSS variables
-  useEffect(() => {
-    if (!theme) return;
-    const root = document.documentElement;
-    root.style.setProperty("--color-primary", theme.primary_color);
-    root.style.setProperty("--color-primary-light", theme.primary_light_color);
-    root.style.setProperty("--color-primary-dark", theme.primary_dark_color);
-    root.style.setProperty("--color-accent", theme.accent_color);
-    root.style.setProperty("--color-accent-light", theme.accent_light_color);
-    root.style.setProperty("--color-accent-dark", theme.accent_dark_color);
-    root.style.setProperty("--font-heading", theme.font_heading);
-    root.style.setProperty("--font-body", theme.font_body);
-  }, [theme]);
+  // *** REMOVED CSS variable useEffect – ThemeProvider handles it now ***
 
   useEffect(() => {
     // ── LOGOUT ──

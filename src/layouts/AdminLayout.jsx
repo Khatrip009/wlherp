@@ -44,7 +44,6 @@ function getMenuItems(role) {
     return [
       { key: "/student", icon: <DashboardOutlined />, label: <Link to="/student">Dashboard</Link> },
       { key: "/student/fees", icon: <DollarOutlined />, label: <Link to="/student/fees">Fees</Link> },
-      // add other student links
     ];
   }
 
@@ -53,7 +52,6 @@ function getMenuItems(role) {
     return [
       { key: "/teacher", icon: <DashboardOutlined />, label: <Link to="/teacher">Dashboard</Link> },
       { key: "/teacher/salary", icon: <DollarOutlined />, label: <Link to="/teacher/salary">My Salary</Link> },
-      // add other teacher links
     ];
   }
 
@@ -64,11 +62,12 @@ function getMenuItems(role) {
     { key: "/inquiries", icon: <PhoneOutlined />, label: <Link to="/inquiries">Inquiries</Link> },
     { key: "/students", icon: <UserOutlined />, label: <Link to="/students">Students</Link> },
     { key: "/student-management", icon: <UserOutlined />, label: <Link to="/student-management">Student Hub</Link> },
+    { key: "/academics-hub", icon: <BookOutlined />, label: <Link to="/academics-hub">Academics</Link> },
     { key: "/hr-hub", icon: <TeamOutlined />, label: <Link to="/hr-hub">HR Hub</Link> },
     { key: "/fees", icon: <DollarOutlined />, label: <Link to="/fees">Student Fees</Link> },
-    { key: "/Finance", icon: <DollarOutlined />, label: <Link to="/Home/FinanceHub">Finance</Link> },
+    // ─── Replaced old Finance link with the new Accounting Hub ───
+    { key: "/accounting", icon: <DollarOutlined />, label: <Link to="/accounting">Accounting</Link> },
     { key: "/settings-hub", icon: <SettingOutlined />, label: <Link to="/settings-hub">Settings</Link> },
-    // add more admin links (e.g., reports, etc.)
   ];
 }
 

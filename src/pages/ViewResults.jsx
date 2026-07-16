@@ -7,7 +7,7 @@ import {
   User, Hash, Search, Download,
 } from "lucide-react";
 import Papa from "papaparse";
-import AdminLayout from "../layouts/AdminLayout";
+
 import { getExamById, getResultsByExam } from "../services/examService";
 import { useOrg } from "../context/OrganizationContext";
 
@@ -77,24 +77,24 @@ export default function ViewResults() {
 
   if (examLoading || resultsLoading) {
     return (
-      <AdminLayout>
+      <>
         <div className="p-8 text-center">Loading results…</div>
-      </AdminLayout>
+      </>
     );
   }
 
   if (examError || !exam) {
     return (
-      <AdminLayout>
+      <>
         <div className="p-8 text-center text-red-500">
           {examError?.message || "Exam not found."}
         </div>
-      </AdminLayout>
+      </>
     );
   }
 
   return (
-    <AdminLayout>
+    <>
       <div className="mb-6">
         <button
           onClick={() => navigate("/results")}
@@ -184,6 +184,6 @@ export default function ViewResults() {
           </table>
         </div>
       </div>
-    </AdminLayout>
+    </>
   );
 }

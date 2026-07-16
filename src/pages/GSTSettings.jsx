@@ -4,7 +4,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import { getOrganization, updateOrganization } from "../services/organizationService";
 import toast from "react-hot-toast";
-import AdminLayout from "../layouts/AdminLayout";
 import { Save, Loader, Building, Info } from "lucide-react";
 import GSTLookup from "../components/GSTLookup";
 
@@ -71,7 +70,6 @@ export default function GSTSettings() {
     }));
   };
 
-  // ── Auto‑fill from GST lookup ──
   const handleGSTLookupSuccess = (data) => {
     setForm((prev) => ({
       ...prev,
@@ -79,8 +77,6 @@ export default function GSTSettings() {
       trade_name: data.trade_name || prev.trade_name,
       state_code: data.state_code || prev.state_code,
       registration_type: data.registration_type || prev.registration_type,
-      // Optionally, you can also set gstin if not already set
-      // gstin: data.gstin,
     }));
   };
 
@@ -99,22 +95,33 @@ export default function GSTSettings() {
 
   if (isLoading) {
     return (
-      <AdminLayout>
-        <div className="p-8 text-center text-secondary">Loading settings…</div>
-      </AdminLayout>
+      <div className="p-8 text-center text-gray-500 dark:text-gray-400">Loading settings…</div>
     );
   }
 
   return (
-    <AdminLayout>
-      <div className="mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">GST Settings</h1>
-        <p className="text-sm text-secondary-dark mt-1">
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+      {/* Header */}
+      <div>
+        <h1
+          className="text-2xl sm:text-3xl font-bold"
+          style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+        >
+          GST Settings
+        </h1>
+        <p
+          className="text-sm text-gray-600 dark:text-gray-400 mt-1"
+          style={{ fontFamily: "var(--font-body)" }}
+        >
           Configure GST registration and default tax settings for your organization
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm p-6 max-w-3xl space-y-6">
+      {/* Form */}
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 max-w-3xl space-y-6"
+      >
         {/* GST Registered toggle */}
         <div className="flex items-center gap-3">
           <input
@@ -123,16 +130,23 @@ export default function GSTSettings() {
             name="gst_registered"
             checked={form.gst_registered}
             onChange={handleChange}
-            className="w-5 h-5 text-primary border-gray-300 rounded focus:ring-primary"
+            className="w-5 h-5 text-primary border-gray-300 dark:border-gray-600 rounded focus:ring-primary dark:focus:ring-offset-gray-800"
           />
-          <label htmlFor="gst_registered" className="text-sm font-medium text-gray-700">
+          <label
+            htmlFor="gst_registered"
+            className="text-sm font-medium text-gray-700 dark:text-gray-300"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
             GST Registered
           </label>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              style={{ fontFamily: "var(--font-body)" }}
+            >
               Business Legal Name
             </label>
             <input
@@ -140,12 +154,15 @@ export default function GSTSettings() {
               name="business_legal_name"
               value={form.business_legal_name}
               onChange={handleChange}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
               placeholder="As per GST registration"
             />
           </div>
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              style={{ fontFamily: "var(--font-body)" }}
+            >
               Trade Name
             </label>
             <input
@@ -153,14 +170,17 @@ export default function GSTSettings() {
               name="trade_name"
               value={form.trade_name}
               onChange={handleChange}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
               placeholder="Display name (optional)"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+          <label
+            className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
             GSTIN
           </label>
           <div className="flex flex-col sm:flex-row gap-2">
@@ -169,7 +189,7 @@ export default function GSTSettings() {
               name="gstin"
               value={form.gstin}
               onChange={handleChange}
-              className="flex-1 border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary uppercase"
+              className="flex-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm uppercase focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
               placeholder="22AAAAA0000A1Z5"
               maxLength={15}
             />
@@ -180,21 +200,28 @@ export default function GSTSettings() {
               className="flex-shrink-0"
             />
           </div>
-          <p className="text-xs text-secondary-light mt-1">
-            Enter 15‑character alphanumeric GSTIN and click "Fetch GST Details" to auto‑fill legal name, state, and registration type.
+          <p
+            className="text-xs text-gray-500 dark:text-gray-400 mt-1"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            Enter 15‑character alphanumeric GSTIN and click "Fetch GST Details" to auto‑fill legal
+            name, state, and registration type.
           </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              style={{ fontFamily: "var(--font-body)" }}
+            >
               State
             </label>
             <select
               name="state_code"
               value={form.state_code}
               onChange={handleChange}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
             >
               <option value="">Select State</option>
               {states.map((state) => (
@@ -205,14 +232,17 @@ export default function GSTSettings() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              style={{ fontFamily: "var(--font-body)" }}
+            >
               Place of Supply (Default)
             </label>
             <select
               name="place_of_supply"
               value={form.place_of_supply}
               onChange={handleChange}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
             >
               <option value="">Default Place of Supply</option>
               {states.map((state) => (
@@ -221,20 +251,28 @@ export default function GSTSettings() {
                 </option>
               ))}
             </select>
-            <p className="text-xs text-secondary-light mt-1">Default state for inter‑state supplies</p>
+            <p
+              className="text-xs text-gray-500 dark:text-gray-400 mt-1"
+              style={{ fontFamily: "var(--font-body)" }}
+            >
+              Default state for inter‑state supplies
+            </p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              style={{ fontFamily: "var(--font-body)" }}
+            >
               Registration Type
             </label>
             <select
               name="registration_type"
               value={form.registration_type}
               onChange={handleChange}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
             >
               <option value="">Select Type</option>
               <option value="Regular">Regular</option>
@@ -243,7 +281,10 @@ export default function GSTSettings() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              style={{ fontFamily: "var(--font-body)" }}
+            >
               Financial Year
             </label>
             <input
@@ -251,14 +292,17 @@ export default function GSTSettings() {
               name="financial_year"
               value={form.financial_year}
               onChange={handleChange}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
               placeholder="e.g. 2025-26"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+          <label
+            className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
             Fiscal Year Start Date
           </label>
           <input
@@ -266,15 +310,16 @@ export default function GSTSettings() {
             name="fiscal_year_start"
             value={form.fiscal_year_start}
             onChange={handleChange}
-            className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
           />
         </div>
 
-        <div className="flex justify-end pt-4 border-t">
+        <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
           <button
             type="submit"
             disabled={mutation.isPending}
-            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat transition disabled:opacity-50 flex items-center gap-2"
+            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-50 flex items-center gap-2"
+            style={{ fontFamily: "var(--font-body)" }}
           >
             {mutation.isPending ? (
               <>
@@ -290,6 +335,6 @@ export default function GSTSettings() {
           </button>
         </div>
       </form>
-    </AdminLayout>
+    </div>
   );
 }

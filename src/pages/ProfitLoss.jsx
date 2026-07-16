@@ -16,7 +16,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import AdminLayout from "../layouts/AdminLayout";
+
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
 import { useOrg } from "../context/OrganizationContext";
@@ -196,7 +196,7 @@ export default function ProfitLoss() {
   const formatCurrency = (val) => `₹ ${Math.abs(val).toLocaleString("en-IN")}`;
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">Profit & Loss Statement</h1>
         <button
@@ -365,6 +365,6 @@ export default function ProfitLoss() {
           </div>
         </>
       )}
-    </AdminLayout>
+    </>
   );
 }

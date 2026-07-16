@@ -11,7 +11,7 @@ import {
 import { getOrganization } from "../services/organizationService";
 import { useOrg } from "../context/OrganizationContext";
 import toast from "react-hot-toast";
-import AdminLayout from "../layouts/AdminLayout";
+
 import { ArrowLeft, Save, Plus, Trash2, Loader } from "lucide-react";
 
 export default function PurchaseInvoiceForm() {
@@ -270,14 +270,14 @@ export default function PurchaseInvoiceForm() {
 
   if (loadingInvoice) {
     return (
-      <AdminLayout>
+      <>
         <div className="p-8 text-center">Loading invoice…</div>
-      </AdminLayout>
+      </>
     );
   }
 
   return (
-    <AdminLayout>
+    <>
       <button
         onClick={() => navigate("/purchase-invoices")}
         className="inline-flex items-center gap-2 text-secondary hover:text-primary-dark mb-4 text-sm"
@@ -518,6 +518,6 @@ export default function PurchaseInvoiceForm() {
           </button>
         </div>
       </form>
-    </AdminLayout>
+    </>
   );
 }

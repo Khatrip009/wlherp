@@ -4,7 +4,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Upload, Check, X } from "lucide-react";
 import Papa from "papaparse";
-import AdminLayout from "../layouts/AdminLayout";
 import { getOrganization } from "../services/organizationService";
 import {
   getBankAccounts,
@@ -75,7 +74,7 @@ export default function BankReconciliation() {
 
   const reconciledSet = new Set(reconciledIds);
 
-  // Mutations – now pass context or explicit IDs
+  // Mutations – pass context
   const reconcileMut = useMutation({
     mutationFn: ({ lineId, statementId }) =>
       reconcileLine(lineId, statementId, { branchId, financialYearId }),
@@ -94,7 +93,7 @@ export default function BankReconciliation() {
     },
   });
 
-  // CSV upload – scoped clearing and import
+  // CSV upload – scoped
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !selectedAccountId || !branchId || !financialYearId) return;
@@ -133,19 +132,30 @@ export default function BankReconciliation() {
     .reduce((s, u) => s + (u.debit || 0) - (u.credit || 0), 0);
 
   return (
-    <AdminLayout>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+      {/* Header */}
+      <div>
+        <h1
+          className="text-2xl sm:text-3xl font-bold"
+          style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+        >
           Bank Reconciliation
         </h1>
+        <p
+          className="text-sm text-gray-600 dark:text-gray-400 mt-1"
+          style={{ fontFamily: "var(--font-body)" }}
+        >
+          Match your bank statement with system entries
+        </p>
       </div>
 
       {/* Account & Date Selectors */}
-      <div className="flex flex-wrap gap-4 mb-6">
+      <div className="flex flex-wrap gap-4 items-end">
         <select
           value={selectedAccountId}
           onChange={(e) => setSelectedAccountId(e.target.value)}
-          className="border rounded p-2.5 text-sm"
+          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+          style={{ fontFamily: "var(--font-body)" }}
         >
           <option value="">Select Bank / Cash Account</option>
           {accounts.map((a) => (
@@ -158,17 +168,20 @@ export default function BankReconciliation() {
           type="date"
           value={startDate}
           onChange={(e) => setStartDate(e.target.value)}
-          className="border rounded p-2 text-sm"
+          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+          style={{ fontFamily: "var(--font-body)" }}
         />
         <input
           type="date"
           value={endDate}
           onChange={(e) => setEndDate(e.target.value)}
-          className="border rounded p-2 text-sm"
+          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+          style={{ fontFamily: "var(--font-body)" }}
         />
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="border px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+          style={{ fontFamily: "var(--font-body)" }}
         >
           <Upload size={16} /> Upload Statement CSV
         </button>
@@ -182,31 +195,31 @@ export default function BankReconciliation() {
       </div>
 
       {!selectedAccountId ? (
-        <div className="bg-white rounded-xl p-10 text-center text-secondary">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-10 text-center text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
           Please select a bank/cash account to begin.
         </div>
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* Bank Statement Side */}
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <h2 className="text-lg font-semibold p-4 border-b">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <h2 className="text-lg font-semibold p-4 border-b border-gray-200 dark:border-gray-700" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
               Bank Statement (Uploaded)
             </h2>
             <div className="max-h-96 overflow-y-auto">
               <table className="w-full text-sm">
-                <thead className="bg-slate-100 sticky top-0">
+                <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
                   <tr>
-                    <th className="p-2 text-left">Date</th>
-                    <th className="p-2 text-left">Description</th>
-                    <th className="p-2 text-right">Debit</th>
-                    <th className="p-2 text-right">Credit</th>
-                    <th className="p-2 text-right">Balance</th>
+                    <th className="p-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
+                    <th className="p-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Description</th>
+                    <th className="p-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Debit</th>
+                    <th className="p-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Credit</th>
+                    <th className="p-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Balance</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {statementLines.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="p-4 text-center text-secondary">
+                      <td colSpan={5} className="p-4 text-center text-gray-500 dark:text-gray-400">
                         No statement lines. Upload a CSV.
                       </td>
                     </tr>
@@ -214,35 +227,25 @@ export default function BankReconciliation() {
                     statementLines.map((line) => (
                       <tr
                         key={line.id}
-                        className={`border-t cursor-pointer ${
-                          selectedStatementId === line.id ? "bg-blue-50" : ""
+                        className={`cursor-pointer transition-colors ${
+                          selectedStatementId === line.id
+                            ? "bg-blue-50 dark:bg-blue-900/20"
+                            : "hover:bg-gray-50 dark:hover:bg-gray-700"
                         }`}
                         onClick={() => setSelectedStatementId(line.id)}
                       >
-                        <td className="p-2">{line.statement_date}</td>
-                        <td className="p-2">{line.description}</td>
-                        <td className="p-2 text-right">
-                          {line.debit > 0
-                            ? `₹ ${Number(line.debit).toLocaleString("en-IN")}`
-                            : ""}
+                        <td className="p-2 text-gray-700 dark:text-gray-200">{line.statement_date}</td>
+                        <td className="p-2 text-gray-700 dark:text-gray-200">{line.description}</td>
+                        <td className="p-2 text-right text-gray-700 dark:text-gray-200">
+                          {line.debit > 0 ? `₹ ${Number(line.debit).toLocaleString("en-IN")}` : ""}
                         </td>
-                        <td className="p-2 text-right">
-                          {line.credit > 0
-                            ? `₹ ${Number(line.credit).toLocaleString("en-IN")}`
-                            : ""}
+                        <td className="p-2 text-right text-gray-700 dark:text-gray-200">
+                          {line.credit > 0 ? `₹ ${Number(line.credit).toLocaleString("en-IN")}` : ""}
                         </td>
-                        <td className="p-2 text-right font-medium">
-                          ₹{" "}
-                          {statementLines
-                            .filter(
-                              (l, i) =>
-                                i <= statementLines.indexOf(line)
-                            )
-                            .reduce(
-                              (s, l) =>
-                                s + (l.debit || 0) - (l.credit || 0),
-                              0
-                            )
+                        <td className="p-2 text-right font-medium text-gray-800 dark:text-gray-100">
+                          ₹ {statementLines
+                            .filter((l, i) => i <= statementLines.indexOf(line))
+                            .reduce((s, l) => s + (l.debit || 0) - (l.credit || 0), 0)
                             .toLocaleString("en-IN")}
                         </td>
                       </tr>
@@ -251,32 +254,32 @@ export default function BankReconciliation() {
                 </tbody>
               </table>
             </div>
-            <div className="p-3 border-t font-bold text-right">
+            <div className="p-3 border-t border-gray-200 dark:border-gray-700 font-bold text-right text-gray-800 dark:text-gray-100">
               Statement Balance: ₹ {stmtTotal.toLocaleString("en-IN")}
             </div>
           </div>
 
           {/* System Entries Side */}
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <h2 className="text-lg font-semibold p-4 border-b">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <h2 className="text-lg font-semibold p-4 border-b border-gray-200 dark:border-gray-700" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
               System Entries (Reconcile)
             </h2>
             <div className="max-h-96 overflow-y-auto">
               <table className="w-full text-sm">
-                <thead className="bg-slate-100 sticky top-0">
+                <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
                   <tr>
-                    <th className="p-2 text-left"></th>
-                    <th className="p-2 text-left">Date</th>
-                    <th className="p-2 text-left">Description</th>
-                    <th className="p-2 text-right">Receipt</th>
-                    <th className="p-2 text-right">Payment</th>
-                    <th className="p-2 text-right">Reconciled</th>
+                    <th className="p-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase"></th>
+                    <th className="p-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
+                    <th className="p-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Description</th>
+                    <th className="p-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Receipt</th>
+                    <th className="p-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Payment</th>
+                    <th className="p-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Reconciled</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {unreconciled.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="p-4 text-center text-secondary">
+                      <td colSpan={6} className="p-4 text-center text-gray-500 dark:text-gray-400">
                         No entries for this period.
                       </td>
                     </tr>
@@ -286,7 +289,7 @@ export default function BankReconciliation() {
                       return (
                         <tr
                           key={entry.id}
-                          className={`border-t ${isRec ? "bg-green-50" : ""}`}
+                          className={`${isRec ? "bg-green-50 dark:bg-green-900/10" : "hover:bg-gray-50 dark:hover:bg-gray-700"} transition-colors`}
                         >
                           <td className="p-1 text-center">
                             {selectedStatementId && !isRec && (
@@ -297,7 +300,7 @@ export default function BankReconciliation() {
                                     statementId: selectedStatementId,
                                   })
                                 }
-                                className="text-green-600 p-1"
+                                className="text-green-600 dark:text-green-400 p-1"
                                 title="Match with selected statement line"
                               >
                                 <Check size={14} />
@@ -311,30 +314,28 @@ export default function BankReconciliation() {
                                     statementId: selectedStatementId,
                                   })
                                 }
-                                className="text-red-600 p-1"
+                                className="text-red-600 dark:text-red-400 p-1"
                                 title="Un‑reconcile"
                               >
                                 <X size={14} />
                               </button>
                             )}
                           </td>
-                          <td className="p-2">
+                          <td className="p-2 text-gray-700 dark:text-gray-200">
                             {entry.journal_entries?.entry_date}
                           </td>
-                          <td className="p-2">{entry.description}</td>
-                          <td className="p-2 text-right text-green-600">
+                          <td className="p-2 text-gray-700 dark:text-gray-200">{entry.description}</td>
+                          <td className="p-2 text-right text-green-600 dark:text-green-400">
                             {entry.debit > 0
                               ? `₹ ${Number(entry.debit).toLocaleString("en-IN")}`
                               : ""}
                           </td>
-                          <td className="p-2 text-right text-red-600">
+                          <td className="p-2 text-right text-red-600 dark:text-red-400">
                             {entry.credit > 0
                               ? `₹ ${Number(entry.credit).toLocaleString("en-IN")}`
                               : ""}
                           </td>
-                          <td className="p-2 text-center">
-                            {isRec ? "✅" : "⏳"}
-                          </td>
+                          <td className="p-2 text-center text-lg">{isRec ? "✅" : "⏳"}</td>
                         </tr>
                       );
                     })
@@ -342,13 +343,12 @@ export default function BankReconciliation() {
                 </tbody>
               </table>
             </div>
-            <div className="p-3 border-t font-bold text-right">
-              Unreconciled Amount: ₹{" "}
-              {unreconciledTotal.toLocaleString("en-IN")}
+            <div className="p-3 border-t border-gray-200 dark:border-gray-700 font-bold text-right text-gray-800 dark:text-gray-100">
+              Unreconciled Amount: ₹ {unreconciledTotal.toLocaleString("en-IN")}
             </div>
           </div>
         </div>
       )}
-    </AdminLayout>
+    </div>
   );
 }

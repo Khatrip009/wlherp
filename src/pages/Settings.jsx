@@ -10,7 +10,7 @@ import {
   Save,
   Upload,
 } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import BackButton from "../components/BackButton";
 
 import { useAuth } from "../context/AuthContext";
@@ -136,7 +136,7 @@ export default function Settings() {
   }
 
   return (
-    <AdminLayout>
+    <>
       <BackButton to="/settings-hub" label="Settings" />
       <div className="mb-8">
         <h1 className="text-3xl font-righteous text-primary-dark">Settings</h1>
@@ -318,6 +318,6 @@ export default function Settings() {
           </form>
         </div>
       </div>
-    </AdminLayout>
+    </>
   );
 }

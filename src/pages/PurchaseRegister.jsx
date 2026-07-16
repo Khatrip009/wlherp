@@ -5,7 +5,7 @@ import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
 import { useOrg } from "../context/OrganizationContext";
 import toast from "react-hot-toast";
-import AdminLayout from "../layouts/AdminLayout";
+
 import {
   Search,
   Calendar,
@@ -346,7 +346,7 @@ export default function PurchaseRegister() {
   };
 
   return (
-    <AdminLayout>
+    < >
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <h1 className="text-3xl font-righteous text-primary-dark">Purchase Register</h1>
         <div className="flex flex-wrap gap-2">
@@ -639,6 +639,6 @@ export default function PurchaseRegister() {
           <span className="text-sm text-secondary-dark">Loading purchase data...</span>
         </div>
       )}
-    </AdminLayout>
+    </ >
   );
 }

@@ -20,7 +20,7 @@ import {
   CalendarCheck,
 } from "lucide-react";
 import Papa from "papaparse";
-import AdminLayout from "../layouts/AdminLayout";
+
 import AttendanceSessionForm from "../components/AttendanceSessionForm";
 import ConfirmDialog from "../components/ConfirmDialog";
 import BackButton from "../components/BackButton";
@@ -38,14 +38,16 @@ import { useOrg } from "../context/OrganizationContext";
 import { supabase } from "../api/supabase";
 
 export default function Attendance({ studentId: propStudentId = null, standalone = true }) {
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
+  // ── Compute role ──
   const role = (profile?.role || "").toLowerCase().replace(/\s+/g, "_");
-  const isAdmin = role === "admin" || role === "super_admin";
+  const isAdmin = role === "admin" || role === "super_admin" || role === "organization_admin" || role === "org_admin";
   const isTeacher = role === "teacher";
+  const canManage = isAdmin || isTeacher;
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -58,7 +60,7 @@ export default function Attendance({ studentId: propStudentId = null, standalone
   const [showFilters, setShowFilters] = useState(false);
   const [studentBatchIds, setStudentBatchIds] = useState([]);
 
-  // ── If studentId is provided, fetch their active batch IDs ──
+  // ── If studentId provided, fetch their active batch IDs ──
   useEffect(() => {
     if (propStudentId && branchId && financialYearId) {
       const fetchStudentBatches = async () => {
@@ -134,7 +136,7 @@ export default function Attendance({ studentId: propStudentId = null, standalone
 
   const sessions = data?.pages.flatMap((page) => page.data) || [];
 
-  // Mutations – pass branchId and financialYearId
+  // Mutations
   const createMutation = useMutation({
     mutationFn: (payload) => createAttendanceSession(payload, branchId, financialYearId),
     onSuccess: () => {
@@ -232,34 +234,48 @@ export default function Attendance({ studentId: propStudentId = null, standalone
     setConfirmDelete(id);
   }
 
-  // ── Content ──
-  const content = (
-    <>
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+  // ── Auth loading or missing profile ──
+  if (authLoading) {
+    return <div className="p-8 text-center text-gray-500 dark:text-gray-400">Loading...</div>;
+  }
+  if (!profile) {
+    return <div className="p-8 text-center text-red-500">Please log in to view attendance.</div>;
+  }
+
+  return (
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-righteous text-primary-dark">Attendance</h1>
-          <p className="text-sm text-secondary-dark font-montserrat mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+            Attendance
+          </h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>
             Manage daily session attendance
           </p>
         </div>
 
-        {(isAdmin || isTeacher) && !propStudentId && (
+        {/* Action buttons – only for managers, not for student-specific view */}
+        {canManage && !propStudentId && (
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setShowForm(true)}
-              className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
+              style={{ fontFamily: "var(--font-body)" }}
             >
               <CalendarCheck size={18} /> New Session
             </button>
             <button
               onClick={handleCSVExport}
-              className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+              className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+              style={{ fontFamily: "var(--font-body)" }}
             >
               <Download size={18} /> Export
             </button>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+              className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+              style={{ fontFamily: "var(--font-body)" }}
             >
               <Upload size={18} /> Import
             </button>
@@ -275,79 +291,82 @@ export default function Attendance({ studentId: propStudentId = null, standalone
       </div>
 
       {/* Filter Bar */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+      <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search
-            size={18}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary"
-          />
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
           <input
             type="text"
             placeholder="Search by topic or date..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-secondary-light rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg pl-10 pr-4 py-2.5 text-sm"
+            style={{ fontFamily: "var(--font-body)" }}
           />
         </div>
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+          style={{ fontFamily: "var(--font-body)" }}
         >
           <Filter size={18} /> Filters {showFilters && <X size={16} />}
         </button>
       </div>
 
+      {/* Filter Panels */}
       {showFilters && (
-        <div className="bg-white rounded-xl p-4 shadow-sm mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 border border-secondary-light">
-          {/* Batch filter – show only if no studentId (or if you want to override) */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {!propStudentId && (
             <div>
-              <label className="text-xs font-montserrat text-secondary-dark">Batch</label>
+              <label className="text-xs font-medium text-gray-600 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+                Batch
+              </label>
               <select
                 value={batchFilter}
                 onChange={(e) => setBatchFilter(e.target.value)}
-                className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+                className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm mt-1"
               >
                 <option value="">All Batches</option>
                 {batches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.batch_name}
-                  </option>
+                  <option key={b.id} value={b.id}>{b.batch_name}</option>
                 ))}
               </select>
             </div>
           )}
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">Medium</label>
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+              Medium
+            </label>
             <select
               value={mediumFilter}
               onChange={(e) => setMediumFilter(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm mt-1"
             >
               <option value="">All Mediums</option>
               {mediums.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
+                <option key={m.id} value={m.id}>{m.name}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">From Date</label>
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+              From Date
+            </label>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm mt-1"
             />
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">To Date</label>
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+              To Date
+            </label>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm mt-1"
             />
           </div>
           <div className="flex items-end">
@@ -359,7 +378,8 @@ export default function Attendance({ studentId: propStudentId = null, standalone
                 setStartDate("");
                 setEndDate("");
               }}
-              className="text-primary text-sm hover:underline"
+              className="text-sm text-primary hover:underline"
+              style={{ fontFamily: "var(--font-body)" }}
             >
               Clear Filters
             </button>
@@ -367,33 +387,46 @@ export default function Attendance({ studentId: propStudentId = null, standalone
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      {/* Sessions Table */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px]">
-            <thead className="bg-slate-100 border-b border-secondary-light">
+            <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
-                <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Date</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Batch</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Medium</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Topic</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Attendance</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Actions</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Date
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Batch
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Medium
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Topic
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Attendance
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Actions
+                </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-secondary">
+                  <td colSpan={6} className="p-6 text-center text-gray-500 dark:text-gray-400">
                     Loading sessions…
                   </td>
                 </tr>
               ) : sessions.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-secondary">
+                  <td colSpan={6} className="p-6 text-center text-gray-500 dark:text-gray-400">
                     <div className="flex flex-col items-center gap-2">
-                      <CalendarCheck size={32} className="text-secondary-light" />
+                      <CalendarCheck size={32} className="text-gray-400 dark:text-gray-500" />
                       <span>No sessions found</span>
-                      <span className="text-xs text-secondary-light">
+                      <span className="text-xs">
                         {search || batchFilter || mediumFilter || startDate || endDate
                           ? "Try adjusting your filters"
                           : "Create a new session to get started"}
@@ -405,29 +438,39 @@ export default function Attendance({ studentId: propStudentId = null, standalone
                 sessions.map((session) => (
                   <tr
                     key={session.id}
-                    className="border-b border-secondary-light hover:bg-primary-bg transition"
+                    className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
-                    <td className="p-3 text-sm">{session.attendance_date}</td>
-                    <td className="text-sm">{session.batch_name}</td>
-                    <td className="text-sm">
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
+                      {session.attendance_date}
+                    </td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
+                      {session.batch_name}
+                    </td>
+                    <td className="p-3 text-sm">
                       {session.medium_name ? (
-                        <span className="bg-primary-bg text-primary px-2 py-0.5 rounded-full text-xs">
+                        <span className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200 px-2 py-0.5 rounded-full text-xs">
                           {session.medium_name}
                         </span>
-                      ) : "-"}
+                      ) : (
+                        "-"
+                      )}
                     </td>
-                    <td className="text-sm">{session.topic_covered || "-"}</td>
-                    <td className="text-sm">
-                      <span className="text-green-600 font-medium">
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
+                      {session.topic_covered || "-"}
+                    </td>
+                    <td className="p-3 text-sm">
+                      <span className="text-green-600 dark:text-green-400 font-medium">
                         {session.present_count}
                       </span>
-                      <span className="text-secondary"> / {session.total_count}</span>
+                      <span className="text-gray-500 dark:text-gray-400">
+                        {" "}/ {session.total_count}
+                      </span>
                     </td>
-                    <td className="text-sm">
+                    <td className="p-3 text-sm">
                       <div className="flex gap-2">
                         <button
                           onClick={() => navigate(`/attendance/mark/${session.id}`)}
-                          className="text-blue-600 hover:underline"
+                          className="text-blue-600 dark:text-blue-400 hover:underline"
                         >
                           Mark
                         </button>
@@ -435,13 +478,13 @@ export default function Attendance({ studentId: propStudentId = null, standalone
                           <>
                             <button
                               onClick={() => setEditing(session)}
-                              className="text-yellow-600 hover:underline"
+                              className="text-yellow-600 dark:text-yellow-400 hover:underline"
                             >
                               <Edit3 size={15} />
                             </button>
                             <button
                               onClick={() => handleDelete(session.id)}
-                              className="text-red-600 hover:underline"
+                              className="text-red-600 dark:text-red-400 hover:underline"
                             >
                               <Trash2 size={15} />
                             </button>
@@ -457,27 +500,34 @@ export default function Attendance({ studentId: propStudentId = null, standalone
         </div>
       </div>
 
+      {/* Load More */}
       {hasNextPage && (
         <div className="flex justify-center mt-6">
           <button
             onClick={() => fetchNextPage()}
             disabled={isFetchingNextPage}
-            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat text-sm transition disabled:opacity-60"
+            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-60"
+            style={{ fontFamily: "var(--font-body)" }}
           >
             {isFetchingNextPage ? "Loading more…" : "Load More"}
           </button>
         </div>
       )}
 
+      {/* Confirm delete dialog */}
       {confirmDelete && (
         <ConfirmDialog
           message="Delete this session and all attendance records?"
-          onConfirm={() => { deleteMutation.mutate(confirmDelete); setConfirmDelete(null); }}
+          onConfirm={() => {
+            deleteMutation.mutate(confirmDelete);
+            setConfirmDelete(null);
+          }}
           onCancel={() => setConfirmDelete(null)}
         />
       )}
 
-      {(isAdmin || isTeacher) && showForm && (
+      {/* Modals */}
+      {canManage && showForm && (
         <AttendanceSessionForm
           onSubmit={handleCreate}
           onClose={() => setShowForm(false)}
@@ -490,12 +540,6 @@ export default function Attendance({ studentId: propStudentId = null, standalone
           onClose={() => setEditing(null)}
         />
       )}
-    </>
+    </div>
   );
-
-  if (!standalone) {
-    return <div>{content}</div>;
-  }
-
-  
 }

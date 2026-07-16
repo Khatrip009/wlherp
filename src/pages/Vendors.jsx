@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getVendors, createVendor, updateVendor, deleteVendor } from "../services/vendorService";
 import { supabase } from "../api/supabase";
 import toast from "react-hot-toast";
-import AdminLayout from "../layouts/AdminLayout";
+
 import { Search, Plus, Edit3, Trash2, X, Save, Loader } from "lucide-react";
 import GSTLookup from "../components/GSTLookup";
 import { useOrg } from "../context/OrganizationContext";
@@ -164,7 +164,7 @@ export default function Vendors() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">Vendors</h1>
         <button
@@ -455,6 +455,6 @@ export default function Vendors() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

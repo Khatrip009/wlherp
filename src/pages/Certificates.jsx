@@ -19,7 +19,6 @@ import {
   Printer,
 } from "lucide-react";
 import Papa from "papaparse";
-import AdminLayout from "../layouts/AdminLayout";
 import CertificateForm from "../components/CertificateForm";
 import BackButton from "../components/BackButton";
 import {
@@ -35,17 +34,14 @@ import { useOrg } from "../context/OrganizationContext";
 export default function Certificates() {
   const queryClient = useQueryClient();
 
-  // ── Branch & Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  // Search & filters
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Infinite query for certificates – now scoped
   const {
     data,
     isLoading,
@@ -97,7 +93,6 @@ export default function Certificates() {
 
   const certificates = data?.pages.flatMap((page) => page.data) || [];
 
-  // Mutations – already use context
   const createMutation = useMutation({
     mutationFn: (payload) => createCertificate(payload, { branchId, financialYearId }),
     onSuccess: () => {
@@ -117,7 +112,6 @@ export default function Certificates() {
     onError: () => toast.error("Delete failed"),
   });
 
-  // CSV Import – uses scoped create
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -150,7 +144,6 @@ export default function Certificates() {
     });
   }
 
-  // CSV Export – now scoped
   async function handleCSVExport() {
     try {
       const allData = await getAllCertificatesForExport(branchId, financialYearId);
@@ -194,32 +187,44 @@ export default function Certificates() {
   }
 
   return (
-    <AdminLayout>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
       <BackButton to="/academics-hub" label="Academics Hub" />
+
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-righteous text-primary-dark">Certificates</h1>
-          <p className="text-sm text-secondary-dark font-montserrat mt-1">
+          <h1
+            className="text-2xl sm:text-3xl font-bold text-primary"
+            style={{ fontFamily: "var(--font-heading)" }}
+          >
+            Certificates
+          </h1>
+          <p
+            className="text-sm text-gray-600 dark:text-gray-400 mt-1"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
             Issue and manage certificates
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setShowForm(true)}
-            className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: "var(--font-body)" }}
           >
             <Award size={18} /> Issue Certificate
           </button>
           <button
             onClick={handleCSVExport}
-            className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+            style={{ fontFamily: "var(--font-body)" }}
           >
             <Download size={18} /> Export
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+            style={{ fontFamily: "var(--font-body)" }}
           >
             <Upload size={18} /> Import
           </button>
@@ -234,58 +239,59 @@ export default function Certificates() {
       </div>
 
       {/* Search */}
-      <div className="relative mb-6 max-w-md">
+      <div className="relative max-w-md">
         <Search
           size={18}
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary"
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
         />
         <input
           type="text"
           placeholder="Search by certificate no or student name..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full border border-secondary-light rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg pl-10 pr-4 py-2.5 text-sm"
+          style={{ fontFamily: "var(--font-body)" }}
         />
       </div>
 
       {/* Certificates Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[700px]">
-            <thead className="bg-slate-100 border-b border-secondary-light">
+            <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
-                <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Certificate No
                 </th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Student
                 </th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Course
                 </th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Level
                 </th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Issue Date
                 </th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-secondary">
+                  <td colSpan={6} className="p-6 text-center text-gray-500 dark:text-gray-400">
                     Loading certificates…
                   </td>
                 </tr>
               ) : certificates.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-secondary">
+                  <td colSpan={6} className="p-6 text-center text-gray-500 dark:text-gray-400">
                     <div className="flex flex-col items-center gap-2">
-                      <Award size={32} className="text-secondary-light" />
+                      <Award size={32} className="text-gray-400 dark:text-gray-500" />
                       <span>No certificates found</span>
                     </div>
                   </td>
@@ -294,22 +300,26 @@ export default function Certificates() {
                 certificates.map((cert) => (
                   <tr
                     key={cert.id}
-                    className="border-b border-secondary-light hover:bg-primary-bg transition"
+                    className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
-                    <td className="p-3 text-sm font-medium">
+                    <td className="p-3 text-sm font-medium text-gray-800 dark:text-gray-100">
                       {cert.certificate_no}
                     </td>
-                    <td className="text-sm">
+                    <td className="text-sm text-gray-700 dark:text-gray-300">
                       {cert.students?.first_name} {cert.students?.last_name}{" "}
-                      <span className="text-xs text-secondary-light">
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
                         ({cert.students?.admission_no})
                       </span>
                     </td>
-                    <td className="text-sm">{cert.courses?.course_name}</td>
-                    <td className="text-sm">
+                    <td className="text-sm text-gray-700 dark:text-gray-300">
+                      {cert.courses?.course_name}
+                    </td>
+                    <td className="text-sm text-gray-700 dark:text-gray-300">
                       {cert.course_levels?.level_name || "-"}
                     </td>
-                    <td className="text-sm">{cert.issue_date}</td>
+                    <td className="text-sm text-gray-700 dark:text-gray-300">
+                      {cert.issue_date}
+                    </td>
                     <td className="text-sm">
                       <div className="flex gap-2">
                         <button
@@ -320,11 +330,10 @@ export default function Certificates() {
                         </button>
                         <button
                           onClick={() => {
-                            if (!window.confirm("Delete this certificate?"))
-                              return;
+                            if (!window.confirm("Delete this certificate?")) return;
                             deleteMutation.mutate(cert.id);
                           }}
-                          className="text-red-600 hover:underline"
+                          className="text-red-600 dark:text-red-400 hover:underline"
                         >
                           <Trash2 size={15} />
                         </button>
@@ -344,7 +353,8 @@ export default function Certificates() {
           <button
             onClick={() => fetchNextPage()}
             disabled={isFetchingNextPage}
-            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat text-sm transition disabled:opacity-60"
+            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-60"
+            style={{ fontFamily: "var(--font-body)" }}
           >
             {isFetchingNextPage ? "Loading more…" : "Load More"}
           </button>
@@ -358,6 +368,6 @@ export default function Certificates() {
           onClose={() => setShowForm(false)}
         />
       )}
-    </AdminLayout>
+    </div>
   );
 }

@@ -1,12 +1,10 @@
-// src/pages/GSTReport.jsx
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Printer, Download, FileText, IndianRupee } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
 import toast from "react-hot-toast";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 // ─── HELPERS ───────────────────────────────────────────────
 
@@ -119,7 +117,7 @@ function buildGSTR1JSON(invoices, org, startDate, endDate) {
     iamt: formatAmount(h.iamt),
   }));
 
-  // ── Nil / Exempt / Non‑GST Supplies (placeholder – can be enhanced) ──
+  // ── Nil / Exempt / Non‑GST Supplies (placeholder) ──
   const nilSupplies = {
     sply_ty: "INTER",
     etin: "",
@@ -150,15 +148,28 @@ export default function GSTReport() {
   );
   const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
 
-  // ── Organisation context ──
-  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  // ── Branch & FY context for scoping ──
+  const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  const { data: org } = useQuery({
-    queryKey: ["organization", currentOrg?.id],
-    queryFn: () => getOrganization(currentOrg?.id),
-    enabled: !!currentOrg?.id,
+  // ── Fetch organisation details with ID 3 – direct Supabase query ──
+  const {
+    data: org,
+    isLoading: orgLoading,
+    error: orgError,
+  } = useQuery({
+    queryKey: ["organization", 3],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("organization")
+        .select("*")
+        .eq("id", 3)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 10 * 60 * 1000,
   });
 
   // ── Fetch invoices with items, tax rates, students – scoped ──
@@ -170,10 +181,10 @@ export default function GSTReport() {
       // 1. Fetch invoices – scoped
       let invQuery = supabase
         .from("invoices")
-        .select(`
-          *,
-          students:student_id(id, first_name, last_name, admission_no, gstin, state_code, legal_business_name)
-        `)
+        .select(
+          `*,
+          students:student_id(id, first_name, last_name, admission_no, gstin, state_code, legal_business_name)`
+        )
         .gte("invoice_date", startDate)
         .lte("invoice_date", endDate)
         .eq("status", "Final")
@@ -186,13 +197,12 @@ export default function GSTReport() {
       if (!invoiceData.length) return [];
 
       // 2. Fetch invoice items – scoped
-      const invoiceIds = invoiceData.map(inv => inv.id);
+      const invoiceIds = invoiceData.map((inv) => inv.id);
       let itemsQuery = supabase
         .from("invoice_items")
         .select("*")
         .in("invoice_id", invoiceIds);
 
-      // Invoice items table might also have branch/FY – scope if available
       if (branchId) itemsQuery = itemsQuery.eq("branch_id", branchId);
       if (financialYearId) itemsQuery = itemsQuery.eq("financial_year_id", financialYearId);
 
@@ -200,7 +210,7 @@ export default function GSTReport() {
       if (itemsError) throw itemsError;
 
       // 3. Fetch tax rates for items – scoped
-      const taxRateIds = [...new Set(itemsData.map(item => item.tax_rate_id).filter(Boolean))];
+      const taxRateIds = [...new Set(itemsData.map((item) => item.tax_rate_id).filter(Boolean))];
       let taxRates = [];
       if (taxRateIds.length > 0) {
         let taxQuery = supabase
@@ -212,12 +222,12 @@ export default function GSTReport() {
         const { data: trData } = await taxQuery;
         taxRates = trData || [];
       }
-      const taxRateMap = Object.fromEntries(taxRates.map(tr => [tr.id, tr]));
+      const taxRateMap = Object.fromEntries(taxRates.map((tr) => [tr.id, tr]));
 
       // 4. Fetch inventory items for product items – scoped
       const productItemIds = itemsData
-        .filter(item => item.item_type === 'product' && item.item_id)
-        .map(item => item.item_id);
+        .filter((item) => item.item_type === "product" && item.item_id)
+        .map((item) => item.item_id);
       let inventoryItems = [];
       if (productItemIds.length > 0) {
         let invItemQuery = supabase
@@ -229,14 +239,14 @@ export default function GSTReport() {
         const { data: invData } = await invItemQuery;
         inventoryItems = invData || [];
       }
-      const inventoryMap = Object.fromEntries(inventoryItems.map(inv => [inv.id, inv]));
+      const inventoryMap = Object.fromEntries(inventoryItems.map((inv) => [inv.id, inv]));
 
       // 5. Combine everything
-      return invoiceData.map(inv => ({
+      return invoiceData.map((inv) => ({
         ...inv,
         invoice_items: itemsData
-          .filter(item => item.invoice_id === inv.id)
-          .map(item => ({
+          .filter((item) => item.invoice_id === inv.id)
+          .map((item) => ({
             ...item,
             tax_rates: taxRateMap[item.tax_rate_id] || null,
             inventory_items: inventoryMap[item.item_id] || null,
@@ -256,24 +266,32 @@ export default function GSTReport() {
     const totalB2C = b2cInvoices.length;
     const totalInvoices = invoices.length;
 
-    const b2bTaxable = b2bInvoices.reduce((s, inv) => {
-      return s + (inv.invoice_items || []).reduce((s2, it) => s2 + (it.taxable_amount || 0), 0);
-    }, 0);
-    const b2cTaxable = b2cInvoices.reduce((s, inv) => {
-      return s + (inv.invoice_items || []).reduce((s2, it) => s2 + (it.taxable_amount || 0), 0);
-    }, 0);
-    const b2bGst = b2bInvoices.reduce((s, inv) => {
-      return s + (inv.invoice_items || []).reduce(
-        (s2, it) => s2 + (it.cgst_amount || 0) + (it.sgst_amount || 0) + (it.igst_amount || 0),
-        0
-      );
-    }, 0);
-    const b2cGst = b2cInvoices.reduce((s, inv) => {
-      return s + (inv.invoice_items || []).reduce(
-        (s2, it) => s2 + (it.cgst_amount || 0) + (it.sgst_amount || 0) + (it.igst_amount || 0),
-        0
-      );
-    }, 0);
+    const b2bTaxable = b2bInvoices.reduce(
+      (s, inv) => s + (inv.invoice_items || []).reduce((s2, it) => s2 + (it.taxable_amount || 0), 0),
+      0
+    );
+    const b2cTaxable = b2cInvoices.reduce(
+      (s, inv) => s + (inv.invoice_items || []).reduce((s2, it) => s2 + (it.taxable_amount || 0), 0),
+      0
+    );
+    const b2bGst = b2bInvoices.reduce(
+      (s, inv) =>
+        s +
+        (inv.invoice_items || []).reduce(
+          (s2, it) => s2 + (it.cgst_amount || 0) + (it.sgst_amount || 0) + (it.igst_amount || 0),
+          0
+        ),
+      0
+    );
+    const b2cGst = b2cInvoices.reduce(
+      (s, inv) =>
+        s +
+        (inv.invoice_items || []).reduce(
+          (s2, it) => s2 + (it.cgst_amount || 0) + (it.sgst_amount || 0) + (it.igst_amount || 0),
+          0
+        ),
+      0
+    );
 
     const allItems = invoices.flatMap((inv) => inv.invoice_items || []);
     const hsnSummary = {};
@@ -291,7 +309,8 @@ export default function GSTReport() {
       }
       hsnSummary[hsn].quantity += item.quantity || 0;
       hsnSummary[hsn].taxable_value += item.taxable_amount || 0;
-      hsnSummary[hsn].tax_amount += (item.cgst_amount || 0) + (item.sgst_amount || 0) + (item.igst_amount || 0);
+      hsnSummary[hsn].tax_amount +=
+        (item.cgst_amount || 0) + (item.sgst_amount || 0) + (item.igst_amount || 0);
     });
 
     return {
@@ -370,20 +389,62 @@ export default function GSTReport() {
     printWindow.document.close();
   };
 
+  // ── Loading / Error states ──
+  if (orgLoading) {
+    return (
+      <div className="flex items-center justify-center p-12 text-gray-500 dark:text-gray-400">
+        <div className="text-center">
+          <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-3"></div>
+          <p>Loading organisation details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (orgError) {
+    return (
+      <div className="p-8 text-center text-red-600 dark:text-red-400">
+        <p>Failed to load organisation details: {orgError.message}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-3 bg-primary text-white px-4 py-2 rounded-lg text-sm"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <AdminLayout>
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-        <h1 className="text-3xl font-righteous text-primary-dark">GST Report (GSTR‑1)</h1>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1
+            className="text-2xl sm:text-3xl font-bold"
+            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+          >
+            GST Report (GSTR‑1)
+          </h1>
+          <p
+            className="text-sm text-gray-600 dark:text-gray-400 mt-1"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            Generate GST return JSON and summaries
+          </p>
+        </div>
         <div className="flex flex-wrap gap-2">
           <button
             onClick={handlePrint}
-            className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: "var(--font-body)" }}
           >
             <Printer size={16} /> Print
           </button>
           <button
             onClick={handleDownloadJSON}
-            className="border border-primary text-primary px-4 py-2 rounded-lg text-sm flex items-center gap-2 hover:bg-primary/10 transition"
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+            style={{ fontFamily: "var(--font-body)" }}
           >
             <Download size={16} /> Download JSON
           </button>
@@ -391,59 +452,82 @@ export default function GSTReport() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-4 mb-6 bg-white p-4 rounded-xl shadow-sm">
-        <div>
-          <label className="text-sm font-medium text-secondary-dark">From:</label>
+      <div className="flex flex-wrap gap-4 bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+        <div className="flex items-center">
+          <label
+            className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            From:
+          </label>
           <input
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="ml-2 border rounded-lg p-2 text-sm focus:ring-1 focus:ring-primary"
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2 text-sm"
           />
         </div>
-        <div>
-          <label className="text-sm font-medium text-secondary-dark">To:</label>
+        <div className="flex items-center">
+          <label
+            className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            To:
+          </label>
           <input
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="ml-2 border rounded-lg p-2 text-sm focus:ring-1 focus:ring-primary"
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2 text-sm"
           />
         </div>
         <button
           onClick={() => refetch()}
-          className="bg-primary text-white px-4 py-2 rounded-lg text-sm"
+          className="inline-flex items-center px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg text-sm font-medium transition-colors"
+          style={{ fontFamily: "var(--font-body)" }}
         >
           Refresh
         </button>
-        {isLoading && <span className="text-secondary text-sm flex items-center">Loading...</span>}
+        {isLoading && (
+          <span className="text-sm text-gray-500 dark:text-gray-400 flex items-center">Loading...</span>
+        )}
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6" id="gst-preview">
-        <div className="bg-white rounded-xl shadow-sm p-4 border">
-          <p className="text-xs text-secondary-light">Total Invoices</p>
-          <p className="text-2xl font-bold text-primary-dark">{summaries.totalInvoices}</p>
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+          <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+            Total Invoices
+          </p>
+          <p className="text-2xl font-bold" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+            {summaries.totalInvoices}
+          </p>
           <div className="flex gap-2 mt-1 text-xs">
-            <span className="text-blue-600">B2B: {summaries.totalB2B}</span>
-            <span className="text-orange-600">B2C: {summaries.totalB2C}</span>
+            <span className="text-blue-600 dark:text-blue-400">B2B: {summaries.totalB2B}</span>
+            <span className="text-orange-600 dark:text-orange-400">B2C: {summaries.totalB2C}</span>
           </div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-4 border">
-          <p className="text-xs text-secondary-light">Taxable Value</p>
-          <p className="text-2xl font-bold text-primary-dark">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+          <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+            Taxable Value
+          </p>
+          <p className="text-2xl font-bold" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
             ₹ {summaries.totalTaxable.toLocaleString("en-IN")}
           </p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-4 border">
-          <p className="text-xs text-secondary-light">Total GST</p>
-          <p className="text-2xl font-bold text-green-700">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+          <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+            Total GST
+          </p>
+          <p className="text-2xl font-bold text-green-700 dark:text-green-400">
             ₹ {summaries.totalGst.toLocaleString("en-IN")}
           </p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-4 border">
-          <p className="text-xs text-secondary-light">Avg Tax Rate</p>
-          <p className="text-2xl font-bold text-indigo-600">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+          <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+            Avg Tax Rate
+          </p>
+          <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
             {summaries.totalTaxable > 0
               ? ((summaries.totalGst / summaries.totalTaxable) * 100).toFixed(1)
               : 0}%
@@ -453,30 +537,34 @@ export default function GSTReport() {
 
       {/* B2B & B2C Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <div className="bg-white rounded-xl shadow-sm p-4 border">
-          <h3 className="font-semibold text-blue-700 flex items-center gap-2">
-            <span className="badge-b2b px-2 py-0.5 rounded-full text-xs">B2B</span>
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+          <h3 className="font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-2" style={{ fontFamily: "var(--font-heading)" }}>
+            <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200">
+              B2B
+            </span>
             Supplies ({summaries.totalB2B} invoices)
           </h3>
-          <div className="flex justify-between mt-2 text-sm">
+          <div className="flex justify-between mt-2 text-sm text-gray-700 dark:text-gray-200">
             <span>Taxable Value:</span>
             <span className="font-medium">₹ {summaries.b2bTaxable.toLocaleString("en-IN")}</span>
           </div>
-          <div className="flex justify-between text-sm">
+          <div className="flex justify-between text-sm text-gray-700 dark:text-gray-200">
             <span>Total GST:</span>
             <span className="font-medium">₹ {summaries.b2bGst.toLocaleString("en-IN")}</span>
           </div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-4 border">
-          <h3 className="font-semibold text-orange-700 flex items-center gap-2">
-            <span className="badge-b2c px-2 py-0.5 rounded-full text-xs">B2C</span>
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+          <h3 className="font-semibold text-orange-700 dark:text-orange-400 flex items-center gap-2" style={{ fontFamily: "var(--font-heading)" }}>
+            <span className="px-2 py-0.5 rounded-full text-xs bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-200">
+              B2C
+            </span>
             Supplies ({summaries.totalB2C} invoices)
           </h3>
-          <div className="flex justify-between mt-2 text-sm">
+          <div className="flex justify-between mt-2 text-sm text-gray-700 dark:text-gray-200">
             <span>Taxable Value:</span>
             <span className="font-medium">₹ {summaries.b2cTaxable.toLocaleString("en-IN")}</span>
           </div>
-          <div className="flex justify-between text-sm">
+          <div className="flex justify-between text-sm text-gray-700 dark:text-gray-200">
             <span>Total GST:</span>
             <span className="font-medium">₹ {summaries.b2cGst.toLocaleString("en-IN")}</span>
           </div>
@@ -484,50 +572,83 @@ export default function GSTReport() {
       </div>
 
       {/* HSN Summary Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
-        <h2 className="text-lg font-semibold p-4 border-b bg-slate-50 flex items-center gap-2">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-6">
+        <h2
+          className="text-lg font-semibold p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 flex items-center gap-2"
+          style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+        >
           <FileText size={18} /> HSN Summary
         </h2>
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-slate-100">
+          <table className="w-full min-w-[600px]">
+            <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
-                <th className="p-3 text-left text-sm">HSN/SAC</th>
-                <th className="p-3 text-left text-sm">Description</th>
-                <th className="p-3 text-right text-sm">Quantity</th>
-                <th className="p-3 text-left text-sm">Unit</th>
-                <th className="p-3 text-right text-sm">Taxable Value</th>
-                <th className="p-3 text-right text-sm">Tax Amount</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  HSN/SAC
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Description
+                </th>
+                <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Quantity
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Unit
+                </th>
+                <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Taxable Value
+                </th>
+                <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Tax Amount
+                </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {summaries.hsnSummary.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-4 text-center text-secondary">
+                  <td colSpan={6} className="p-4 text-center text-gray-500 dark:text-gray-400">
                     No HSN data available
                   </td>
                 </tr>
               ) : (
                 summaries.hsnSummary.map((h, idx) => (
-                  <tr key={idx} className="border-t hover:bg-gray-50">
-                    <td className="p-3 text-sm font-mono">{h.hsn_code}</td>
-                    <td className="p-3 text-sm">{h.description || "—"}</td>
-                    <td className="p-3 text-sm text-right">{h.quantity}</td>
-                    <td className="p-3 text-sm">{h.unit}</td>
-                    <td className="p-3 text-sm text-right">₹ {h.taxable_value.toLocaleString("en-IN")}</td>
-                    <td className="p-3 text-sm text-right">₹ {h.tax_amount.toLocaleString("en-IN")}</td>
+                  <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200 font-mono">
+                      {h.hsn_code}
+                    </td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">
+                      {h.description || "—"}
+                    </td>
+                    <td className="p-3 text-sm text-right text-gray-700 dark:text-gray-200">
+                      {h.quantity}
+                    </td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{h.unit}</td>
+                    <td className="p-3 text-sm text-right text-gray-700 dark:text-gray-200">
+                      ₹ {h.taxable_value.toLocaleString("en-IN")}
+                    </td>
+                    <td className="p-3 text-sm text-right text-gray-700 dark:text-gray-200">
+                      ₹ {h.tax_amount.toLocaleString("en-IN")}
+                    </td>
                   </tr>
                 ))
               )}
             </tbody>
-            <tfoot className="bg-slate-50 border-t font-medium">
+            <tfoot className="bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600 font-medium">
               <tr>
-                <td colSpan={4} className="p-3 text-right">Total</td>
-                <td className="p-3 text-right">
-                  ₹ {summaries.hsnSummary.reduce((s, h) => s + h.taxable_value, 0).toLocaleString("en-IN")}
+                <td colSpan={4} className="p-3 text-right text-gray-800 dark:text-gray-100">
+                  Total
                 </td>
-                <td className="p-3 text-right">
-                  ₹ {summaries.hsnSummary.reduce((s, h) => s + h.tax_amount, 0).toLocaleString("en-IN")}
+                <td className="p-3 text-right text-gray-800 dark:text-gray-100">
+                  ₹{" "}
+                  {summaries.hsnSummary
+                    .reduce((s, h) => s + h.taxable_value, 0)
+                    .toLocaleString("en-IN")}
+                </td>
+                <td className="p-3 text-right text-gray-800 dark:text-gray-100">
+                  ₹{" "}
+                  {summaries.hsnSummary
+                    .reduce((s, h) => s + h.tax_amount, 0)
+                    .toLocaleString("en-IN")}
                 </td>
               </tr>
             </tfoot>
@@ -536,23 +657,29 @@ export default function GSTReport() {
       </div>
 
       {/* JSON Preview */}
-      <div className="bg-gray-50 rounded-xl p-4 border">
-        <h2 className="text-lg font-semibold text-primary-dark mb-3 flex items-center gap-2">
+      <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+        <h2
+          className="text-lg font-semibold mb-3 flex items-center gap-2"
+          style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+        >
           <IndianRupee size={18} /> GSTR‑1 JSON Preview
         </h2>
-        <pre className="text-xs bg-white p-3 rounded border max-h-80 overflow-auto">
+        <pre className="text-xs bg-white dark:bg-gray-700 p-3 rounded border border-gray-200 dark:border-gray-600 max-h-80 overflow-auto text-gray-800 dark:text-gray-200">
           {isLoading
             ? "Loading invoice data..."
             : invoices.length === 0
             ? "No finalized invoices found for the selected period."
             : org
             ? JSON.stringify(buildGSTR1JSON(invoices, org, startDate, endDate), null, 2)
-            : "Loading organization details..."}
+            : "Organization details not loaded. Please refresh."}
         </pre>
-        <p className="text-xs text-secondary-light mt-2">
+        <p
+          className="text-xs text-gray-500 dark:text-gray-400 mt-2"
+          style={{ fontFamily: "var(--font-body)" }}
+        >
           JSON follows the GST portal offline utility schema (v1.0.0). Contains B2B, B2C, and HSN summary.
         </p>
       </div>
-    </AdminLayout>
+    </div>
   );
 }

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Plus, Edit3, Trash2, X } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import {
   getChartOfAccounts,
   createAccount,
@@ -113,7 +113,7 @@ export default function ChartOfAccounts() {
   }, {});
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">Chart of Accounts</h1>
         <button
@@ -252,6 +252,6 @@ export default function ChartOfAccounts() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

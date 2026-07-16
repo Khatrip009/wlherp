@@ -49,10 +49,16 @@ export default function FinanceHub() {
   const handleMenuClick = ({ key }) => setActiveKey(key);
 
   return (
-    <Layout style={{ minHeight: "100vh", background: "#fff" }}>
-      <Sider width={220} theme="light" style={{ borderRight: "1px solid #f0f0f0" }}>
-        <div style={{ padding: "16px 0" }}>
-          <Title level={5} style={{ paddingLeft: 24, marginBottom: 8 }}>
+    // Remove fixed white background; allow Ant Design tokens to control color.
+    // Use a wrapper with tailwind classes for dark mode fallback if needed.
+    <Layout style={{ minHeight: "100vh" }} className="bg-white dark:bg-gray-800">
+      <Sider
+        width={220}
+        className="border-r border-gray-200 dark:border-gray-700"
+        // Remove fixed background, rely on token configuration for dark/light
+      >
+        <div className="px-6 py-4">
+          <Title level={5} className="!mb-2" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
             Finance Hub
           </Title>
         </div>
@@ -68,10 +74,12 @@ export default function FinanceHub() {
         />
       </Sider>
 
-      <Content style={{ padding: 24, background: "#fff" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <Title level={4}>{currentItem?.label || "Finance"}</Title>
-          <div>
+      <Content className="p-6" style={{ fontFamily: "var(--font-body)" }}>
+        <div className="flex justify-between items-center mb-4">
+          <Title level={4} style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+            {currentItem?.label || "Finance"}
+          </Title>
+          <div className="flex gap-2">
             {activeKey === "invoices" && (
               <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate("/invoices/new")}>
                 New Invoice
@@ -85,7 +93,6 @@ export default function FinanceHub() {
           </div>
         </div>
 
-        {/* ✅ Pass noLayout to all child components */}
         <ComponentToRender noLayout={true} />
       </Content>
     </Layout>

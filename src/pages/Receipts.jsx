@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Printer, Download, Filter, X, Layers, BookOpen, GraduationCap, User } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import { supabase } from "../api/supabase";
 import { generateReceiptPdf } from "../utils/receiptPdf";
 import BackButton from "../components/BackButton";
@@ -343,5 +343,5 @@ export default function Receipts({ noLayout = false }) {
     </>
   );
 
-  return noLayout ? content : <AdminLayout>{content}</AdminLayout>;
+  return noLayout ? content : < >{content}</ >;
 }

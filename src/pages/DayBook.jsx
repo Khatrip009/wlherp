@@ -3,7 +3,6 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Printer, Calendar, ChevronDown, ChevronRight } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
 import { useOrg } from "../context/OrganizationContext";
@@ -13,7 +12,6 @@ export default function DayBook() {
   const [selectedDate, setSelectedDate] = useState(today);
   const [expandedVoucher, setExpandedVoucher] = useState(null);
 
-  // ── Branch & Financial Year context ──
   const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
@@ -24,7 +22,7 @@ export default function DayBook() {
     enabled: !!currentOrg?.id,
   });
 
-  // Fetch vouchers for the selected date – now scoped
+  // Fetch vouchers for the selected date – scoped
   const { data: vouchers = [], isLoading } = useQuery({
     queryKey: ["day-book", selectedDate, branchId, financialYearId],
     queryFn: async () => {
@@ -49,8 +47,8 @@ export default function DayBook() {
            )`
         )
         .eq("entry_date", selectedDate)
-        .eq("branch_id", branchId)                // ← scoped
-        .eq("financial_year_id", financialYearId) // ← scoped
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .order("voucher_no");
 
       if (error) throw error;
@@ -59,7 +57,7 @@ export default function DayBook() {
     enabled: !!selectedDate && !!branchId && !!financialYearId,
   });
 
-  // Group vouchers by type (unchanged)
+  // Group vouchers by type
   const groupedVouchers = vouchers.reduce((acc, v) => {
     const typeName = v.voucher_types?.name || "Other";
     if (!acc[typeName]) acc[typeName] = [];
@@ -67,7 +65,6 @@ export default function DayBook() {
     return acc;
   }, {});
 
-  // Totals (unchanged)
   const totalDebit = vouchers.reduce((s, v) => {
     return s + (v.journal_entries?.journal_entry_lines || []).reduce((sum, l) => sum + (parseFloat(l.debit) || 0), 0);
   }, 0);
@@ -75,7 +72,6 @@ export default function DayBook() {
     return s + (v.journal_entries?.journal_entry_lines || []).reduce((sum, l) => sum + (parseFloat(l.credit) || 0), 0);
   }, 0);
 
-  // Print – uses org data (unchanged, except small addition to query remains scoped)
   const handlePrint = () => {
     const logoUrl = org?.logo_dark_url || "/ShreeVidhyaDark.png";
     const orgName = org?.company_name || "ShreeVidhya Academy";
@@ -161,50 +157,79 @@ export default function DayBook() {
   };
 
   return (
-    <AdminLayout>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">Day Book</h1>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1
+            className="text-2xl sm:text-3xl font-bold"
+            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+          >
+            Day Book
+          </h1>
+          <p
+            className="text-sm text-gray-600 dark:text-gray-400 mt-1"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            View and print daily voucher entries
+          </p>
+        </div>
         <button
           onClick={handlePrint}
-          className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
+          style={{ fontFamily: "var(--font-body)" }}
         >
           <Printer size={16} /> Print
         </button>
       </div>
 
-      <div className="mb-6 flex items-center gap-3">
-        <Calendar size={18} className="text-primary" />
+      {/* Date selector */}
+      <div className="flex items-center gap-3">
+        <Calendar size={18} className="text-primary dark:text-primary-light" />
         <input
           type="date"
           value={selectedDate}
           onChange={(e) => setSelectedDate(e.target.value)}
-          className="border rounded p-2.5 text-sm"
+          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+          style={{ fontFamily: "var(--font-body)" }}
         />
       </div>
 
       {/* Totals Summary */}
       {vouchers.length > 0 && (
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-white rounded-xl p-4 shadow-sm border text-center">
-            <p className="text-xs text-secondary-dark">Total Vouchers</p>
-            <p className="text-xl font-bold text-primary-dark">{vouchers.length}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 text-center">
+            <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+              Total Vouchers
+            </p>
+            <p className="text-xl font-bold" style={{ color: "var(--color-primary)" }}>
+              {vouchers.length}
+            </p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm border text-center">
-            <p className="text-xs text-secondary-dark">Total Debit</p>
-            <p className="text-xl font-bold text-green-600">₹ {totalDebit.toLocaleString("en-IN")}</p>
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 text-center">
+            <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+              Total Debit
+            </p>
+            <p className="text-xl font-bold text-green-600 dark:text-green-400">
+              ₹ {totalDebit.toLocaleString("en-IN")}
+            </p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm border text-center">
-            <p className="text-xs text-secondary-dark">Total Credit</p>
-            <p className="text-xl font-bold text-red-600">₹ {totalCredit.toLocaleString("en-IN")}</p>
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 text-center">
+            <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+              Total Credit
+            </p>
+            <p className="text-xl font-bold text-red-600 dark:text-red-400">
+              ₹ {totalCredit.toLocaleString("en-IN")}
+            </p>
           </div>
         </div>
       )}
 
       {isLoading ? (
-        <p className="text-center py-8">Loading day book…</p>
+        <div className="text-center py-8 text-gray-500 dark:text-gray-400">Loading day book…</div>
       ) : Object.keys(groupedVouchers).length === 0 ? (
-        <div className="bg-white rounded-xl p-10 shadow-sm text-center text-secondary">
-          <Calendar size={40} className="mx-auto mb-3 text-secondary-light" />
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-10 shadow-sm text-center text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+          <Calendar size={40} className="mx-auto mb-3 opacity-50" />
           <p className="text-lg">No vouchers for this date</p>
           <p className="text-sm">Select a different date or create new vouchers.</p>
         </div>
@@ -212,54 +237,64 @@ export default function DayBook() {
         <div className="space-y-4">
           {Object.entries(groupedVouchers).map(([type, vouchs]) => (
             <div key={type}>
-              <h2 className="text-lg font-semibold text-primary-dark mb-2">{type}</h2>
+              <h2
+                className="text-lg font-semibold mb-2"
+                style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+              >
+                {type}
+              </h2>
               {vouchs.map((v) => {
                 const lines = v.journal_entries?.journal_entry_lines || [];
                 const isExpanded = expandedVoucher === v.id;
                 return (
-                  <div key={v.id} className="bg-white rounded-xl shadow-sm border mb-2 overflow-hidden">
+                  <div
+                    key={v.id}
+                    className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-2 overflow-hidden"
+                  >
                     <button
                       onClick={() => setExpandedVoucher(isExpanded ? null : v.id)}
-                      className="w-full flex items-center justify-between p-4 hover:bg-gray-50 text-left"
+                      className="w-full flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-gray-700 text-left transition-colors"
                     >
                       <div>
-                        <span className="font-medium text-primary-dark">
+                        <span className="font-medium" style={{ color: "var(--color-primary)" }}>
                           {v.voucher_no}
                         </span>
-                        <span className="text-sm text-secondary-dark ml-4">
+                        <span className="text-sm text-gray-600 dark:text-gray-300 ml-4">
                           {v.reference || "—"}
                         </span>
-                        <span className="text-xs text-secondary ml-2">
+                        <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
                           ({v.description || "No description"})
                         </span>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="text-sm text-secondary">
+                        <span className="text-sm text-gray-500 dark:text-gray-400">
                           {lines.length} line{lines.length !== 1 ? "s" : ""}
                         </span>
                         {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                       </div>
                     </button>
                     {isExpanded && (
-                      <div className="p-4 border-t bg-gray-50">
+                      <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700">
                         <table className="w-full text-sm">
-                          <thead className="bg-slate-100">
+                          <thead className="bg-gray-100 dark:bg-gray-600">
                             <tr>
-                              <th className="p-2 text-left">Account</th>
-                              <th className="p-2 text-left">Description</th>
-                              <th className="p-2 text-right">Debit</th>
-                              <th className="p-2 text-right">Credit</th>
+                              <th className="p-2 text-left text-gray-600 dark:text-gray-200">Account</th>
+                              <th className="p-2 text-left text-gray-600 dark:text-gray-200">Description</th>
+                              <th className="p-2 text-right text-gray-600 dark:text-gray-200">Debit</th>
+                              <th className="p-2 text-right text-gray-600 dark:text-gray-200">Credit</th>
                             </tr>
                           </thead>
-                          <tbody>
+                          <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
                             {lines.map((line, idx) => (
-                              <tr key={idx} className="border-t">
-                                <td className="p-2">{line.chart_of_accounts?.account_name || "—"}</td>
-                                <td className="p-2">{line.description}</td>
-                                <td className="p-2 text-right text-green-600">
+                              <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                <td className="p-2 text-gray-700 dark:text-gray-200">
+                                  {line.chart_of_accounts?.account_name || "—"}
+                                </td>
+                                <td className="p-2 text-gray-700 dark:text-gray-200">{line.description}</td>
+                                <td className="p-2 text-right text-green-600 dark:text-green-400">
                                   {line.debit > 0 ? `₹ ${Number(line.debit).toLocaleString("en-IN")}` : ""}
                                 </td>
-                                <td className="p-2 text-right text-red-600">
+                                <td className="p-2 text-right text-red-600 dark:text-red-400">
                                   {line.credit > 0 ? `₹ ${Number(line.credit).toLocaleString("en-IN")}` : ""}
                                 </td>
                               </tr>
@@ -269,7 +304,7 @@ export default function DayBook() {
                         <div className="mt-3 text-right">
                           <Link
                             to={`/vouchers/${v.id}`}
-                            className="text-primary text-sm hover:underline"
+                            className="text-primary hover:underline text-sm"
                           >
                             View full voucher →
                           </Link>
@@ -283,6 +318,6 @@ export default function DayBook() {
           ))}
         </div>
       )}
-    </AdminLayout>
+    </div>
   );
 }

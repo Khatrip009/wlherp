@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
-import AdminLayout from "../layouts/AdminLayout";
+
 import { Download, Printer } from "lucide-react";
 import toast from "react-hot-toast";
 import Papa from "papaparse";
@@ -244,7 +244,7 @@ export default function TaxReport() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">Tax Report</h1>
         <p className="text-sm text-secondary-dark font-montserrat mt-1">
@@ -334,6 +334,6 @@ export default function TaxReport() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

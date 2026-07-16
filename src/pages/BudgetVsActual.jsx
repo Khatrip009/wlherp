@@ -3,7 +3,6 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Printer, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
-import AdminLayout from "../layouts/AdminLayout";
 import { getBudgetVsActual } from "../services/budgetService";
 import { getOrganization } from "../services/organizationService";
 import { useOrg } from "../context/OrganizationContext";
@@ -17,7 +16,6 @@ export default function BudgetVsActual() {
   const [startDate, setStartDate] = useState(firstOfMonth);
   const [endDate, setEndDate] = useState(today);
 
-  // ── Get current organisation, branch, and financial year from context ──
   const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
@@ -28,7 +26,6 @@ export default function BudgetVsActual() {
     enabled: !!currentOrg?.id,
   });
 
-  // Budget vs Actual report – now scoped
   const { data: report = [], isLoading } = useQuery({
     queryKey: ["budget-vs-actual", startDate, endDate, branchId, financialYearId],
     queryFn: () => getBudgetVsActual(startDate, endDate, branchId, financialYearId),
@@ -79,79 +76,129 @@ export default function BudgetVsActual() {
   };
 
   return (
-    <AdminLayout>
-      <Link to="/budgets" className="inline-flex items-center gap-2 text-secondary hover:text-primary-dark mb-4 text-sm">
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+      {/* Back to Budgets */}
+      <Link
+        to="/budgets"
+        className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-primary dark:hover:text-primary-light text-sm"
+        style={{ fontFamily: "var(--font-body)" }}
+      >
         <ArrowLeft size={18} /> Back to Budgets
       </Link>
 
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">Budget vs Actual</h1>
-        <button onClick={handlePrint} className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+            Budget vs Actual
+          </h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>
+            Compare budgeted amounts against actual spending
+          </p>
+        </div>
+        <button
+          onClick={handlePrint}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
+          style={{ fontFamily: "var(--font-body)" }}
+        >
           <Printer size={16} /> Print
         </button>
       </div>
 
-      <div className="flex gap-4 mb-6">
+      {/* Date selectors */}
+      <div className="flex flex-wrap gap-4">
         <div>
-          <label className="text-sm font-medium mr-2">From:</label>
-          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="border rounded p-2 text-sm" />
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2" style={{ fontFamily: "var(--font-body)" }}>
+            From:
+          </label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+          />
         </div>
         <div>
-          <label className="text-sm font-medium mr-2">To:</label>
-          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="border rounded p-2 text-sm" />
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2" style={{ fontFamily: "var(--font-body)" }}>
+            To:
+          </label>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+          />
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-white rounded-xl p-4 shadow-sm border text-center">
-          <p className="text-xs text-secondary-dark">Total Budgeted</p>
-          <p className="text-xl font-bold text-primary-dark">₹ {totalBudget.toLocaleString("en-IN")}</p>
+      {/* Summary cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 text-center">
+          <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+            Total Budgeted
+          </p>
+          <p className="text-xl font-bold" style={{ color: "var(--color-primary)" }}>
+            ₹ {totalBudget.toLocaleString("en-IN")}
+          </p>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border text-center">
-          <p className="text-xs text-secondary-dark">Total Actual</p>
-          <p className="text-xl font-bold text-green-600">₹ {totalActual.toLocaleString("en-IN")}</p>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 text-center">
+          <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+            Total Actual
+          </p>
+          <p className="text-xl font-bold text-green-600 dark:text-green-400">
+            ₹ {totalActual.toLocaleString("en-IN")}
+          </p>
         </div>
-        <div className={`bg-white rounded-xl p-4 shadow-sm border text-center ${totalVariance > 0 ? "border-red-300" : "border-green-300"}`}>
-          <p className="text-xs text-secondary-dark">Variance</p>
-          <p className={`text-xl font-bold ${totalVariance > 0 ? "text-red-600" : "text-green-600"}`}>
+        <div className={`bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border text-center ${
+          totalVariance > 0 ? "border-red-300 dark:border-red-700" : "border-green-300 dark:border-green-700"
+        }`}>
+          <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+            Variance
+          </p>
+          <p className={`text-xl font-bold ${totalVariance > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
             {totalVariance > 0 ? "+" : ""}₹ {totalVariance.toLocaleString("en-IN")}
           </p>
         </div>
       </div>
 
+      {/* Report Table */}
       {isLoading ? (
-        <p className="text-center py-8">Loading…</p>
+        <p className="text-center py-8 text-gray-500 dark:text-gray-400">Loading…</p>
       ) : report.length === 0 ? (
-        <div className="bg-white rounded-xl p-10 text-center text-secondary">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-10 text-center text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
           <p>No budget data for the selected period.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div id="bva-table">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-100">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div id="bva-table" className="overflow-x-auto">
+            <table className="w-full min-w-[700px] text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>
-                  <th className="p-3 text-left">Account</th>
-                  <th className="p-3 text-left">Period</th>
-                  <th className="p-3 text-right">Budgeted</th>
-                  <th className="p-3 text-right">Actual</th>
-                  <th className="p-3 text-right">Variance</th>
-                  <th className="p-3 text-right">Variance %</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Account</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Period</th>
+                  <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Budgeted</th>
+                  <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actual</th>
+                  <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Variance</th>
+                  <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Variance %</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {report.map((r) => (
-                  <tr key={r.id} className="border-t hover:bg-gray-50">
-                    <td className="p-3">{r.account_code} - {r.account_name}</td>
-                    <td className="p-3 text-sm">
+                  <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    <td className="p-3 text-gray-700 dark:text-gray-200">{r.account_code} - {r.account_name}</td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">
                       {r.period_start} → {r.period_end}
                     </td>
-                    <td className="p-3 text-right">₹ {r.budgeted.toLocaleString("en-IN")}</td>
-                    <td className="p-3 text-right">₹ {r.actual.toLocaleString("en-IN")}</td>
-                    <td className={`p-3 text-right font-medium ${r.variance > 0 ? "text-red-600" : "text-green-600"}`}>
+                    <td className="p-3 text-right text-gray-700 dark:text-gray-200">₹ {r.budgeted.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-right text-gray-700 dark:text-gray-200">₹ {r.actual.toLocaleString("en-IN")}</td>
+                    <td className={`p-3 text-right font-medium ${
+                      r.variance > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
+                    }`}>
                       {r.variance > 0 ? "+" : ""}₹ {r.variance.toLocaleString("en-IN")}
                     </td>
-                    <td className={`p-3 text-right ${r.variance > 0 ? "text-red-600" : "text-green-600"}`}>
+                    <td className={`p-3 text-right ${
+                      r.variance > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
+                    }`}>
                       {r.variancePercent}%
                     </td>
                   </tr>
@@ -161,6 +208,6 @@ export default function BudgetVsActual() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </div>
   );
 }

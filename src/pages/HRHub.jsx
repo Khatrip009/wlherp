@@ -1,3 +1,4 @@
+// src/pages/HRHub.jsx
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -8,8 +9,6 @@ import {
   Clock,
   Calendar,
   CreditCard,
-  FileText,
-  BarChart2,
   Settings,
   UserPlus,
   ChevronRight,
@@ -17,7 +16,7 @@ import {
   X,
   AlertCircle,
   TrendingUp,
-  ListChecks,
+  ListChecks, BarChart2,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import TeacherForm from "../components/TeacherForm";
@@ -29,18 +28,14 @@ import { useOrg } from "../context/OrganizationContext";
 
 export default function HRHub() {
   const queryClient = useQueryClient();
-  const { branch, selectedFinancialYear, theme } = useOrg();
+  const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
 
-  const primaryColor = theme?.primary_color || "#0D47A1";
-  const headingFont = theme?.font_heading || "Righteous";
-  const bodyFont = theme?.font_body || "Montserrat";
-
   const [showAddEmployee, setShowAddEmployee] = useState(false);
 
-  // ─── 1. Active teachers (total count) ───────────────────
+  // ─── 1. Active teachers ─────────────────────────────────
   const { data: teachers = [], isLoading: teachersLoading } = useQuery({
     queryKey: ["active-teachers-count", branchId, financialYearId],
     queryFn: () => getActiveTeachers(branchId, financialYearId),
@@ -119,174 +114,129 @@ export default function HRHub() {
     onError: (err) => toast.error(err.message || "Failed to create employee"),
   });
 
-  // ─── Quick action cards (UPDATED with all actions) ──────
+  // ─── Quick action cards ─────────────────────────────────
   const quickActions = [
     {
       title: "Employees",
       icon: Users,
       link: "/teachers",
-      color: "bg-blue-100 text-blue-700",
+      color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200",
     },
     {
       title: "Attendance",
       icon: Clock,
       link: "/teacher-attendance",
-      color: "bg-green-100 text-green-700",
+      color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200",
     },
     {
       title: "Attendance History",
       icon: ListChecks,
       link: "/teacher-daily-attendance-report",
-      color: "bg-cyan-100 text-cyan-700",
+      color: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-200",
     },
     {
       title: "Leave Management",
       icon: Calendar,
       link: "/leave-management",
-      color: "bg-purple-100 text-purple-700",
+      color: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-200",
     },
     {
       title: "Salary Setup",
       icon: Settings,
       link: "/salary-setup",
-      color: "bg-orange-100 text-orange-700",
+      color: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-200",
     },
     {
       title: "Generate Salaries",
       icon: TrendingUp,
       link: "/generate-salaries",
-      color: "bg-indigo-100 text-indigo-700",
+      color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-200",
     },
     {
       title: "Salary Payments",
       icon: CreditCard,
       link: "/salary-payments",
-      color: "bg-rose-100 text-rose-700",
+      color: "bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-200",
     },
     {
       title: "Salary Report",
       icon: BarChart2,
       link: "/salary-report",
-      color: "bg-pink-100 text-pink-700",
+      color: "bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-200",
     },
   ];
 
-  // ─── Helper: format currency ─────────────────────────────
-  const formatCurrency = (amount) =>
-    `₹ ${Number(amount).toLocaleString("en-IN")}`;
-
-  // ─── TeacherForm submission handler ──────────────────────
   const handleTeacherSubmit = (payload, context) => {
     createTeacherMutation.mutate(payload);
   };
 
-  // ─── Stats cards ──────────────────────────────────────────
   const statCards = [
-    {
-      label: "Total Employees",
-      value: teachersLoading ? "..." : teachers.length,
-      icon: Users,
-      valueColor: primaryColor,
-    },
-    {
-      label: "Present Today",
-      value: attendanceLoading ? "..." : presentToday,
-      icon: UserCheck,
-      valueColor: "text-green-600",
-    },
-    {
-      label: "On Leave Today",
-      value: attendanceLoading ? "..." : onLeaveToday,
-      icon: UserX,
-      valueColor: "text-yellow-600",
-    },
-    {
-      label: "Pending Leaves",
-      value: leavesLoading ? "..." : pendingLeaves.length,
-      icon: AlertCircle,
-      valueColor: "text-red-500",
-    },
+    { label: "Total Employees", value: teachersLoading ? "..." : teachers.length, icon: Users },
+    { label: "Present Today", value: attendanceLoading ? "..." : presentToday, icon: UserCheck },
+    { label: "On Leave Today", value: attendanceLoading ? "..." : onLeaveToday, icon: UserX },
+    { label: "Pending Leaves", value: leavesLoading ? "..." : pendingLeaves.length, icon: AlertCircle },
   ];
 
   return (
-    <>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1
-            className="text-3xl"
-            style={{ fontFamily: headingFont, color: primaryColor }}
+            className="text-2xl sm:text-3xl font-bold"
+            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
           >
             HR Management
           </h1>
           <p
-            className="text-sm text-secondary-dark mt-1"
-            style={{ fontFamily: bodyFont }}
+            className="text-sm text-gray-600 dark:text-gray-400 mt-1"
+            style={{ fontFamily: "var(--font-body)" }}
           >
             Complete employee management dashboard
           </p>
         </div>
-        <div className="flex gap-2 mt-2 sm:mt-0">
-          <button
-            onClick={() => setShowAddEmployee(true)}
-            className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition flex items-center gap-2 text-sm"
-            style={{ fontFamily: bodyFont }}
-          >
-            <UserPlus size={18} /> Add Employee
-          </button>
-        </div>
+        <button
+          onClick={() => setShowAddEmployee(true)}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
+          style={{ fontFamily: "var(--font-body)" }}
+        >
+          <UserPlus size={18} /> Add Employee
+        </button>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((card, idx) => (
           <div
             key={idx}
-            className="bg-white rounded-xl shadow-sm p-5 border border-secondary-light"
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5 border border-gray-200 dark:border-gray-700"
           >
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-secondary-light" style={{ fontFamily: bodyFont }}>
+                <p
+                  className="text-xs text-gray-500 dark:text-gray-400"
+                  style={{ fontFamily: "var(--font-body)" }}
+                >
                   {card.label}
                 </p>
                 <p
-                  className={`text-2xl font-bold mt-1 ${
-                    typeof card.valueColor === "string" && card.valueColor.startsWith("text-")
-                      ? card.valueColor
-                      : ""
-                  }`}
-                  style={
-                    typeof card.valueColor === "string" && card.valueColor.startsWith("#")
-                      ? { fontFamily: headingFont, color: card.valueColor }
-                      : { fontFamily: headingFont }
-                  }
+                  className="text-2xl font-bold mt-1"
+                  style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
                 >
                   {card.value}
                 </p>
               </div>
-              <card.icon
-                size={32}
-                className={`${
-                  typeof card.valueColor === "string" && card.valueColor.startsWith("text-")
-                    ? card.valueColor
-                    : ""
-                } opacity-60`}
-                style={
-                  typeof card.valueColor === "string" && card.valueColor.startsWith("#")
-                    ? { color: card.valueColor }
-                    : {}
-                }
-              />
+              <card.icon size={32} className="text-primary opacity-60" />
             </div>
           </div>
         ))}
       </div>
 
       {/* Quick Actions Grid */}
-      <div className="mb-6">
+      <div>
         <h2
           className="text-lg font-semibold mb-3"
-          style={{ fontFamily: headingFont, color: primaryColor }}
+          style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
         >
           Quick Actions
         </h2>
@@ -295,17 +245,17 @@ export default function HRHub() {
             <Link
               key={action.title}
               to={action.link}
-              className="bg-white rounded-xl shadow-sm border border-secondary-light p-4 hover:shadow-md transition hover:border-primary group"
+              className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 hover:shadow-md transition-all hover:border-primary dark:hover:border-primary group"
             >
               <div className="flex flex-col items-center text-center">
                 <div
-                  className={`p-3 rounded-full ${action.color} mb-2 group-hover:scale-105 transition`}
+                  className={`p-3 rounded-full ${action.color} mb-2 group-hover:scale-105 transition-transform`}
                 >
                   <action.icon size={20} />
                 </div>
                 <span
-                  className="text-sm font-medium text-secondary-dark"
-                  style={{ fontFamily: bodyFont }}
+                  className="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  style={{ fontFamily: "var(--font-body)" }}
                 >
                   {action.title}
                 </span>
@@ -318,11 +268,11 @@ export default function HRHub() {
       {/* Two-column: Recent Leaves + Recent Payments */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Leave Requests */}
-        <div className="bg-white rounded-xl shadow-sm border border-secondary-light overflow-hidden">
-          <div className="px-5 py-3 border-b border-secondary-light flex items-center justify-between">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3
               className="font-semibold"
-              style={{ fontFamily: headingFont, color: primaryColor }}
+              style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
             >
               Recent Leave Requests
             </h3>
@@ -335,24 +285,28 @@ export default function HRHub() {
           </div>
           <div className="p-3 max-h-72 overflow-y-auto">
             {leavesLoading ? (
-              <div className="text-center py-4 text-secondary">Loading...</div>
+              <div className="text-center py-4 text-gray-500 dark:text-gray-400">
+                Loading...
+              </div>
             ) : pendingLeaves.length === 0 ? (
-              <div className="text-center py-4 text-secondary">No pending requests.</div>
+              <div className="text-center py-4 text-gray-500 dark:text-gray-400">
+                No pending requests.
+              </div>
             ) : (
               <div className="space-y-3">
                 {pendingLeaves.slice(0, 5).map((leave) => (
                   <div
                     key={leave.id}
-                    className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                    className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded-lg"
                   >
                     <div className="flex-1">
-                      <p className="text-sm font-medium">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
                         {leave.teachers?.first_name} {leave.teachers?.last_name}
                       </p>
-                      <p className="text-xs text-secondary">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
                         {leave.start_date} → {leave.end_date}
                       </p>
-                      <p className="text-xs text-secondary truncate max-w-[150px]">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[150px]">
                         {leave.reason || "No reason"}
                       </p>
                     </div>
@@ -364,7 +318,7 @@ export default function HRHub() {
                             status: "Approved",
                           })
                         }
-                        className="p-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200 transition"
+                        className="p-1.5 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-200 rounded hover:bg-green-200 dark:hover:bg-green-800 transition"
                         title="Approve"
                       >
                         <Check size={16} />
@@ -378,7 +332,7 @@ export default function HRHub() {
                             adminRemarks: remark || "",
                           });
                         }}
-                        className="p-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 transition"
+                        className="p-1.5 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded hover:bg-red-200 dark:hover:bg-red-800 transition"
                         title="Reject"
                       >
                         <X size={16} />
@@ -392,11 +346,11 @@ export default function HRHub() {
         </div>
 
         {/* Recent Salary Payments */}
-        <div className="bg-white rounded-xl shadow-sm border border-secondary-light overflow-hidden">
-          <div className="px-5 py-3 border-b border-secondary-light flex items-center justify-between">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3
               className="font-semibold"
-              style={{ fontFamily: headingFont, color: primaryColor }}
+              style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
             >
               Recent Salary Payments
             </h3>
@@ -409,30 +363,34 @@ export default function HRHub() {
           </div>
           <div className="p-3 max-h-72 overflow-y-auto">
             {paymentsLoading ? (
-              <div className="text-center py-4 text-secondary">Loading...</div>
+              <div className="text-center py-4 text-gray-500 dark:text-gray-400">
+                Loading...
+              </div>
             ) : recentPayments.length === 0 ? (
-              <div className="text-center py-4 text-secondary">No payments yet.</div>
+              <div className="text-center py-4 text-gray-500 dark:text-gray-400">
+                No payments yet.
+              </div>
             ) : (
               <div className="space-y-3">
                 {recentPayments.map((payment) => (
                   <div
                     key={payment.id}
-                    className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                    className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded-lg"
                   >
                     <div className="flex-1">
-                      <p className="text-sm font-medium">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
                         {payment.teachers?.first_name} {payment.teachers?.last_name}
                       </p>
-                      <p className="text-xs text-secondary">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
                         {payment.payment_date}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-semibold text-green-700">
-                        {formatCurrency(payment.net_amount)}
+                      <p className="text-sm font-semibold text-green-700 dark:text-green-400">
+                        ₹ {Number(payment.net_amount).toLocaleString("en-IN")}
                       </p>
-                      <p className="text-xs text-secondary">
-                        Gross: {formatCurrency(payment.amount)}
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Gross: ₹ {Number(payment.amount).toLocaleString("en-IN")}
                       </p>
                     </div>
                   </div>
@@ -448,12 +406,10 @@ export default function HRHub() {
         <TeacherForm
           onSubmit={handleTeacherSubmit}
           onClose={() => {
-            if (!createTeacherMutation.isPending) {
-              setShowAddEmployee(false);
-            }
+            if (!createTeacherMutation.isPending) setShowAddEmployee(false);
           }}
         />
       )}
-    </>
+    </div>
   );
-} 
+}

@@ -1,3 +1,4 @@
+// src/pages/AttendanceReports.jsx
 import React, { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -9,7 +10,7 @@ import {
   Layers,
 } from "lucide-react";
 import Papa from "papaparse";
-import AdminLayout from "../layouts/AdminLayout";
+
 import BackButton from "../components/BackButton";
 import { useOrg } from "../context/OrganizationContext";
 
@@ -102,22 +103,23 @@ export default function AttendanceReports() {
   }
 
   return (
-    <AdminLayout>
-      <BackButton to="/academics-hub" label="Academics" />
-      <div className="mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+      {/* Header */}
+      <div>
+        <BackButton to="/academics-hub" label="Academics" />
+        <h1 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
           Attendance Reports
         </h1>
-        <p className="text-sm text-secondary-dark font-montserrat mt-1">
+        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>
           View student‑wise attendance percentages
         </p>
       </div>
 
       {/* Filters Card */}
-      <div className="bg-white rounded-xl p-5 shadow-sm mb-6 border border-secondary-light">
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-200 dark:border-gray-700">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label className="block text-sm mb-1 text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>
               <Layers size={14} className="inline mr-1" />
               Batch
             </label>
@@ -125,7 +127,7 @@ export default function AttendanceReports() {
               name="batch_id"
               value={filters.batch_id}
               onChange={handleFilterChange}
-              className="w-full border border-secondary-light rounded p-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 text-sm"
             >
               <option value="">All Batches</option>
               {batches.map((b) => (
@@ -136,7 +138,7 @@ export default function AttendanceReports() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label className="block text-sm mb-1 text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>
               <Layers size={14} className="inline mr-1" />
               Medium
             </label>
@@ -144,7 +146,7 @@ export default function AttendanceReports() {
               name="medium_id"
               value={filters.medium_id}
               onChange={handleFilterChange}
-              className="w-full border border-secondary-light rounded p-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 text-sm"
             >
               <option value="">All Mediums</option>
               {mediums.map((m) => (
@@ -155,7 +157,7 @@ export default function AttendanceReports() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label className="block text-sm mb-1 text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>
               <Calendar size={14} className="inline mr-1" />
               Start Date
             </label>
@@ -164,11 +166,11 @@ export default function AttendanceReports() {
               name="start_date"
               value={filters.start_date}
               onChange={handleFilterChange}
-              className="w-full border border-secondary-light rounded p-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 text-sm"
             />
           </div>
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label className="block text-sm mb-1 text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>
               <Calendar size={14} className="inline mr-1" />
               End Date
             </label>
@@ -177,21 +179,22 @@ export default function AttendanceReports() {
               name="end_date"
               value={filters.end_date}
               onChange={handleFilterChange}
-              className="w-full border border-secondary-light rounded p-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 text-sm"
             />
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => fetchReport()}
               disabled={reportLoading}
-              className="flex-1 bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat text-sm transition disabled:opacity-50 flex items-center justify-center gap-2"
+              className="flex-1 bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-medium text-sm transition disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{ fontFamily: "var(--font-body)" }}
             >
               <BarChart3 size={18} />
               {reportLoading ? "Loading…" : "Generate"}
             </button>
             <button
               onClick={clearFilters}
-              className="border border-secondary-light px-3 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg transition"
+              className="border border-gray-300 dark:border-gray-600 px-3 py-2.5 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
               title="Clear filters"
             >
               <X size={18} />
@@ -202,10 +205,11 @@ export default function AttendanceReports() {
 
       {/* Report Actions */}
       {report.length > 0 && (
-        <div className="flex justify-end mb-4">
+        <div className="flex justify-end">
           <button
             onClick={exportCSV}
-            className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+            style={{ fontFamily: "var(--font-body)" }}
           >
             <Download size={18} /> Export CSV
           </button>
@@ -213,74 +217,91 @@ export default function AttendanceReports() {
       )}
 
       {/* Results Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         {reportLoading ? (
-          <div className="p-8 text-center text-secondary">
-            <BarChart3 size={32} className="mx-auto text-secondary-light mb-2 animate-pulse" />
+          <div className="p-8 text-center text-gray-500 dark:text-gray-400">
+            <BarChart3 size={32} className="mx-auto mb-2 animate-pulse" />
             <p>Generating report…</p>
           </div>
         ) : report.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[800px]">
-              <thead className="bg-slate-100 border-b border-secondary-light">
+              <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>
-                  <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Admission No
                   </th>
-                  <th className="text-left text-sm font-montserrat text-secondary-dark">
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Student
                   </th>
-                  <th className="text-left text-sm font-montserrat text-secondary-dark">
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Batch
                   </th>
-                  <th className="text-left text-sm font-montserrat text-secondary-dark">
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Medium
                   </th>
-                  <th className="text-left text-sm font-montserrat text-secondary-dark">
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Total Sessions
                   </th>
-                  <th className="text-left text-sm font-montserrat text-secondary-dark">
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Present
                   </th>
-                  <th className="text-left text-sm font-montserrat text-secondary-dark">
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Attendance %
                   </th>
-                  <th className="text-left text-sm font-montserrat text-secondary-dark">
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Status
                   </th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {report.map((row) => (
                   <tr
                     key={row.student_id}
-                    className="border-b border-secondary-light hover:bg-primary-bg transition"
+                    className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
-                    <td className="p-3 text-sm">{row.admission_no}</td>
-                    <td className="text-sm font-medium">{row.student_name}</td>
-                    <td className="text-sm">{row.batch_name || "—"}</td>
-                    <td className="text-sm">{row.medium_name || "—"}</td>
-                    <td className="text-sm">{row.total_sessions}</td>
-                    <td className="text-sm">{row.present_count}</td>
-                    <td className="text-sm">
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
+                      {row.admission_no}
+                    </td>
+                    <td className="p-3 text-sm font-medium text-gray-800 dark:text-gray-100" style={{ fontFamily: "var(--font-body)" }}>
+                      {row.student_name}
+                    </td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
+                      {row.batch_name || "—"}
+                    </td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
+                      {row.medium_name || "—"}
+                    </td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
+                      {row.total_sessions}
+                    </td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
+                      {row.present_count}
+                    </td>
+                    <td className="p-3 text-sm">
                       <div className="flex items-center gap-2">
-                        <div className="w-24 bg-gray-200 rounded-full h-2">
+                        <div className="w-24 bg-gray-200 dark:bg-gray-600 rounded-full h-2">
                           <div
-                            className="bg-green-500 h-2 rounded-full"
-                            style={{ width: `${row.percentage}%` }}
+                            className="h-2 rounded-full"
+                            style={{
+                              width: `${row.percentage}%`,
+                              backgroundColor: "var(--color-primary)",
+                            }}
                           ></div>
                         </div>
-                        <span className="font-medium">{row.percentage}%</span>
+                        <span className="font-medium text-gray-800 dark:text-gray-100">
+                          {row.percentage}%
+                        </span>
                       </div>
                     </td>
-                    <td className="text-sm">
+                    <td className="p-3 text-sm">
                       <span
                         className={`px-2 py-1 rounded-full text-xs font-medium ${
                           Number(row.percentage) >= 75
-                            ? "bg-green-100 text-green-700"
+                            ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200"
                             : Number(row.percentage) >= 50
-                            ? "bg-yellow-100 text-yellow-700"
-                            : "bg-red-100 text-red-700"
+                            ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200"
+                            : "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200"
                         }`}
                       >
                         {Number(row.percentage) >= 75
@@ -296,12 +317,12 @@ export default function AttendanceReports() {
             </table>
           </div>
         ) : (
-          <div className="p-8 text-center text-secondary">
-            <BarChart3 size={32} className="mx-auto text-secondary-light mb-2" />
+          <div className="p-8 text-center text-gray-500 dark:text-gray-400">
+            <BarChart3 size={32} className="mx-auto mb-2" />
             <p>Select filters and click "Generate Report"</p>
           </div>
         )}
       </div>
-    </AdminLayout>
+    </div>
   );
 }

@@ -2,7 +2,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
 import { useOrg } from "../context/OrganizationContext";
@@ -28,7 +27,7 @@ export default function BalanceSheet() {
     enabled: !!currentOrg?.id,
   });
 
-  // Fetch balance sheet accounts – now scoped by branch & FY
+  // Fetch balance sheet accounts – scoped
   const { data: accounts = [], isLoading } = useQuery({
     queryKey: ["balance-sheet", asOfDate, branchId, financialYearId],
     queryFn: async () => {
@@ -43,7 +42,7 @@ export default function BalanceSheet() {
     enabled: !!asOfDate && !!branchId && !!financialYearId,
   });
 
-  // Group accounts by parent (unchanged)
+  // Group accounts by parent
   const groups = useMemo(() => {
     const result = {};
     for (const [name] of Object.entries(GROUP_CONFIG)) {
@@ -101,7 +100,7 @@ export default function BalanceSheet() {
     .filter(([name]) => name.toLowerCase().includes("equity"))
     .reduce((s, [_, g]) => s + g.total, 0);
 
-  // ── Professional Print ──────────────────────────────────
+  // ── Professional Print ──
   const handlePrint = () => {
     const printArea = document.getElementById("balance-sheet-print")?.innerHTML;
     if (!printArea) return;
@@ -160,149 +159,218 @@ export default function BalanceSheet() {
   const formatCurrency = (val) => `₹ ${Math.abs(val).toLocaleString("en-IN")}`;
 
   return (
-    <AdminLayout>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">Balance Sheet</h1>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+            Balance Sheet
+          </h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>
+            Financial position snapshot
+          </p>
+        </div>
         <button
           onClick={handlePrint}
-          className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
+          style={{ fontFamily: "var(--font-body)" }}
         >
           <Printer size={16} /> Print
         </button>
       </div>
 
-      <div className="mb-4">
-        <label className="text-sm font-medium mr-2">As of Date:</label>
+      {/* Date selector */}
+      <div className="flex items-center gap-3">
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>
+          As of Date:
+        </label>
         <input
           type="date"
           value={asOfDate}
           onChange={(e) => setAsOfDate(e.target.value)}
-          className="border rounded p-2 text-sm"
+          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+          style={{ fontFamily: "var(--font-body)" }}
         />
       </div>
 
+      {/* Balance Sheet Content */}
       {isLoading ? (
-        <p className="text-center py-8">Loading balance sheet…</p>
+        <div className="text-center py-12 text-gray-500 dark:text-gray-400">Loading balance sheet…</div>
       ) : (
-        <div id="balance-sheet-print" className="bg-white rounded-xl p-6 shadow-sm">
+        <div
+          id="balance-sheet-print"
+          className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
+        >
           {/* ── Assets ── */}
-          <h2 className="text-xl font-semibold text-primary-dark mb-4 border-b pb-2">Assets</h2>
+          <h2 className="text-xl font-semibold mb-4 border-b pb-2" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+            Assets
+          </h2>
           {Object.entries(groups)
             .filter(([name]) => name.toLowerCase().includes("asset"))
             .map(([name, group]) => (
               <div key={name} className="mb-4">
-                <h3 className="font-bold text-sm text-primary-dark mb-2">{name}</h3>
-                <table className="w-full text-sm border">
+                <h3 className="font-bold text-sm mb-2" style={{ color: "var(--color-primary)" }}>
+                  {name}
+                </h3>
+                <table className="w-full text-sm border border-gray-200 dark:border-gray-600">
                   <thead>
-                    <tr className="bg-slate-50">
-                      <th className="p-2 text-left border">Account</th>
-                      <th className="p-2 text-right border w-32">Amount</th>
+                    <tr className="bg-gray-50 dark:bg-gray-700">
+                      <th className="p-2 text-left border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300">
+                        Account
+                      </th>
+                      <th className="p-2 text-right border border-gray-200 dark:border-gray-600 w-32 text-gray-600 dark:text-gray-300">
+                        Amount
+                      </th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                     {group.items.map((item) => (
                       <tr key={item.account_code}>
-                        <td className="p-2 border">{item.account_name}</td>
-                        <td className="p-2 border text-right">{formatCurrency(item.balance)}</td>
+                        <td className="p-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200">
+                          {item.account_name}
+                        </td>
+                        <td className="p-2 border border-gray-200 dark:border-gray-600 text-right text-gray-700 dark:text-gray-200">
+                          {formatCurrency(item.balance)}
+                        </td>
                       </tr>
                     ))}
-                    <tr className="font-bold bg-blue-50">
-                      <td className="p-2 border">Total {name}</td>
-                      <td className="p-2 border text-right">{formatCurrency(group.total)}</td>
+                    <tr className="font-bold bg-blue-50 dark:bg-blue-900/20">
+                      <td className="p-2 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100">
+                        Total {name}
+                      </td>
+                      <td className="p-2 border border-gray-200 dark:border-gray-600 text-right text-gray-800 dark:text-gray-100">
+                        {formatCurrency(group.total)}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
               </div>
             ))}
-          <div className="text-lg font-bold border-t-2 border-primary-dark pt-3 mt-4 mb-8">
+          <div className="text-lg font-bold border-t-2 pt-3 mt-4 mb-8" style={{ borderColor: "var(--color-primary)", color: "var(--color-primary)" }}>
             Total Assets: {formatCurrency(totalAssets)}
           </div>
 
           {/* ── Liabilities ── */}
-          <h2 className="text-xl font-semibold text-primary-dark mb-4 border-b pb-2">Liabilities</h2>
+          <h2 className="text-xl font-semibold mb-4 border-b pb-2" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+            Liabilities
+          </h2>
           {Object.entries(groups)
             .filter(([name]) => name.toLowerCase().includes("liabilit"))
             .map(([name, group]) => (
               <div key={name} className="mb-4">
-                <h3 className="font-bold text-sm text-primary-dark mb-2">{name}</h3>
-                <table className="w-full text-sm border">
+                <h3 className="font-bold text-sm mb-2" style={{ color: "var(--color-primary)" }}>
+                  {name}
+                </h3>
+                <table className="w-full text-sm border border-gray-200 dark:border-gray-600">
                   <thead>
-                    <tr className="bg-slate-50">
-                      <th className="p-2 text-left border">Account</th>
-                      <th className="p-2 text-right border w-32">Amount</th>
+                    <tr className="bg-gray-50 dark:bg-gray-700">
+                      <th className="p-2 text-left border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300">
+                        Account
+                      </th>
+                      <th className="p-2 text-right border border-gray-200 dark:border-gray-600 w-32 text-gray-600 dark:text-gray-300">
+                        Amount
+                      </th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                     {group.items.map((item) => (
                       <tr key={item.account_code}>
-                        <td className="p-2 border">{item.account_name}</td>
-                        <td className="p-2 border text-right">{formatCurrency(item.balance)}</td>
+                        <td className="p-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200">
+                          {item.account_name}
+                        </td>
+                        <td className="p-2 border border-gray-200 dark:border-gray-600 text-right text-gray-700 dark:text-gray-200">
+                          {formatCurrency(item.balance)}
+                        </td>
                       </tr>
                     ))}
-                    <tr className="font-bold bg-blue-50">
-                      <td className="p-2 border">Total {name}</td>
-                      <td className="p-2 border text-right">{formatCurrency(group.total)}</td>
+                    <tr className="font-bold bg-blue-50 dark:bg-blue-900/20">
+                      <td className="p-2 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100">
+                        Total {name}
+                      </td>
+                      <td className="p-2 border border-gray-200 dark:border-gray-600 text-right text-gray-800 dark:text-gray-100">
+                        {formatCurrency(group.total)}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
               </div>
             ))}
-          <div className="text-lg font-bold border-t-2 border-primary-dark pt-3 mt-4 mb-8">
+          <div className="text-lg font-bold border-t-2 pt-3 mt-4 mb-8" style={{ borderColor: "var(--color-primary)", color: "var(--color-primary)" }}>
             Total Liabilities: {formatCurrency(totalLiabilities)}
           </div>
 
           {/* ── Equity ── */}
-          <h2 className="text-xl font-semibold text-primary-dark mb-4 border-b pb-2">Equity</h2>
+          <h2 className="text-xl font-semibold mb-4 border-b pb-2" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+            Equity
+          </h2>
           {Object.entries(groups)
             .filter(([name]) => name.toLowerCase().includes("equity"))
             .map(([name, group]) => (
               <div key={name} className="mb-4">
-                <h3 className="font-bold text-sm text-primary-dark mb-2">{name}</h3>
-                <table className="w-full text-sm border">
+                <h3 className="font-bold text-sm mb-2" style={{ color: "var(--color-primary)" }}>
+                  {name}
+                </h3>
+                <table className="w-full text-sm border border-gray-200 dark:border-gray-600">
                   <thead>
-                    <tr className="bg-slate-50">
-                      <th className="p-2 text-left border">Account</th>
-                      <th className="p-2 text-right border w-32">Amount</th>
+                    <tr className="bg-gray-50 dark:bg-gray-700">
+                      <th className="p-2 text-left border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300">
+                        Account
+                      </th>
+                      <th className="p-2 text-right border border-gray-200 dark:border-gray-600 w-32 text-gray-600 dark:text-gray-300">
+                        Amount
+                      </th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                     {group.items.map((item) => (
                       <tr key={item.account_code}>
-                        <td className="p-2 border">{item.account_name}</td>
-                        <td className="p-2 border text-right">{formatCurrency(item.balance)}</td>
+                        <td className="p-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200">
+                          {item.account_name}
+                        </td>
+                        <td className="p-2 border border-gray-200 dark:border-gray-600 text-right text-gray-700 dark:text-gray-200">
+                          {formatCurrency(item.balance)}
+                        </td>
                       </tr>
                     ))}
-                    <tr className="font-bold bg-blue-50">
-                      <td className="p-2 border">Total {name}</td>
-                      <td className="p-2 border text-right">{formatCurrency(group.total)}</td>
+                    <tr className="font-bold bg-blue-50 dark:bg-blue-900/20">
+                      <td className="p-2 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100">
+                        Total {name}
+                      </td>
+                      <td className="p-2 border border-gray-200 dark:border-gray-600 text-right text-gray-800 dark:text-gray-100">
+                        {formatCurrency(group.total)}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
               </div>
             ))}
-          <div className="text-lg font-bold border-t-2 border-primary-dark pt-3 mt-4 mb-8">
+          <div className="text-lg font-bold border-t-2 pt-3 mt-4 mb-8" style={{ borderColor: "var(--color-primary)", color: "var(--color-primary)" }}>
             Total Equity: {formatCurrency(totalEquity)}
           </div>
 
           {/* ── Grand Total ── */}
-          <div className="mt-6 p-4 bg-blue-50 rounded-lg border-2 border-primary-dark">
+          <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border-2" style={{ borderColor: "var(--color-primary)" }}>
             <div className="grid grid-cols-2 gap-4 text-center">
               <div>
-                <p className="text-sm text-secondary-dark">Total Liabilities + Equity</p>
-                <p className="text-2xl font-bold text-primary-dark">{formatCurrency(totalLiabilities + totalEquity)}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Total Liabilities + Equity</p>
+                <p className="text-2xl font-bold" style={{ color: "var(--color-primary)" }}>
+                  {formatCurrency(totalLiabilities + totalEquity)}
+                </p>
               </div>
               <div>
-                <p className="text-sm text-secondary-dark">Total Assets</p>
-                <p className="text-2xl font-bold text-primary-dark">{formatCurrency(totalAssets)}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Total Assets</p>
+                <p className="text-2xl font-bold" style={{ color: "var(--color-primary)" }}>
+                  {formatCurrency(totalAssets)}
+                </p>
               </div>
             </div>
             <div className="text-center mt-3">
               {Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01 ? (
-                <span className="inline-block px-4 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+                <span className="inline-block px-4 py-1 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-200 rounded-full text-sm font-medium">
                   ✅ Balanced
                 </span>
               ) : (
-                <span className="inline-block px-4 py-1 bg-red-100 text-red-700 rounded-full text-sm font-medium">
+                <span className="inline-block px-4 py-1 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-full text-sm font-medium">
                   ⚠️ Difference: {formatCurrency(totalAssets - (totalLiabilities + totalEquity))}
                 </span>
               )}
@@ -310,6 +378,6 @@ export default function BalanceSheet() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </div>
   );
 }

@@ -12,7 +12,7 @@ import {
   CheckCircle,
   BookOpen,
 } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import {
   getStudentsByBatch,
   getMarkedAttendance,
@@ -65,13 +65,21 @@ export default function MarkAttendance() {
       }
       setSessionInfo(session);
 
+      // Fetch students from the batch
       const studentList = await getStudentsByBatch(
         session.batch_id,
         branchId,
         financialYearId
       );
-      setStudents(studentList);
 
+      // ── DEDUPLICATE students by student_id ──
+      // This prevents duplicate keys if a student appears twice (e.g., in multiple batches)
+      const uniqueStudents = Array.from(
+        new Map(studentList.map((s) => [s.student_id, s])).values()
+      );
+      setStudents(uniqueStudents);
+
+      // Fetch existing attendance for this session
       const marked = await getMarkedAttendance(
         sessionId,
         branchId,
@@ -159,16 +167,14 @@ export default function MarkAttendance() {
 
   if (loading) {
     return (
-      <AdminLayout>
-        <div className="p-8 text-center text-secondary font-montserrat">
-          Loading attendance sheet…
-        </div>
-      </AdminLayout>
+      <div className="p-8 text-center text-secondary font-montserrat">
+        Loading attendance sheet…
+      </div>
     );
   }
 
   return (
-    <AdminLayout>
+    <>
       {/* Back button & Header */}
       <div className="mb-6">
         <button
@@ -332,6 +338,6 @@ export default function MarkAttendance() {
           </button>
         </div>
       </div>
-    </AdminLayout>
+    </>
   );
 }

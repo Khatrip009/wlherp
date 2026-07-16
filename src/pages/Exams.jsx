@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Papa from "papaparse";
-import AdminLayout from "../layouts/AdminLayout";
+
 import ExamForm from "../components/ExamForm";
 import ConfirmDialog from "../components/ConfirmDialog";
 import BackButton from "../components/BackButton";
@@ -48,7 +48,6 @@ export default function Exams() {
 
   const queryClient = useQueryClient();
 
-  // ── Organisation / Branch / Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
@@ -75,7 +74,7 @@ export default function Exams() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const fileInputRef = useRef(null);
 
-  // Dropdowns – scoped where needed
+  // Dropdowns
   const { data: batches = [] } = useQuery({
     queryKey: ["batches-dropdown", branchId, financialYearId],
     queryFn: () => getBatchOptions(branchId, financialYearId),
@@ -84,12 +83,12 @@ export default function Exams() {
   });
   const { data: courses = [] } = useQuery({
     queryKey: ["courses-dropdown"],
-    queryFn: getCourseOptions, // organisation-wide
+    queryFn: getCourseOptions,
     staleTime: 10 * 60 * 1000,
   });
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediums-dropdown"],
-    queryFn: getMediumOptions, // organisation-wide
+    queryFn: getMediumOptions,
     staleTime: 10 * 60 * 1000,
   });
 
@@ -118,7 +117,6 @@ export default function Exams() {
 
   const exams = data?.pages.flatMap((page) => page.data) || [];
 
-  // Mutations – use context
   const createMutation = useMutation({
     mutationFn: (payload) => createExam(payload, ctx),
     onSuccess: () => {
@@ -215,12 +213,21 @@ export default function Exams() {
   }
 
   return (
-    <AdminLayout>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
       <BackButton to="/academics-hub" label="Academics Hub" />
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-righteous text-primary-dark">Exams</h1>
-          <p className="text-sm text-secondary-dark font-montserrat mt-1">
+          <h1
+            className="text-2xl sm:text-3xl font-bold"
+            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+          >
+            Exams
+          </h1>
+          <p
+            className="text-sm text-gray-600 dark:text-gray-400 mt-1"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
             Create and manage exams
           </p>
         </div>
@@ -228,19 +235,22 @@ export default function Exams() {
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setShowForm(true)}
-              className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
+              style={{ fontFamily: "var(--font-body)" }}
             >
               <Award size={18} /> Add Exam
             </button>
             <button
               onClick={handleCSVExport}
-              className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+              className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+              style={{ fontFamily: "var(--font-body)" }}
             >
               <Download size={18} /> Export
             </button>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+              className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+              style={{ fontFamily: "var(--font-body)" }}
             >
               <Upload size={18} /> Import
             </button>
@@ -255,83 +265,86 @@ export default function Exams() {
         )}
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+      <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search
             size={18}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
           />
           <input
             type="text"
             placeholder="Search by exam or batch name..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-secondary-light rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg pl-10 pr-4 py-2.5 text-sm"
+            style={{ fontFamily: "var(--font-body)" }}
           />
         </div>
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+          style={{ fontFamily: "var(--font-body)" }}
         >
-          <Filter size={18} /> Filters
-          {showFilters && <X size={16} />}
+          <Filter size={18} /> Filters {showFilters && <X size={16} />}
         </button>
       </div>
 
       {showFilters && (
-        <div className="bg-white rounded-xl p-4 shadow-sm mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 border border-secondary-light">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">Batch</label>
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+              Batch
+            </label>
             <select
               value={batchFilter}
               onChange={(e) => setBatchFilter(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
             >
               <option value="">All Batches</option>
               {batches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.batch_name}
-                </option>
+                <option key={b.id} value={b.id}>{b.batch_name}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">Course</label>
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+              Course
+            </label>
             <select
               value={courseFilter}
               onChange={(e) => setCourseFilter(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
             >
               <option value="">All Courses</option>
               {courses.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.course_name}
-                </option>
+                <option key={c.id} value={c.id}>{c.course_name}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">Medium</label>
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+              Medium
+            </label>
             <select
               value={mediumFilter}
               onChange={(e) => setMediumFilter(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
             >
               <option value="">All Mediums</option>
               {mediums.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
+                <option key={m.id} value={m.id}>{m.name}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">From Date</label>
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+              From Date
+            </label>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
             />
           </div>
           <div className="flex items-end">
@@ -344,7 +357,8 @@ export default function Exams() {
                 setStartDate("");
                 setEndDate("");
               }}
-              className="text-primary text-sm hover:underline"
+              className="text-sm text-primary hover:underline"
+              style={{ fontFamily: "var(--font-body)" }}
             >
               Clear Filters
             </button>
@@ -352,32 +366,32 @@ export default function Exams() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px]">
-            <thead className="bg-slate-100 border-b border-secondary-light">
+            <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
-                <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Exam</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Batch</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Course</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Medium</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Date</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Total Marks</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Actions</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Exam</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Batch</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Course</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Medium</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total Marks</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="p-6 text-center text-secondary">Loading exams…</td>
+                  <td colSpan={7} className="p-6 text-center text-gray-500 dark:text-gray-400">Loading exams…</td>
                 </tr>
               ) : exams.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-6 text-center text-secondary">
+                  <td colSpan={7} className="p-6 text-center text-gray-500 dark:text-gray-400">
                     <div className="flex flex-col items-center gap-2">
-                      <Award size={32} className="text-secondary-light" />
+                      <Award size={32} className="text-gray-400 dark:text-gray-500" />
                       <span>No exams found</span>
-                      <span className="text-xs text-secondary-light">
+                      <span className="text-xs">
                         {search || batchFilter || courseFilter || mediumFilter || startDate || endDate
                           ? "Try adjusting your filters"
                           : "Add a new exam to get started"}
@@ -389,25 +403,33 @@ export default function Exams() {
                 exams.map((exam) => (
                   <tr
                     key={exam.id}
-                    className="border-b border-secondary-light hover:bg-primary-bg transition"
+                    className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
-                    <td className="p-3 text-sm font-medium">{exam.exam_name}</td>
-                    <td className="text-sm">{exam.batches?.batch_name}</td>
-                    <td className="text-sm">{exam.batches?.courses?.course_name}</td>
+                    <td className="p-3 text-sm font-medium text-gray-800 dark:text-gray-100">{exam.exam_name}</td>
+                    <td className="text-sm text-gray-700 dark:text-gray-300">{exam.batches?.batch_name}</td>
+                    <td className="text-sm text-gray-700 dark:text-gray-300">{exam.batches?.courses?.course_name}</td>
                     <td className="text-sm">
                       {exam.medium_name ? (
-                        <span className="bg-primary-bg text-primary px-2 py-0.5 rounded-full text-xs">
+                        <span
+                          className="px-2 py-0.5 rounded-full text-xs"
+                          style={{
+                            backgroundColor: "var(--color-primary-light)",
+                            color: "var(--color-primary)",
+                          }}
+                        >
                           {exam.medium_name}
                         </span>
-                      ) : "-"}
+                      ) : (
+                        "-"
+                      )}
                     </td>
-                    <td className="text-sm">{exam.exam_date}</td>
-                    <td className="text-sm">{exam.total_marks || "-"}</td>
+                    <td className="text-sm text-gray-700 dark:text-gray-300">{exam.exam_date}</td>
+                    <td className="text-sm text-gray-700 dark:text-gray-300">{exam.total_marks || "-"}</td>
                     <td className="text-sm">
                       <div className="flex gap-2">
                         <button
                           onClick={() => navigate(`/results/enter/${exam.id}`)}
-                          className="text-purple-600 hover:underline"
+                          className="text-purple-600 dark:text-purple-400 hover:underline"
                         >
                           Results
                         </button>
@@ -415,13 +437,13 @@ export default function Exams() {
                           <>
                             <button
                               onClick={() => setEditing(exam)}
-                              className="text-blue-600 hover:underline"
+                              className="text-blue-600 dark:text-blue-400 hover:underline"
                             >
                               <Edit3 size={15} />
                             </button>
                             <button
                               onClick={() => handleDelete(exam.id)}
-                              className="text-red-600 hover:underline"
+                              className="text-red-600 dark:text-red-400 hover:underline"
                             >
                               <Trash2 size={15} />
                             </button>
@@ -442,7 +464,8 @@ export default function Exams() {
           <button
             onClick={() => fetchNextPage()}
             disabled={isFetchingNextPage}
-            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat text-sm transition disabled:opacity-60"
+            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-60"
+            style={{ fontFamily: "var(--font-body)" }}
           >
             {isFetchingNextPage ? "Loading more…" : "Load More"}
           </button>
@@ -452,16 +475,16 @@ export default function Exams() {
       {confirmDelete && (
         <ConfirmDialog
           message="Delete this exam and all its results?"
-          onConfirm={() => { deleteMutation.mutate(confirmDelete); setConfirmDelete(null); }}
+          onConfirm={() => {
+            deleteMutation.mutate(confirmDelete);
+            setConfirmDelete(null);
+          }}
           onCancel={() => setConfirmDelete(null)}
         />
       )}
 
       {isAdmin && showForm && (
-        <ExamForm
-          onSubmit={handleCreate}
-          onClose={() => setShowForm(false)}
-        />
+        <ExamForm onSubmit={handleCreate} onClose={() => setShowForm(false)} />
       )}
       {isAdmin && editing && (
         <ExamForm
@@ -470,6 +493,6 @@ export default function Exams() {
           onClose={() => setEditing(null)}
         />
       )}
-    </AdminLayout>
+    </div>
   );
 }

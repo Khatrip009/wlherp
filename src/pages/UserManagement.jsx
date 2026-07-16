@@ -16,7 +16,7 @@ import {
   Save,
   UserPlus,
 } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import BackButton from "../components/BackButton";
 
 import { supabase } from "../api/supabase";
@@ -180,7 +180,7 @@ export default function UserManagement() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <BackButton to="/settings-hub" label="Settings" />
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
@@ -466,6 +466,6 @@ export default function UserManagement() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

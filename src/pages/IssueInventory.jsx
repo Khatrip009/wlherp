@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { User, Box } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import {
   getInventoryItems,
   addInventoryTransaction,
@@ -115,7 +115,7 @@ export default function IssueInventory() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <h1 className="text-3xl font-righteous text-primary-dark mb-6">
         Issue Inventory to Student
       </h1>
@@ -191,6 +191,6 @@ export default function IssueInventory() {
           {issueMutation.isPending ? "Issuing..." : "Issue Item"}
         </button>
       </form>
-    </AdminLayout>
+    </>
   );
 }

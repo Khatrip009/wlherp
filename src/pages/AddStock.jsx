@@ -3,7 +3,6 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Plus, Trash2, Save } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
 
@@ -221,83 +220,194 @@ export default function AddStock() {
   };
 
   return (
-    <AdminLayout>
-      <div className="mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">Add Stock / Purchase</h1>
-        <p className="text-sm text-secondary-dark mt-1">Record inventory purchases with tax</p>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+          Add Stock / Purchase
+        </h1>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>
+          Record inventory purchases with tax
+        </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl p-6 shadow-sm space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+        {/* Top fields */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
-            <label className="block text-sm mb-1">Date</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full border rounded p-2.5 text-sm" required />
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" style={{ fontFamily: "var(--font-body)" }}>
+              Date
+            </label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+              required
+            />
           </div>
           <div>
-            <label className="block text-sm mb-1">Vendor</label>
-            <input type="text" value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="Vendor name" className="w-full border rounded p-2.5 text-sm" />
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" style={{ fontFamily: "var(--font-body)" }}>
+              Vendor
+            </label>
+            <input
+              type="text"
+              value={vendor}
+              onChange={(e) => setVendor(e.target.value)}
+              placeholder="Vendor name"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+            />
           </div>
           <div>
-            <label className="block text-sm mb-1">Reference</label>
-            <input type="text" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g., INV-001" className="w-full border rounded p-2.5 text-sm" />
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" style={{ fontFamily: "var(--font-body)" }}>
+              Reference
+            </label>
+            <input
+              type="text"
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              placeholder="e.g., INV-001"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+            />
           </div>
           <div>
-            <label className="block text-sm mb-1">Tax Rate</label>
-            <select value={taxRateId} onChange={(e) => setTaxRateId(e.target.value)} className="w-full border rounded p-2.5 text-sm">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" style={{ fontFamily: "var(--font-body)" }}>
+              Tax Rate
+            </label>
+            <select
+              value={taxRateId}
+              onChange={(e) => setTaxRateId(e.target.value)}
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+            >
               <option value="">No Tax</option>
-              {taxRates.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.rate}%)</option>)}
+              {taxRates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.rate}%)
+                </option>
+              ))}
             </select>
           </div>
         </div>
 
         {/* Items */}
         <div>
-          <h2 className="text-lg font-semibold mb-3">Items</h2>
+          <h2 className="text-lg font-semibold mb-3" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+            Items
+          </h2>
           {lines.map((line, idx) => (
-            <div key={idx} className="grid grid-cols-6 gap-2 items-end border p-3 rounded mb-2">
+            <div
+              key={idx}
+              className="grid grid-cols-1 sm:grid-cols-6 gap-2 items-end border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 p-3 rounded-lg mb-2"
+            >
               <div className="col-span-2">
-                <label className="text-xs mb-1 block">Item *</label>
-                <select value={line.item_id} onChange={(e) => updateLine(idx, "item_id", e.target.value)} className="w-full border rounded p-2 text-sm" required>
+                <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+                  Item *
+                </label>
+                <select
+                  value={line.item_id}
+                  onChange={(e) => updateLine(idx, "item_id", e.target.value)}
+                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
+                  required
+                >
                   <option value="">Select item</option>
-                  {items.map((item) => <option key={item.id} value={item.id}>{item.item_name}</option>)}
+                  {items.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.item_name}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
-                <label className="text-xs mb-1 block">Qty *</label>
-                <input type="number" min="1" value={line.quantity} onChange={(e) => updateLine(idx, "quantity", e.target.value)} className="w-full border rounded p-2 text-sm" required />
+                <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+                  Qty *
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={line.quantity}
+                  onChange={(e) => updateLine(idx, "quantity", e.target.value)}
+                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
+                  required
+                />
               </div>
               <div>
-                <label className="text-xs mb-1 block">Unit Price *</label>
-                <input type="number" min="0" step="0.01" value={line.unit_price} onChange={(e) => updateLine(idx, "unit_price", e.target.value)} className="w-full border rounded p-2 text-sm" required />
+                <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+                  Unit Price *
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={line.unit_price}
+                  onChange={(e) => updateLine(idx, "unit_price", e.target.value)}
+                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
+                  required
+                />
               </div>
               <div>
-                <label className="text-xs mb-1 block">Total</label>
-                <input type="text" value={`₹ ${(parseFloat(line.total) || 0).toLocaleString("en-IN")}`} readOnly className="w-full border rounded p-2 text-sm bg-gray-50" />
+                <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+                  Total
+                </label>
+                <input
+                  type="text"
+                  value={`₹ ${(parseFloat(line.total) || 0).toLocaleString("en-IN")}`}
+                  readOnly
+                  className="w-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-500 text-gray-700 dark:text-gray-300 rounded p-2 text-sm"
+                />
               </div>
-              <div className="flex items-end">
-                {lines.length > 1 && <button type="button" onClick={() => removeLine(idx)} className="text-red-500 p-2"><Trash2 size={18} /></button>}
+              <div className="flex items-end justify-end sm:justify-start">
+                {lines.length > 1 && (
+                  <button type="button" onClick={() => removeLine(idx)} className="text-red-500 hover:text-red-700 p-1 transition-colors">
+                    <Trash2 size={18} />
+                  </button>
+                )}
               </div>
             </div>
           ))}
-          <button type="button" onClick={addLine} className="mt-2 text-primary text-sm flex items-center gap-1"><Plus size={16} /> Add Item</button>
+          <button
+            type="button"
+            onClick={addLine}
+            className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+          >
+            <Plus size={16} /> Add Item
+          </button>
         </div>
 
         {/* Totals */}
-        <div className="border-t pt-4 flex flex-col items-end space-y-1 text-sm">
-          <div className="flex justify-between w-64"><span>Subtotal:</span><span className="font-medium">₹ {subtotal.toLocaleString("en-IN")}</span></div>
+        <div className="border-t border-gray-200 dark:border-gray-700 pt-4 flex flex-col items-end space-y-1 text-sm">
+          <div className="flex justify-between w-full sm:w-64">
+            <span className="text-gray-600 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>Subtotal:</span>
+            <span className="font-medium text-gray-800 dark:text-gray-200">₹ {subtotal.toLocaleString("en-IN")}</span>
+          </div>
           {taxPercent > 0 && (
             <>
-              <div className="flex justify-between w-64"><span>CGST ({taxPercent / 2}%):</span><span>₹ {(taxAmount / 2).toLocaleString("en-IN")}</span></div>
-              <div className="flex justify-between w-64"><span>SGST ({taxPercent / 2}%):</span><span>₹ {(taxAmount / 2).toLocaleString("en-IN")}</span></div>
+              <div className="flex justify-between w-full sm:w-64">
+                <span className="text-gray-600 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>CGST ({taxPercent / 2}%)</span>
+                <span className="text-gray-800 dark:text-gray-200">₹ {(taxAmount / 2).toLocaleString("en-IN")}</span>
+              </div>
+              <div className="flex justify-between w-full sm:w-64">
+                <span className="text-gray-600 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>SGST ({taxPercent / 2}%)</span>
+                <span className="text-gray-800 dark:text-gray-200">₹ {(taxAmount / 2).toLocaleString("en-IN")}</span>
+              </div>
             </>
           )}
-          <div className="flex justify-between w-64 font-bold text-lg border-t pt-2"><span>Grand Total:</span><span>₹ {grandTotal.toLocaleString("en-IN")}</span></div>
+          <div className="flex justify-between w-full sm:w-64 font-bold text-lg border-t border-gray-200 dark:border-gray-700 pt-2">
+            <span className="text-gray-800 dark:text-gray-100" style={{ fontFamily: "var(--font-heading)" }}>Grand Total:</span>
+            <span style={{ color: "var(--color-primary)" }}>₹ {grandTotal.toLocaleString("en-IN")}</span>
+          </div>
         </div>
 
-        <button type="submit" disabled={addStockMutation.isPending} className="bg-primary text-white px-6 py-2.5 rounded-lg text-sm flex items-center gap-2">
-          <Save size={16} /> {addStockMutation.isPending ? "Saving…" : "Add Stock"}
+        <button
+          type="submit"
+          disabled={addStockMutation.isPending}
+          className="inline-flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ fontFamily: "var(--font-body)" }}
+        >
+          <Save size={16} />
+          {addStockMutation.isPending ? "Saving…" : "Add Stock"}
         </button>
       </form>
-    </AdminLayout>
+    </div>
   );
 }

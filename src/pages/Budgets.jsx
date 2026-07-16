@@ -4,8 +4,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Plus, Edit3, Trash2, BarChart3 } from "lucide-react";
 import { Link } from "react-router-dom";
-import AdminLayout from "../layouts/AdminLayout";
-import { getBudgets, createBudget, updateBudget, deleteBudget } from "../services/budgetService";
+import {
+  getBudgets,
+  createBudget,
+  updateBudget,
+  deleteBudget,
+} from "../services/budgetService";
 import { getChartOfAccounts } from "../services/accountingService";
 import { useOrg } from "../context/OrganizationContext";
 
@@ -19,7 +23,12 @@ export default function Budgets() {
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ account_id: "", period_start: "", period_end: "", amount: "" });
+  const [form, setForm] = useState({
+    account_id: "",
+    period_start: "",
+    period_end: "",
+    amount: "",
+  });
 
   // Budgets – scoped
   const { data: budgets = [], isLoading } = useQuery({
@@ -98,77 +107,139 @@ export default function Budgets() {
   };
 
   return (
-    <AdminLayout>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">Budgets</h1>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1
+            className="text-2xl sm:text-3xl font-bold"
+            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+          >
+            Budgets
+          </h1>
+          <p
+            className="text-sm text-gray-600 dark:text-gray-400 mt-1"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            Set and manage expense budgets
+          </p>
+        </div>
         <div className="flex gap-2">
           <Link
             to="/budget-vs-actual"
-            className="border px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+            style={{ fontFamily: "var(--font-body)" }}
           >
             <BarChart3 size={16} /> Budget vs Actual
           </Link>
           <button
             onClick={openCreate}
-            className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: "var(--font-body)" }}
           >
             <Plus size={16} /> Add Budget
           </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-slate-100">
-            <tr>
-              <th className="p-3 text-left text-sm">Account</th>
-              <th className="p-3 text-left text-sm">Period Start</th>
-              <th className="p-3 text-left text-sm">Period End</th>
-              <th className="p-3 text-right text-sm">Budget Amount</th>
-              <th className="p-3 text-left text-sm">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td colSpan={5} className="p-6 text-center">Loading…</td></tr>
-            ) : budgets.length === 0 ? (
-              <tr><td colSpan={5} className="p-6 text-center text-secondary">No budgets set. Create one to start.</td></tr>
-            ) : (
-              budgets.map((b) => (
-                <tr key={b.id} className="border-t hover:bg-gray-50">
-                  <td className="p-3 text-sm">
-                    {b.chart_of_accounts?.account_code} - {b.chart_of_accounts?.account_name}
-                  </td>
-                  <td className="text-sm">{b.period_start}</td>
-                  <td className="text-sm">{b.period_end}</td>
-                  <td className="text-sm text-right font-medium">₹ {Number(b.amount).toLocaleString("en-IN")}</td>
-                  <td className="text-sm">
-                    <button onClick={() => openEdit(b)} className="text-blue-600 mr-2">
-                      <Edit3 size={15} />
-                    </button>
-                    <button onClick={() => { if (window.confirm("Delete?")) deleteMut.mutate(b.id); }} className="text-red-600">
-                      <Trash2 size={15} />
-                    </button>
+      {/* Budgets Table */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[600px]">
+            <thead className="bg-gray-50 dark:bg-gray-700">
+              <tr>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Account
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Period Start
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Period End
+                </th>
+                <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Budget Amount
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {isLoading ? (
+                <tr>
+                  <td colSpan={5} className="p-6 text-center text-gray-500 dark:text-gray-400">
+                    Loading…
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : budgets.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-6 text-center text-gray-500 dark:text-gray-400">
+                    No budgets set. Create one to start.
+                  </td>
+                </tr>
+              ) : (
+                budgets.map((b) => (
+                  <tr
+                    key={b.id}
+                    className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">
+                      {b.chart_of_accounts?.account_code} - {b.chart_of_accounts?.account_name}
+                    </td>
+                    <td className="text-sm text-gray-700 dark:text-gray-200">{b.period_start}</td>
+                    <td className="text-sm text-gray-700 dark:text-gray-200">{b.period_end}</td>
+                    <td className="text-sm text-right font-medium text-gray-800 dark:text-gray-100">
+                      ₹ {Number(b.amount).toLocaleString("en-IN")}
+                    </td>
+                    <td className="text-sm">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => openEdit(b)}
+                          className="text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          <Edit3 size={15} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm("Delete?")) deleteMut.mutate(b.id);
+                          }}
+                          className="text-red-600 dark:text-red-400 hover:underline"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Add / Edit Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl">
-            <h2 className="text-xl font-righteous text-primary-dark mb-4">{editing ? "Edit Budget" : "Add Budget"}</h2>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-md w-full p-6 shadow-xl border border-gray-200 dark:border-gray-700">
+            <h2
+              className="text-xl font-bold mb-4"
+              style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+            >
+              {editing ? "Edit Budget" : "Add Budget"}
+            </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm mb-1">Account *</label>
+                <label
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  style={{ fontFamily: "var(--font-body)" }}
+                >
+                  Account *
+                </label>
                 <select
                   value={form.account_id}
                   onChange={(e) => setForm({ ...form, account_id: e.target.value })}
-                  className="w-full border rounded p-2.5 text-sm"
+                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
                   required
                 >
                   <option value="">Select account</option>
@@ -181,26 +252,72 @@ export default function Budgets() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm mb-1">Period Start</label>
-                  <input type="date" value={form.period_start} onChange={(e) => setForm({ ...form, period_start: e.target.value })} className="w-full border rounded p-2.5 text-sm" required />
+                  <label
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    style={{ fontFamily: "var(--font-body)" }}
+                  >
+                    Period Start *
+                  </label>
+                  <input
+                    type="date"
+                    value={form.period_start}
+                    onChange={(e) => setForm({ ...form, period_start: e.target.value })}
+                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+                    required
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm mb-1">Period End</label>
-                  <input type="date" value={form.period_end} onChange={(e) => setForm({ ...form, period_end: e.target.value })} className="w-full border rounded p-2.5 text-sm" required />
+                  <label
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    style={{ fontFamily: "var(--font-body)" }}
+                  >
+                    Period End *
+                  </label>
+                  <input
+                    type="date"
+                    value={form.period_end}
+                    onChange={(e) => setForm({ ...form, period_end: e.target.value })}
+                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+                    required
+                  />
                 </div>
               </div>
               <div>
-                <label className="block text-sm mb-1">Budget Amount *</label>
-                <input type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="w-full border rounded p-2.5 text-sm" required />
+                <label
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  style={{ fontFamily: "var(--font-body)" }}
+                >
+                  Budget Amount *
+                </label>
+                <input
+                  type="number"
+                  value={form.amount}
+                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+                  required
+                />
               </div>
-              <div className="flex justify-end gap-3">
-                <button type="button" onClick={() => setShowForm(false)} className="border px-4 py-2 rounded-lg text-sm">Cancel</button>
-                <button type="submit" className="bg-primary text-white px-4 py-2 rounded-lg text-sm">{editing ? "Update" : "Create"}</button>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  className="border border-gray-300 dark:border-gray-600 px-4 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  style={{ fontFamily: "var(--font-body)" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  style={{ fontFamily: "var(--font-body)" }}
+                >
+                  {editing ? "Update" : "Create"}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
-    </AdminLayout>
+    </div>
   );
 }

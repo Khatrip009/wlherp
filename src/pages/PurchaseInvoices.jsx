@@ -10,7 +10,7 @@ import {
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
 import toast from "react-hot-toast";
-import AdminLayout from "../layouts/AdminLayout";
+
 import {
   Search,
   Plus,
@@ -109,7 +109,7 @@ export default function PurchaseInvoices() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">
           Purchase Invoices
@@ -270,6 +270,6 @@ export default function PurchaseInvoices() {
           </table>
         </div>
       </div>
-    </AdminLayout>
+    </>
   );
 }

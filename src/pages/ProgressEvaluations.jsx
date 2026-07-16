@@ -20,7 +20,7 @@ import {
   Calendar,
 } from "lucide-react";
 import Papa from "papaparse";
-import AdminLayout from "../layouts/AdminLayout";
+
 import BackButton from "../components/BackButton";
 
 import ProgressEvaluationForm from "../components/ProgressEvaluationForm";
@@ -226,7 +226,7 @@ export default function ProgressEvaluations() {
   }
 
   return (
-    <AdminLayout>
+    <>
       <BackButton to="/academics-hub" label="Academics" />
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
@@ -453,6 +453,6 @@ export default function ProgressEvaluations() {
           onClose={() => setEditing(null)}
         />
       )}
-    </AdminLayout>
+    </>
   );
 }
