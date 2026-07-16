@@ -5,18 +5,16 @@ import { Link } from "react-router-dom";
 import { Filter, Search, Printer, Plus } from "lucide-react";
 import AdminLayout from "../layouts/AdminLayout";
 import BackButton from "../components/BackButton";
-
 import { getVoucherTypes, getVouchers } from "../services/voucherService";
 import { getOrganization } from "../services/organizationService";
 import { useOrg } from "../context/OrganizationContext";
 
-export default function Vouchers() {
+export default function Vouchers({ noLayout = false }) {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [search, setSearch] = useState("");
 
-  // ── Organisation, Branch & Financial Year from context ──
   const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
@@ -26,24 +24,17 @@ export default function Vouchers() {
     queryFn: getVoucherTypes,
   });
 
-  // Fetch organization (org‑wide)
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
     queryFn: () => getOrganization(currentOrg?.id),
     enabled: !!currentOrg?.id,
   });
 
-  // Scoped voucher list
   const { data: vouchers = [], isLoading } = useQuery({
     queryKey: ["vouchers", startDate, endDate, typeFilter, search, branchId, financialYearId],
     queryFn: () =>
       getVouchers(
-        {
-          start_date: startDate,
-          end_date: endDate,
-          voucher_type_id: typeFilter,
-          search,
-        },
+        { start_date: startDate, end_date: endDate, voucher_type_id: typeFilter, search },
         branchId,
         financialYearId
       ),
@@ -70,21 +61,20 @@ export default function Vouchers() {
     const printWindow = window.open("", "_blank", "width=1100,height=700");
     printWindow.document.write(`
       <html>
-        <head>
-          <title>Voucher List</title>
-          <style>
-            body { font-family: Montserrat, sans-serif; margin: 25px; color: #333; }
-            .header { display: flex; align-items: center; border-bottom: 2px solid #0D47A1; padding-bottom: 10px; margin-bottom: 15px; }
-            .header img { height: 50px; margin-right: 20px; }
-            .header .org-name { font-size: 20px; font-weight: bold; color: #0D47A1; }
-            .header .org-details { font-size: 10px; color: #666; margin-top: 4px; }
-            .filter-info { text-align: center; font-size: 12px; color: #555; margin-bottom: 15px; }
-            table { width: 100%; border-collapse: collapse; font-size: 11px; }
-            th { background-color: #E3F2FD; padding: 8px; border: 1px solid #ccc; text-align: left; }
-            td { padding: 6px 8px; border: 1px solid #eee; }
-            .footer { margin-top: 25px; font-size: 10px; color: #888; text-align: center; border-top: 1px solid #ddd; padding-top: 10px; }
-            @media print { body { margin: 0; } }
-          </style>
+        <head><title>Voucher List</title>
+        <style>
+          body { font-family: Montserrat, sans-serif; margin: 25px; color: #333; }
+          .header { display: flex; align-items: center; border-bottom: 2px solid #0D47A1; padding-bottom: 10px; margin-bottom: 15px; }
+          .header img { height: 50px; margin-right: 20px; }
+          .header .org-name { font-size: 20px; font-weight: bold; color: #0D47A1; }
+          .header .org-details { font-size: 10px; color: #666; margin-top: 4px; }
+          .filter-info { text-align: center; font-size: 12px; color: #555; margin-bottom: 15px; }
+          table { width: 100%; border-collapse: collapse; font-size: 11px; }
+          th { background-color: #E3F2FD; padding: 8px; border: 1px solid #ccc; text-align: left; }
+          td { padding: 6px 8px; border: 1px solid #eee; }
+          .footer { margin-top: 25px; font-size: 10px; color: #888; text-align: center; border-top: 1px solid #ddd; padding-top: 10px; }
+          @media print { body { margin: 0; } }
+        </style>
         </head>
         <body>
           <div class="header">
@@ -106,9 +96,9 @@ export default function Vouchers() {
     printWindow.document.close();
   };
 
-  return (
-    <AdminLayout>
-      <BackButton to="/accounting" label="Finance & Accounting" />
+  const content = (
+    <>
+      {!noLayout && <BackButton to="/accounting" label="Finance & Accounting" />}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-3xl font-righteous text-primary-dark">Vouchers</h1>
@@ -177,6 +167,8 @@ export default function Vouchers() {
           </table>
         </div>
       </div>
-    </AdminLayout>
+    </>
   );
+
+  return noLayout ? content : <AdminLayout>{content}</AdminLayout>;
 }

@@ -1,20 +1,6 @@
-// src/services/invoiceService.js
 import { supabase } from "../api/supabase";
 
 // ─── HELPERS ───────────────────────────────────────────────
-async function generateInvoiceNumber() {
-  try {
-    const { data, error } = await supabase.rpc("generate_invoice_number");
-    if (error) throw error;
-    return data;
-  } catch (err) {
-    console.warn("RPC generate_invoice_number failed, using fallback.", err);
-    // Fallback: timestamp + random to avoid duplicates
-    const now = Date.now();
-    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-    return `INV-${now}-${random}`;
-  }
-}
 
 // Get the current user's organization ID using the database function
 async function getCurrentUserOrgId() {
@@ -197,13 +183,13 @@ export async function createInvoice(payload, context) {
   const roundOff = Math.round(totalAmount) - totalAmount;
   const grandTotal = totalAmount + roundOff;
 
-  const invoiceNumber = await generateInvoiceNumber();
+  // ✅ invoice_number is omitted – the database trigger will generate it automatically
 
   // Insert header
   const { data: invoice, error } = await supabase
     .from("invoices")
     .insert({
-      invoice_number: invoiceNumber,
+      // invoice_number is NOT included – trigger will set it
       invoice_date: invoice_date || new Date().toISOString().split("T")[0],
       student_id,
       due_date: due_date || null,
@@ -262,8 +248,7 @@ export async function updateInvoice(id, payload, context) {
     .update({
       ...headerData,
       updated_at: new Date(),
-      branch_id: branchId,
-      financial_year_id: financialYearId,
+      
     })
     .eq("id", id);
 

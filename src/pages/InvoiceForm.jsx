@@ -1,4 +1,3 @@
-// src/pages/InvoiceForm.jsx
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -12,10 +11,9 @@ import {
 import { getOrganization } from "../services/organizationService";
 import { getTaxRates } from "../services/feeService";
 import toast from "react-hot-toast";
-import AdminLayout from "../layouts/AdminLayout";
 import { ArrowLeft, Save, Plus, Trash2, CheckCircle, Loader } from "lucide-react";
 import GSTLookup from "../components/GSTLookup";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 // Helper to split GST
 const splitGST = (rate, placeOfSupply, orgState) => {
@@ -33,7 +31,6 @@ export default function InvoiceForm() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // ── Branch & Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
@@ -65,8 +62,8 @@ export default function InvoiceForm() {
 
   // Fetch organization state
   const { data: org } = useQuery({
-    queryKey: ["organization", branchId, financialYearId], // not strictly needed but good for consistency
-    queryFn: () => getOrganization(branchId, financialYearId), // if organizationService accepts, else keep original; but getOrganization is org-wide
+    queryKey: ["organization", branchId, financialYearId],
+    queryFn: () => getOrganization(branchId, financialYearId),
     enabled: !!branchId && !!financialYearId,
   });
 
@@ -74,7 +71,7 @@ export default function InvoiceForm() {
     if (org?.state_code) setOrgState(org.state_code);
   }, [org]);
 
-  // ── STUDENTS DROPDOWN (scoped) ──
+  // Students dropdown (scoped)
   const {
     data: students = [],
     error: studentsError,
@@ -91,13 +88,9 @@ export default function InvoiceForm() {
 
       try {
         // Check if 'status' column exists
-        const { data: check } = await supabase
-          .from("students")
-          .select("status")
-          .limit(1);
+        await supabase.from("students").select("status").limit(1);
         query = query.ilike("status", "active");
       } catch (e) {
-        // column missing, fetch all
         console.warn("Status column not found, fetching all students", e);
       }
 
@@ -115,7 +108,7 @@ export default function InvoiceForm() {
     if (studentsError) console.error("Error loading students:", studentsError);
   }, [studentsError]);
 
-  // Fetch tax rates – scoped
+  // Tax rates (scoped)
   const { data: taxRates = [] } = useQuery({
     queryKey: ["tax-rates-invoice", branchId, financialYearId],
     queryFn: () => getTaxRates(branchId, financialYearId),
@@ -123,7 +116,7 @@ export default function InvoiceForm() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch fee structures – scoped
+  // Fee structures (scoped)
   const { data: feeStructures = [] } = useQuery({
     queryKey: ["fee-structures-dropdown", branchId, financialYearId],
     queryFn: async () => {
@@ -142,7 +135,7 @@ export default function InvoiceForm() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Load existing invoice if editing – scoped
+  // Load existing invoice if editing (scoped)
   const { data: invoice, isLoading: loadingInvoice } = useQuery({
     queryKey: ["invoice", id, branchId, financialYearId],
     queryFn: () => getInvoice(id, branchId, financialYearId),
@@ -181,7 +174,6 @@ export default function InvoiceForm() {
     }
   }, [invoice, students]);
 
-  // Handle student selection
   const handleStudentChange = (studentId) => {
     const student = students.find((s) => s.id === Number(studentId));
     setForm((prev) => ({
@@ -193,7 +185,6 @@ export default function InvoiceForm() {
     setStudentDetails(student || null);
   };
 
-  // Auto-fill from GST lookup for student
   const handleGSTLookupSuccess = (data) => {
     if (studentDetails) {
       const updatedStudent = {
@@ -253,7 +244,6 @@ export default function InvoiceForm() {
     }
   };
 
-  // Compute totals
   const computeTotals = () => {
     let taxableTotal = 0;
     let totalGST = 0;
@@ -297,7 +287,6 @@ export default function InvoiceForm() {
 
   const totals = computeTotals();
 
-  // Mutations – pass context (branchId & financialYearId)
   const createMutation = useMutation({
     mutationFn: (payload) => createInvoice(payload, ctx),
     onSuccess: (data) => {
@@ -380,15 +369,12 @@ export default function InvoiceForm() {
   };
 
   if (loadingInvoice) {
-    return (
-      <AdminLayout>
-        <div className="p-8 text-center">Loading invoice…</div>
-      </AdminLayout>
-    );
+    return <div className="p-8 text-center">Loading invoice…</div>;
   }
 
   return (
-    <AdminLayout>
+    <>
+      {/* Back button – always visible now */}
       <button
         onClick={() => navigate("/invoices")}
         className="inline-flex items-center gap-2 text-secondary hover:text-primary-dark mb-4 text-sm"
@@ -738,6 +724,6 @@ export default function InvoiceForm() {
           )}
         </div>
       </form>
-    </AdminLayout>
+    </>
   );
 }

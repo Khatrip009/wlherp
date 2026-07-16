@@ -1,4 +1,3 @@
-// src/utils/invoicePdf.js
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -77,8 +76,15 @@ async function loadImageAsBase64(url) {
 }
 
 // ─── Main PDF generator ──────────────────────────────────
-export async function generateInvoicePDF(invoice, org, type = 'sales') {
+export async function generateInvoicePDF(invoice, org, type = 'sales', options = {}) {
   console.log('Generating invoice PDF with:', invoice);
+
+  // ── Theme (supports underscore keys from your context) ──
+  const theme = options.theme || {};
+  const primaryColor = theme.primary_color || '#0D47A1';
+  const secondaryColor = theme.secondary_color || '#1565C0'; // not used but kept
+  const headingFont = theme.font_heading || 'helvetica';
+  const bodyFont = theme.font_body || 'helvetica';
 
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
   const pageWidth = doc.internal.pageSize.getWidth();   // 210 mm
@@ -110,11 +116,11 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
   // Company details on the right (next to logo)
   const textX = margin + (logoBase64 ? logoWidth + 6 : 0);
   const textY = y + 2;
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(headingFont, 'bold');
   doc.setFontSize(14);
-  doc.setTextColor('#0D47A1');
+  doc.setTextColor(primaryColor);
   doc.text(companyName, textX, textY);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(bodyFont, 'normal');
   doc.setFontSize(8);
   doc.setTextColor('#333');
   let detailY = textY + 5;
@@ -144,15 +150,15 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
   y += headerHeight + 4;
 
   // ── Separator line ──
-  doc.setDrawColor('#0D47A1');
+  doc.setDrawColor(primaryColor);
   doc.line(margin, y, pageWidth - margin, y);
   y += 6;
 
   // ── Title ──
   const title = type === 'sales' ? 'TAX INVOICE' : 'PURCHASE INVOICE';
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(headingFont, 'bold');
   doc.setFontSize(22);
-  doc.setTextColor('#0D47A1');
+  doc.setTextColor(primaryColor);
   doc.text(title, pageWidth / 2, y, { align: 'center' });
   y += 12;
 
@@ -171,11 +177,11 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
   const status = invoice.status || 'Draft';
 
   // Left column
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(headingFont, 'bold');
   doc.setFontSize(11);
-  doc.setTextColor('#0D47A1');
+  doc.setTextColor(primaryColor);
   doc.text(isSales ? 'Billed To:' : 'Vendor:', margin, y);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(bodyFont, 'normal');
   doc.setTextColor('#333');
   let leftY = y + 6;
   doc.setFontSize(10);
@@ -207,12 +213,12 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
 
   // Right column
   let rightY = y;
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(headingFont, 'bold');
   doc.setFontSize(11);
-  doc.setTextColor('#0D47A1');
+  doc.setTextColor(primaryColor);
   doc.text('Invoice Details', pageWidth - margin, rightY, { align: 'right' });
   rightY += 6;
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(bodyFont, 'normal');
   doc.setFontSize(10);
   doc.text(`No: ${invNo}`, pageWidth - margin, rightY, { align: 'right' });
   rightY += 6;
@@ -265,17 +271,17 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
   const roundOff = Number(invoice.round_off || 0);
   const grandTotal = totals.total + roundOff;
 
-  // ── Updated column widths for better readability ──
+  // ── Table with theme-aware header color ──
   autoTable(doc, {
     startY: y,
     head: [['#', 'Description', 'HSN/SAC', 'Qty', 'Unit Price', 'Taxable', 'CGST', 'SGST', 'IGST', 'Total']],
     body: tableRows,
     theme: 'grid',
-    styles: { fontSize: 8, cellPadding: 2 },
-    headStyles: { fillColor: '#0D47A1', textColor: '#FFFFFF', fontSize: 8, fontStyle: 'bold' },
+    styles: { fontSize: 8, cellPadding: 2, font: bodyFont },
+    headStyles: { fillColor: primaryColor, textColor: '#FFFFFF', fontSize: 8, fontStyle: 'bold', font: headingFont },
     columnStyles: {
       0: { cellWidth: 10, halign: 'center' },
-      1: { cellWidth: 38, halign: 'left' },   // Description wider
+      1: { cellWidth: 38, halign: 'left' },
       2: { cellWidth: 18, halign: 'center' },
       3: { cellWidth: 10, halign: 'center' },
       4: { cellWidth: 20, halign: 'right' },
@@ -305,7 +311,7 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
   // ── Totals ──
   const colX = pageWidth - margin - 65;
   const rightEdge = pageWidth - margin - 6;
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(bodyFont, 'normal');
   doc.setFontSize(10);
   doc.setTextColor('#333');
   doc.text('Taxable Amount:', colX, y);
@@ -325,11 +331,11 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
     drawCurrency(doc, roundOff, rightEdge, y, 10, 'right', '#333');
     y += 6;
   }
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor('#0D47A1');
+  doc.setFont(headingFont, 'bold');
+  doc.setTextColor(primaryColor);
   doc.setFontSize(14);
   doc.text('Grand Total:', colX, y);
-  drawCurrency(doc, grandTotal, rightEdge, y, 14, 'right', '#0D47A1');
+  drawCurrency(doc, grandTotal, rightEdge, y, 14, 'right', primaryColor);
   y += 10;
 
   // ── Reverse Charge Note ──
@@ -341,7 +347,7 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
   }
 
   // ── Amount in Words ──
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(bodyFont, 'normal');
   doc.setFontSize(10);
   doc.setTextColor('#333');
   const words = numberToWords(grandTotal);

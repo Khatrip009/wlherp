@@ -65,7 +65,7 @@ function getMenuItems(role) {
     { key: "/students", icon: <UserOutlined />, label: <Link to="/students">Students</Link> },
     { key: "/student-management", icon: <UserOutlined />, label: <Link to="/student-management">Student Hub</Link> },
     { key: "/fees", icon: <DollarOutlined />, label: <Link to="/fees">Student Fees</Link> },
-    { key: "/accounting", icon: <DollarOutlined />, label: <Link to="/accounting">Finance</Link> },
+    { key: "/Finance", icon: <DollarOutlined />, label: <Link to="Home/FinanceHub">Finance</Link> },
     { key: "/settings-hub", icon: <SettingOutlined />, label: <Link to="/settings-hub">Settings</Link> },
     // … add all admin links (hubs, reports, etc.)
   ];

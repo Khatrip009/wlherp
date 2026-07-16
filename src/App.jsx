@@ -154,6 +154,7 @@ import ActivityLogs from "./pages/ActivityLogs";
 import Branches from "./pages/Branches";
 
 import MasterData from "./pages/MasterData";
+import FinanceHub from "./pages/FinanceHub"
 
 // ── Report Wrapper (unchanged logic) ──
 function ReportPageWrapper() {
@@ -339,6 +340,7 @@ function App() {
           <Route path="/student-management" element={<StudentManagement />} />
 
           <Route path="/master-data" element={<MasterData />} />
+          <Route path="/Home/FinanceHub" element={<FinanceHub />} />
         </Route>
 
         {/* Catch-all */}
