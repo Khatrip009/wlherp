@@ -51,7 +51,8 @@ export default function Employees() {
   const [editing, setEditing] = useState(null);
   const fileInputRef = useRef(null);
 
-  const { branch, selectedFinancialYear } = useOrg();
+  // ── Get org, branch, FY, and theme from context ──
+  const { branch, selectedFinancialYear, org, theme } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
@@ -243,9 +244,15 @@ export default function Employees() {
     }
   }
 
+  // ── ID Card: pass org and theme ──────────────────────────
   async function handlePrintIdCard(teacherId) {
     try {
-      await generateIdCard({ type: "teacher", id: teacherId });
+      await generateIdCard({
+        type: "teacher",
+        id: teacherId,
+        org: org,      // pass organisation
+        theme: theme,  // pass theme
+      });
     } catch (err) {
       toast.error(err.message || "Failed to generate ID Card");
     }
