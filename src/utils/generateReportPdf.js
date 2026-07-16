@@ -1,8 +1,7 @@
-// src/utils/generateReportPdf.js
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
-// ─── Helper: load image as base64 ──────────────────────────
+// ─── Helper: load image as base64 (only for logo) ──────────
 async function loadImageAsBase64(url) {
   try {
     const response = await fetch(url);
@@ -63,7 +62,6 @@ export async function generateReportPdf(config, data, filters, org, theme = {}, 
   const pdfConfig = {
     orientation: 'landscape',
     pageSize: 'a4',
-    includeLetterhead: false,
     showHeader: true,
     showFooter: true,
     fontSize: 8,
@@ -77,7 +75,6 @@ export async function generateReportPdf(config, data, filters, org, theme = {}, 
   const {
     orientation,
     pageSize,
-    includeLetterhead,
     showHeader,
     showFooter,
     fontSize,
@@ -100,22 +97,11 @@ export async function generateReportPdf(config, data, filters, org, theme = {}, 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
-  // ── Load images ──
+  // ── Load logo (only for header) ──
   let logoBase64 = null;
   if (org?.logo_dark_url) {
     logoBase64 = await loadImageAsBase64(org.logo_dark_url);
   }
-
-  let letterheadBase64 = null;
-  if (includeLetterhead && org?.letterhead_url) {
-    letterheadBase64 = await loadImageAsBase64(org.letterhead_url);
-  }
-
-  const addLetterhead = () => {
-    if (letterheadBase64) {
-      doc.addImage(letterheadBase64, "PNG", 0, 0, pageWidth, pageHeight);
-    }
-  };
 
   // ── Header drawing function ──
   const drawHeader = (doc, pageWidth, org, startY) => {
@@ -137,7 +123,6 @@ export async function generateReportPdf(config, data, filters, org, theme = {}, 
     const phone = org?.phone || "";
     const email = org?.email || "";
 
-    // Use theme fonts if available
     const headerFont = fontHeading || "helvetica";
     const bodyFont = fontBody || "helvetica";
 
@@ -195,7 +180,6 @@ export async function generateReportPdf(config, data, filters, org, theme = {}, 
   };
 
   // ─── First page setup ──
-  addLetterhead();
   let y = drawHeader(doc, pageWidth, org, 12);
 
   // Title (only on first page)
@@ -253,21 +237,21 @@ export async function generateReportPdf(config, data, filters, org, theme = {}, 
     body,
     startY: y,
     margin: { top: topMargin, left: 14, right: 14 },
-    styles: { 
-      fontSize, 
+    styles: {
+      fontSize,
       cellPadding: 2,
       font: fontBody || "helvetica",
     },
-    headStyles: { 
-      fillColor: hexToRgb(primaryColor), 
-      textColor: [255, 255, 255], 
+    headStyles: {
+      fillColor: hexToRgb(primaryColor),
+      textColor: [255, 255, 255],
       fontStyle: "bold",
       font: fontHeading || "helvetica",
     },
     alternateRowStyles: { fillColor: [245, 245, 245] },
     columnStyles,
     didDrawPage: (data) => {
-      addLetterhead();
+      // Draw header and footer on every page (no background)
       drawHeader(doc, pageWidth, org, 12);
       const totalPages = doc.internal.getNumberOfPages();
       drawFooter(doc, pageWidth, pageHeight, data.pageNumber, totalPages);

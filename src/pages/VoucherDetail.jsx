@@ -1,10 +1,10 @@
-// src/pages/VoucherDetail.jsx
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import toast from "react-hot-toast";
 import { Printer, Edit3, Save, X, ArrowLeft, Plus, Trash2 } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
 import {
   getVoucherById,
   updateVoucher,
@@ -14,19 +14,71 @@ import {
 import { getChartOfAccounts } from "../services/accountingService";
 import { useOrg } from "../context/OrganizationContext";
 
-export default function VoucherDetail() {
+// ─── Rupee symbol helper ──────────────────────────────────
+function createRupeeSymbolImage() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 30;
+  canvas.height = 30;
+  const ctx = canvas.getContext('2d');
+  ctx.font = 'bold 24px sans-serif';
+  ctx.fillStyle = '#000';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('₹', 15, 15);
+  return canvas.toDataURL('image/png');
+}
+let rupeeImage = null;
+function getRupeeImage() {
+  if (!rupeeImage) rupeeImage = createRupeeSymbolImage();
+  return rupeeImage;
+}
+
+function drawCurrency(doc, amount, x, y, fontSize = 10, align = 'left', color = '#333') {
+  const img = getRupeeImage();
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(fontSize);
+  doc.setTextColor(color);
+  const amountText = amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const textWidth = doc.getTextWidth(amountText);
+  const imgSize = fontSize * 0.4;
+  if (align === 'left') {
+    doc.addImage(img, 'PNG', x, y - fontSize * 0.35, imgSize, imgSize);
+    doc.text(amountText, x + imgSize + 1, y);
+  } else {
+    doc.addImage(img, 'PNG', x - textWidth - imgSize - 1, y - fontSize * 0.35, imgSize, imgSize);
+    doc.text(amountText, x - textWidth, y);
+  }
+}
+
+// ─── Helper: load image as base64 ──────────────────────────
+async function loadImageAsBase64(url) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (err) {
+    console.warn("Could not load image:", err);
+    return null;
+  }
+}
+
+export default function VoucherDetail({ standalone = true }) {
   const { id } = useParams();
   const isNew = !id || id === "new";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // ── Organisation / Branch / Financial Year from context ──
-  const { org, branch, selectedFinancialYear } = useOrg();   // org directly from context
+  const { org, branch, selectedFinancialYear, theme } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
 
-  // Scoped chart of accounts
   const { data: accounts = [] } = useQuery({
     queryKey: ["chart-of-accounts", branchId, financialYearId],
     queryFn: () => getChartOfAccounts(branchId, financialYearId),
@@ -34,13 +86,11 @@ export default function VoucherDetail() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Voucher types (org‑wide)
   const { data: voucherTypes = [] } = useQuery({
     queryKey: ["voucher-types"],
     queryFn: getVoucherTypes,
   });
 
-  // Scoped voucher fetch
   const { data: voucher, isLoading } = useQuery({
     queryKey: ["voucher", id, branchId, financialYearId],
     queryFn: () => getVoucherById(id, branchId, financialYearId),
@@ -56,7 +106,6 @@ export default function VoucherDetail() {
     lines: [{ account_id: "", debit: "", credit: "", description: "" }],
   });
 
-  // Populate form when existing voucher loads
   useEffect(() => {
     if (voucher) {
       setForm({
@@ -76,7 +125,6 @@ export default function VoucherDetail() {
     }
   }, [voucher]);
 
-  // Save mutation – uses context
   const saveMutation = useMutation({
     mutationFn: (payload) =>
       isNew
@@ -94,7 +142,6 @@ export default function VoucherDetail() {
     onError: (err) => toast.error(err.message || "Save failed"),
   });
 
-  // Toggle edit mode
   const handleEditToggle = () => {
     if (editing) {
       setForm({
@@ -114,7 +161,6 @@ export default function VoucherDetail() {
     setEditing(!editing);
   };
 
-  // Save handler
   const handleSave = () => {
     const totalDebit = form.lines.reduce(
       (s, l) => s + (parseFloat(l.debit) || 0),
@@ -143,7 +189,6 @@ export default function VoucherDetail() {
     saveMutation.mutate(payload);
   };
 
-  // Line management
   const addLine = () =>
     setForm({
       ...form,
@@ -157,127 +202,185 @@ export default function VoucherDetail() {
     setForm({ ...form, lines: updated });
   };
 
-  // Print function – now uses context org directly
-  const handlePrint = () => {
+  // ─── Print as PDF (A5 Landscape) with ₹ symbol ──────────
+  const handlePrint = async () => {
     if (isNew || !voucher) return;
 
-    const orgName = org?.company_name || "Academy";
-    const orgAddr = org?.address || "";
-    const orgPhone = org?.phone || "";
-    const orgEmail = org?.email || "";
-    const logoUrl = org?.logo_dark_url || "/ShreeVidhyaDark.png";
+    try {
+      const doc = new jsPDF({ unit: "mm", format: "a5", orientation: "landscape" });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 10;
 
-    const lines = voucher.journal_entries?.journal_entry_lines || [];
-    const totalDebit = lines.reduce((s, l) => s + (Number(l.debit) || 0), 0);
-    const totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
+      // ── Load logo ──
+      let logoBase64 = null;
+      if (org?.logo_dark_url) {
+        logoBase64 = await loadImageAsBase64(org.logo_dark_url);
+      }
 
-    const rows = lines
-      .map(
-        (line) => `
-      <tr>
-        <td>${line.account?.account_name || "—"}</td>
-        <td>${line.description || ""}</td>
-        <td class="text-right">₹${Number(line.debit).toLocaleString()}</td>
-        <td class="text-right">₹${Number(line.credit).toLocaleString()}</td>
-      </tr>`
-      )
-      .join("");
+      const primaryColor = theme?.primary_color || "#0D47A1";
+      const companyName = org?.company_name || "ShreeVidhya Academy";
+      const address = org?.address || "";
+      const gstin = org?.gstin || "";
+      const stateCode = org?.state_code || "";
+      const placeOfSupply = org?.place_of_supply || "";
+      const registrationType = org?.registration_type || "";
+      const phone = org?.phone || "";
+      const email = org?.email || "";
 
-    const printHTML = `
-  <!DOCTYPE html>
-  <html>
-  <head>
-    <title>${voucher.voucher_no}</title>
-    <style>
-      @page { size: 190mm 83mm; margin: 4mm 5mm; }
-      * { box-sizing: border-box; }
-      body { font-family: 'Montserrat', sans-serif; color: #222; margin: 0; padding: 0; font-size: 8.5px; line-height: 1.3; }
-      .voucher-container { width: 100%; padding: 2mm 0; }
-      .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1.5px solid #0D47A1; padding-bottom: 4px; margin-bottom: 6px; }
-      .header-left { display: flex; align-items: center; gap: 8px; }
-      .header img { height: 30px; }
-      .org-name { font-size: 14px; font-weight: 700; color: #0D47A1; }
-      .org-details { font-size: 7px; color: #555; margin-top: 1px; }
-      .voucher-title { text-align: center; font-size: 13px; font-weight: 700; color: #0D47A1; text-transform: uppercase; letter-spacing: 1px; margin: 4px 0 6px; }
-      .voucher-meta { display: flex; justify-content: space-between; font-size: 8px; border: 1px solid #ddd; padding: 3px 8px; background: #f9f9f9; margin-bottom: 6px; }
-      .voucher-meta span { margin-right: 20px; }
-      table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
-      th { background-color: #E3F2FD; color: #0D47A1; padding: 4px 6px; border: 1px solid #ccc; text-align: left; font-weight: 600; font-size: 8px; }
-      td { padding: 3px 6px; border: 1px solid #ddd; vertical-align: top; font-size: 8px; }
-      .text-right { text-align: right; }
-      .totals { margin-left: auto; width: 50%; font-weight: 600; font-size: 8px; }
-      .totals td { border: none; padding: 2px 6px; }
-      .footer { margin-top: 6px; text-align: center; font-size: 6.5px; color: #777; border-top: 1px solid #ccc; padding-top: 4px; }
-      @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-    </style>
-  </head>
-  <body>
-    <div class="voucher-container">
-      <div class="header">
-        <div class="header-left">
-          <img src="${logoUrl}" alt="Logo" onerror="this.style.display='none'" />
-          <div>
-            <div class="org-name">${orgName}</div>
-            <div class="org-details">${orgAddr} | Ph: ${orgPhone} | Email: ${orgEmail}</div>
-          </div>
-        </div>
-      </div>
-      <div class="voucher-title">${voucher.voucher_types?.name || ""} Voucher</div>
-      <div class="voucher-meta">
-        <span><strong>No:</strong> ${voucher.voucher_no}</span>
-        <span><strong>Date:</strong> ${voucher.entry_date}</span>
-        <span><strong>Ref:</strong> ${voucher.reference || "—"}</span>
-      </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Account</th>
-            <th>Description</th>
-            <th class="text-right">Debit (₹)</th>
-            <th class="text-right">Credit (₹)</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows}
-        </tbody>
-      </table>
-      <table class="totals">
-        <tr>
-          <td class="text-right">Total Debit:</td>
-          <td class="text-right">₹${totalDebit.toLocaleString()}</td>
-        </tr>
-        <tr>
-          <td class="text-right">Total Credit:</td>
-          <td class="text-right">₹${totalCredit.toLocaleString()}</td>
-        </tr>
-      </table>
-      <div class="footer">
-        This is a computer‑generated voucher. For queries, contact ${orgName}.
-      </div>
-    </div>
-    <script>window.print();</script>
-  </body>
-  </html>
-    `;
+      let y = 10;
 
-    const printWindow = window.open("", "_blank", "width=800,height=600");
-    if (printWindow) {
-      printWindow.document.write(printHTML);
-      printWindow.document.close();
+      // ── Header ──
+      if (logoBase64) {
+        doc.addImage(logoBase64, "PNG", margin, y, 30, 12);
+        y += 14;
+      }
+      const textX = logoBase64 ? margin + 34 : margin;
+      const textY = y - 12;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.setTextColor(primaryColor);
+      doc.text(companyName, textX, textY + 2);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor("#333");
+      let detailY = textY + 6;
+      if (address) {
+        const addrLines = doc.splitTextToSize(address, pageWidth - textX - margin - 10);
+        doc.text(addrLines, textX, detailY);
+        detailY += addrLines.length * 3.5 + 1;
+      }
+      if (gstin) {
+        doc.text(`GSTIN: ${gstin}`, textX, detailY);
+        detailY += 4;
+      }
+      if (stateCode) {
+        doc.text(`State Code: ${stateCode}  |  Place of Supply: ${placeOfSupply}`, textX, detailY);
+        detailY += 4;
+      }
+      if (registrationType) {
+        doc.text(`Registration Type: ${registrationType}`, textX, detailY);
+        detailY += 4;
+      }
+      if (phone) {
+        doc.text(`Phone: ${phone}`, textX, detailY);
+        detailY += 4;
+      }
+      if (email) {
+        doc.text(`Email: ${email}`, textX, detailY);
+      }
+
+      y = Math.max(y, detailY + 2);
+
+      // Separator line
+      doc.setDrawColor(primaryColor);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 4;
+
+      // ── Voucher Title ──
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.setTextColor(primaryColor);
+      doc.text(`${voucher.voucher_types?.name || ""} Voucher`, pageWidth / 2, y, { align: "center" });
+      y += 8;
+
+      // ── Voucher Meta ──
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor("#333");
+      doc.text(`No: ${voucher.voucher_no}`, margin, y);
+      doc.text(`Date: ${voucher.entry_date}`, pageWidth / 2, y, { align: "center" });
+      doc.text(`Ref: ${voucher.reference || "—"}`, pageWidth - margin, y, { align: "right" });
+      y += 6;
+
+      // ── Table ──
+      const lines = voucher.journal_entries?.journal_entry_lines || [];
+      // Build table rows with empty text for debit/credit – we'll draw currency via didDrawCell
+      const tableRows = lines.map((line) => [
+        line.account?.account_name || "—",
+        line.description || "",
+        Number(line.debit || 0),
+        Number(line.credit || 0),
+      ]);
+
+      const totalDebit = lines.reduce((s, l) => s + (Number(l.debit) || 0), 0);
+      const totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
+
+      autoTable(doc, {
+        startY: y,
+        head: [["Account", "Description", "Debit", "Credit"]],
+        body: tableRows,
+        theme: "grid",
+        styles: { fontSize: 7, cellPadding: 2 },
+        headStyles: { fillColor: primaryColor, textColor: "#FFFFFF", fontStyle: "bold", fontSize: 7 },
+        columnStyles: {
+          0: { cellWidth: 50 },
+          1: { cellWidth: "auto" },
+          2: { cellWidth: 25, halign: "right" },
+          3: { cellWidth: 25, halign: "right" },
+        },
+        margin: { left: margin, right: margin },
+        didDrawCell: (data) => {
+          // For debit (col 2) and credit (col 3)
+          if (data.column.index === 2 || data.column.index === 3) {
+            const amount = data.cell.raw;
+            if (typeof amount === 'number') {
+              const x = data.cell.x + data.cell.width - 1; // right edge
+              const yPos = data.cell.y + data.cell.height / 2 + 1.5;
+              drawCurrency(doc, amount, x, yPos, 7, 'right', '#333');
+            }
+          }
+        },
+        // Clear the default text for debit/credit columns so we only draw the currency
+        willDrawCell: (data) => {
+          if (data.column.index === 2 || data.column.index === 3) {
+            data.cell.text = [];
+          }
+        },
+      });
+
+      y = doc.lastAutoTable.finalY + 4;
+
+      // ── Totals with ₹ ──
+      const rightEdge = pageWidth - margin;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(primaryColor);
+      doc.text("Total Debit:", rightEdge - 60, y);
+      drawCurrency(doc, totalDebit, rightEdge, y, 9, 'right', primaryColor);
+      y += 5;
+      doc.text("Total Credit:", rightEdge - 60, y);
+      drawCurrency(doc, totalCredit, rightEdge, y, 9, 'right', primaryColor);
+      y += 8;
+
+      // ── Footer ──
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(7);
+      doc.setTextColor("#888");
+      doc.text(
+        `Generated on ${new Date().toLocaleString()} | Page 1 of 1`,
+        pageWidth / 2,
+        pageHeight - 8,
+        { align: "center" }
+      );
+
+      // ── Save ──
+      doc.save(`Voucher_${voucher.voucher_no}.pdf`);
+      toast.success("PDF downloaded");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to generate voucher PDF");
     }
   };
 
   if (isLoading)
     return (
-      <AdminLayout>
-        <div className="p-8 text-center">Loading…</div>
-      </AdminLayout>
+      <div className="p-8 text-center">Loading…</div>
     );
   if (!isNew && !voucher)
     return (
-      <AdminLayout>
-        <div className="p-8 text-center text-red-600">Voucher not found</div>
-      </AdminLayout>
+      <div className="p-8 text-center text-red-600">Voucher not found</div>
     );
 
   const lines = form.lines;
@@ -286,15 +389,16 @@ export default function VoucherDetail() {
     : voucher?.journal_entries?.journal_entry_lines || [];
 
   return (
-    <AdminLayout>
-      <button
-        onClick={() => navigate("/vouchers")}
-        className="inline-flex items-center gap-2 text-secondary hover:text-primary-dark mb-4 text-sm"
-      >
-        <ArrowLeft size={18} /> Back to Vouchers
-      </button>
+    <>
+      {standalone && (
+        <button
+          onClick={() => navigate("/vouchers")}
+          className="inline-flex items-center gap-2 text-secondary hover:text-primary-dark mb-4 text-sm"
+        >
+          <ArrowLeft size={18} /> Back to Vouchers
+        </button>
+      )}
 
-      {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-3xl font-righteous text-primary-dark">
@@ -312,7 +416,7 @@ export default function VoucherDetail() {
               onClick={handlePrint}
               className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
             >
-              <Printer size={16} /> Print
+              <Printer size={16} /> PDF
             </button>
           )}
           {!isNew && !editing && (
@@ -344,7 +448,6 @@ export default function VoucherDetail() {
         </div>
       </div>
 
-      {/* Voucher Type (new only) */}
       {isNew && (
         <div className="mb-4">
           <label className="block text-sm font-medium mb-1">Voucher Type</label>
@@ -362,7 +465,6 @@ export default function VoucherDetail() {
         </div>
       )}
 
-      {/* Form / View */}
       <div className="bg-white rounded-xl p-6 shadow-sm">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <div>
@@ -406,7 +508,6 @@ export default function VoucherDetail() {
           </div>
         </div>
 
-        {/* Lines Table */}
         <table className="w-full mb-4">
           <thead className="bg-slate-100">
             <tr>
@@ -497,6 +598,6 @@ export default function VoucherDetail() {
           </button>
         )}
       </div>
-    </AdminLayout>
+    </>
   );
 }

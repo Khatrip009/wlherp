@@ -16,9 +16,9 @@ import {
 } from "antd";
 import { FileTextOutlined, FilePdfOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { collectPayment } from "../services/feeService";
-import { createInvoice } from "../services/invoiceService";
+import { createInvoice, getInvoices } from "../services/invoiceService";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
@@ -38,6 +38,8 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
   const [loadingInstallments, setLoadingInstallments] = useState(true);
   const [taxInfo, setTaxInfo] = useState(null);
   const [creatingInvoice, setCreatingInvoice] = useState(false);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
+  const [createNewInvoice, setCreateNewInvoice] = useState(false);
 
   // Success state
   const [step, setStep] = useState("form");
@@ -45,6 +47,35 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
   const [invoiceId, setInvoiceId] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState(0);
   const [studentName, setStudentName] = useState("");
+
+  // ── Fetch existing invoices for this student ──
+  const { data: existingInvoices = [], isLoading: loadingInvoices } = useQuery({
+    queryKey: ["student-invoices", fee.student_id, branchId, financialYearId],
+    queryFn: () => getInvoices({ student_id: fee.student_id }, branchId, financialYearId),
+    enabled: !!fee.student_id && !!branchId && !!financialYearId,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  // Auto-select an invoice (prefer one linked to this fee)
+  useEffect(() => {
+    if (existingInvoices.length === 0) {
+      setSelectedInvoiceId(null);
+      setCreateNewInvoice(true);
+      return;
+    }
+    // Check if any invoice is linked to this fee
+    const linked = existingInvoices.find(inv => inv.student_fee_id === fee.id);
+    if (linked) {
+      setSelectedInvoiceId(linked.id);
+      setCreateNewInvoice(false);
+    } else if (existingInvoices.length === 1) {
+      setSelectedInvoiceId(existingInvoices[0].id);
+      setCreateNewInvoice(false);
+    } else {
+      setSelectedInvoiceId(null);
+      setCreateNewInvoice(true);
+    }
+  }, [existingInvoices, fee.id]);
 
   // ── Fetch installments & tax info ──
   useEffect(() => {
@@ -65,7 +96,7 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
         const taxInclusive = fee.fee_structures.tax_inclusive !== undefined
           ? fee.fee_structures.tax_inclusive
           : true;
-        const taxRate = fee.fee_structures.tax_rates; // already joined
+        const taxRate = fee.fee_structures.tax_rates;
 
         if (taxRate) {
           setTaxInfo({
@@ -131,7 +162,6 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
       return;
     }
     try {
-      // Fetch full receipt with relations (receiptPdf expects them)
       const { data: fullReceipt, error } = await supabase
         .from("receipts")
         .select(`
@@ -144,7 +174,6 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
         .eq("financial_year_id", financialYearId)
         .single();
       if (error) throw error;
-      // generateReceiptPdf saves the PDF automatically
       await generateReceiptPdf(fullReceipt);
       message.success("Receipt PDF downloaded");
     } catch (err) {
@@ -159,7 +188,6 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
       return;
     }
     try {
-      // Fetch full invoice data with items
       const { data: invoice, error } = await supabase
         .from("invoices")
         .select("*, invoice_items(*)")
@@ -168,17 +196,51 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
         .eq("financial_year_id", financialYearId)
         .single();
       if (error) throw error;
-      
-      // generateInvoicePDF returns a jsPDF doc – we need to save it
       const doc = await generateInvoicePDF(invoice, org, 'sales');
       const pdfBlob = doc.output('blob');
       const url = URL.createObjectURL(pdfBlob);
-      window.open(url, '_blank'); // Opens in new tab – user can print
+      window.open(url, '_blank');
       message.success("Invoice PDF opened in new tab");
     } catch (err) {
       console.error(err);
       message.error("Failed to generate invoice PDF");
     }
+  };
+
+  // ── Create invoice if needed ──
+  const createInvoiceForFee = async () => {
+    const components = fee.fee_structures?.fee_structure_components || [];
+    let items = components.map(comp => ({
+      item_type: "fee_component",
+      item_id: comp.id,
+      description: comp.component_name,
+      quantity: 1,
+      unit_price: comp.amount,
+      tax_rate_id: comp.tax_rate_id || fee.fee_structures?.tax_rate_id,
+    }));
+    if (!items.length) {
+      items.push({
+        item_type: "fee_payment",
+        description: `Fee Payment - ${fee.fee_structures?.courses?.course_name || "N/A"}`,
+        quantity: 1,
+        unit_price: fee.final_fee,
+        tax_rate_id: fee.fee_structures?.tax_rate_id,
+      });
+    }
+    const payload = {
+      student_id: fee.student_id,
+      invoice_date: new Date().toISOString().split("T")[0],
+      due_date: null,
+      payment_terms: "Immediate",
+      gst_applicable: taxInfo && taxInfo.rate > 0,
+      place_of_supply: fee.students?.state_code || "",
+      reverse_charge: false,
+      items,
+      student_fee_id: fee.id,
+      fee_installment_id: null,
+    };
+    const result = await createInvoice(payload, ctx);
+    return result.id;
   };
 
   // ── Submit payment ──
@@ -218,16 +280,48 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
     };
 
     try {
-      // 1. Collect payment
+      // ── Determine invoice ID ──
+      let finalInvoiceId = selectedInvoiceId;
+      if (createNewInvoice || !finalInvoiceId) {
+        setCreatingInvoice(true);
+        try {
+          finalInvoiceId = await createInvoiceForFee();
+          message.success("Invoice created");
+        } catch (err) {
+          // If duplicate, try to fetch existing
+          if (err?.code === '23505' || err?.message?.includes('duplicate key')) {
+            const { data: existing } = await supabase
+              .from("invoices")
+              .select("id")
+              .eq("student_fee_id", fee.id)
+              .eq("fee_installment_id", null)
+              .eq("branch_id", branchId)
+              .eq("financial_year_id", financialYearId)
+              .maybeSingle();
+            if (existing) {
+              finalInvoiceId = existing.id;
+              message.info("Using existing invoice");
+            } else {
+              throw new Error("Invoice generation failed and no existing found.");
+            }
+          } else {
+            throw err;
+          }
+        } finally {
+          setCreatingInvoice(false);
+        }
+      }
+
+      // ── Collect payment with invoice ID ──
       const payment = await collectPayment(
         paymentPayload,
         fee.student_id,
         profile?.id,
-        null,
+        finalInvoiceId,
         ctx
       );
 
-      // 2. Fetch the receipt that was automatically created
+      // ── Fetch receipt ──
       const { data: receipt, error: receiptError } = await supabase
         .from("receipts")
         .select("*")
@@ -235,75 +329,15 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
         .eq("branch_id", branchId)
         .eq("financial_year_id", financialYearId)
         .single();
+      if (!receiptError) setReceiptData(receipt);
 
-      if (!receiptError) {
-        setReceiptData(receipt);
-      } else {
-        console.warn("Could not fetch receipt", receiptError);
-      }
-
-      // 3. Generate invoice (or fetch existing)
-      setCreatingInvoice(true);
-      let createdInvoiceId = null;
-      try {
-        const invoicePayload = {
-          student_id: fee.student_id,
-          invoice_date: paymentPayload.payment_date,
-          due_date: null,
-          payment_terms: "Immediate",
-          gst_applicable: taxInfo && taxInfo.rate > 0,
-          place_of_supply: fee.students?.state_code || "",
-          reverse_charge: false,
-          items: [
-            {
-              item_type: "fee_payment",
-              description: `Fee Payment - ${fee.fee_structures?.courses?.course_name || "N/A"}`,
-              quantity: 1,
-              unit_price: baseAmount,
-              hsn_sac_code: "9992",
-              tax_rate_id: fee.fee_structures?.tax_rate_id || null,
-            },
-          ],
-          student_fee_id: fee.id,
-          fee_installment_id: values.installment_id || null,
-        };
-
-        const result = await createInvoice(invoicePayload, ctx);
-        createdInvoiceId = result.id;
-        message.success("Payment collected and invoice generated");
-      } catch (err) {
-        // If duplicate, try to fetch existing invoice
-        if (err?.code === '23505' || err?.message?.includes('duplicate key')) {
-          const { data: existing } = await supabase
-            .from("invoices")
-            .select("id")
-            .eq("student_fee_id", fee.id)
-            .eq("fee_installment_id", values.installment_id || null)
-            .eq("branch_id", branchId)
-            .eq("financial_year_id", financialYearId)
-            .maybeSingle();
-          if (existing) {
-            createdInvoiceId = existing.id;
-            message.success("Payment collected and existing invoice linked");
-          } else {
-            console.warn("Invoice already exists but could not be fetched");
-          }
-        } else {
-          throw err;
-        }
-      } finally {
-        setCreatingInvoice(false);
-      }
-
-      setInvoiceId(createdInvoiceId);
+      setInvoiceId(finalInvoiceId);
       setPaymentAmount(paymentAmountVal);
       setStudentName(`${fee.students?.first_name} ${fee.students?.last_name}`);
-
-      // 4. Switch to success view
       setStep("success");
 
-      // 5. Invalidate queries and call onSuccess
       queryClient.invalidateQueries({ queryKey: ["studentFees"] });
+      queryClient.invalidateQueries({ queryKey: ["student-invoices"] });
       onSuccess?.();
     } catch (err) {
       console.error(err);
@@ -356,6 +390,39 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
           </Descriptions>
 
           <Divider />
+
+          {/* ── Invoice Selector ── */}
+          {!loadingInvoices && existingInvoices.length > 0 && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Apply to Invoice</label>
+              <Select
+                placeholder="Select an existing invoice or create new"
+                value={selectedInvoiceId}
+                onChange={(val) => {
+                  if (val === "create_new") {
+                    setSelectedInvoiceId(null);
+                    setCreateNewInvoice(true);
+                  } else {
+                    setSelectedInvoiceId(val);
+                    setCreateNewInvoice(false);
+                  }
+                }}
+                style={{ width: "100%" }}
+                options={[
+                  ...existingInvoices.map(inv => ({
+                    label: `${inv.invoice_number} (₹${Number(inv.grand_total).toLocaleString()}) – ${inv.status}`,
+                    value: inv.id,
+                  })),
+                  { label: "+ Create new invoice", value: "create_new" },
+                ]}
+              />
+            </div>
+          )}
+          {!loadingInvoices && existingInvoices.length === 0 && (
+            <div className="mb-4 text-sm text-secondary">
+              No existing invoices – a new invoice will be created automatically.
+            </div>
+          )}
 
           <Form
             form={form}

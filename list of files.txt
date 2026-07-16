@@ -1,0 +1,38 @@
+  const quickActions = [
+    {
+      title: "Employees",
+      icon: Users,
+      link: "/employees",
+      color: "bg-blue-100 text-blue-700",
+    },
+    {
+      title: "Attendance",
+      icon: Clock,
+      link: "/teacher-attendance",
+      color: "bg-green-100 text-green-700",
+    },
+    {
+      title: "Leave Management",
+      icon: Calendar,
+      link: "/leave-management",
+      color: "bg-purple-100 text-purple-700",
+    },
+    {
+      title: "Salary Setup",
+      icon: Settings,
+      link: "/salary-setup",
+      color: "bg-orange-100 text-orange-700",
+    },
+    {
+      title: "Salary Payments",
+      icon: CreditCard,
+      link: "/salary-payments",
+      color: "bg-indigo-100 text-indigo-700",
+    },
+    {
+      title: "Salary Report",
+      icon: BarChart2,
+      link: "/salary-report",
+      color: "bg-pink-100 text-pink-700",
+    },
+  ];

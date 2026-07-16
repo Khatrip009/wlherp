@@ -1,9 +1,7 @@
-// src/pages/SalaryReport.jsx
 import { useState, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import toast from "react-hot-toast";
-import AdminLayout from "../layouts/AdminLayout";
 import { Calendar, Download, FileText, TrendingUp, IndianRupee, AlertCircle } from "lucide-react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -332,7 +330,7 @@ export default function SalaryReport() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">Monthly Salary Report</h1>
         <div className="flex items-center gap-3 mt-2 sm:mt-0">
@@ -477,6 +475,6 @@ export default function SalaryReport() {
           </div>
         )}
       </div>
-    </AdminLayout>
+    </>
   );
 }

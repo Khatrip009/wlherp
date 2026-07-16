@@ -1,99 +1,56 @@
 // src/components/FeeManagement.jsx
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Drawer,
   Descriptions,
   Table,
   Button,
-  Select,
-  InputNumber,
-  Form,
   Space,
   message,
-  Popconfirm,
   Tag,
   Spin,
 } from "antd";
 import {
   DollarOutlined,
   FileTextOutlined,
-  EyeOutlined,
 } from "@ant-design/icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  getStudentFees,           // fetch the single student fee record (you can adjust if you need a single one)
+  getStudentFees,
   getPayments,
   generateInvoiceFromStudentFee,
-  collectPayment,
-  // if you need to fetch fee structures for assignment, import that too
 } from "../services/feeService";
 import { useOrg } from "../context/OrganizationContext";
-import { supabase } from "../api/supabase"; // if needed for fetching fee structures
-import { useAuth } from "../context/AuthContext";
+import CollectPaymentModal from "./CollectPaymentModal";
 
 export default function FeeManagement({ studentId, open, onClose }) {
   const queryClient = useQueryClient();
   const { branch, selectedFinancialYear } = useOrg();
-  const { user } = useAuth();
   const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
 
-  const [paymentForm] = Form.useForm();
-  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [selectedFeeId, setSelectedFeeId] = useState(null);
+  const [collectingFee, setCollectingFee] = useState(null);
 
-  // Fetch the student fee record (assuming one record per student; adjust if multiple)
+  // Fetch the student fee record
   const { data: feeRecord, isLoading, isError } = useQuery({
     queryKey: ["student-fee", studentId, ctx],
     queryFn: async () => {
-      // getStudentFees returns paginated; we'll use a small page to get the latest
       const result = await getStudentFees({
         pageParam: 0,
         filters: {},
         branchId: ctx.branchId,
         financialYearId: ctx.financialYearId,
       });
-      // Since getStudentFees returns all student fees, we need to filter for this student
-      // Alternatively, you can create a dedicated service function. For now, we'll filter the result.
       const allFees = result.data || [];
-      const studentFee = allFees.find((f) => f.student_id == studentId);
-      return studentFee || null;
+      return allFees.find((f) => f.student_id == studentId) || null;
     },
     enabled: !!open && !!studentId,
   });
 
   // Fetch payments for the specific fee
   const { data: payments = [] } = useQuery({
-    queryKey: ["payments", selectedFeeId || feeRecord?.id, ctx],
-    queryFn: () => getPayments(selectedFeeId || feeRecord?.id, ctx.branchId, ctx.financialYearId),
-    enabled: !!(selectedFeeId || feeRecord?.id),
-  });
-
-  // Mutation to collect payment
- const collectMutation = useMutation({
-  mutationFn: (values) =>
-    collectPayment(
-      {
-        student_fee_id: feeRecord.id,
-        payment_date: values.payment_date || new Date().toISOString().split("T")[0],
-        amount: Number(values.amount),
-        payment_mode: values.payment_mode,
-        base_amount: values.base_amount || 0,
-        tax_amount: values.tax_amount || 0,
-        generated_by: user?.id,          // ✅ Add this
-      },
-      studentId,
-      null,    // invoice_id
-      ctx
-    ),
-
-    onSuccess: () => {
-      message.success("Payment collected");
-      queryClient.invalidateQueries({ queryKey: ["student-fee", studentId] });
-      queryClient.invalidateQueries({ queryKey: ["payments", feeRecord?.id] });
-      paymentForm.resetFields();
-      setPaymentModalOpen(false);
-    },
-    onError: (err) => message.error(err.message),
+    queryKey: ["payments", feeRecord?.id, ctx],
+    queryFn: () => getPayments(feeRecord?.id, ctx.branchId, ctx.financialYearId),
+    enabled: !!feeRecord?.id,
   });
 
   // Mutation to generate invoice
@@ -105,10 +62,6 @@ export default function FeeManagement({ studentId, open, onClose }) {
     },
     onError: (err) => message.error(err.message),
   });
-
-  // Open payment modal
-  const openPaymentModal = () => setPaymentModalOpen(true);
-  const closePaymentModal = () => setPaymentModalOpen(false);
 
   if (!open) return null;
 
@@ -182,7 +135,7 @@ export default function FeeManagement({ studentId, open, onClose }) {
               <Button
                 type="primary"
                 icon={<DollarOutlined />}
-                onClick={openPaymentModal}
+                onClick={() => setCollectingFee(feeRecord)}
               >
                 Collect Payment
               </Button>
@@ -209,61 +162,17 @@ export default function FeeManagement({ studentId, open, onClose }) {
             size="small"
           />
 
-          {/* Payment Collection Modal */}
-          {paymentModalOpen && (
-            <Drawer
-              title="Collect Payment"
-              open={paymentModalOpen}
-              onClose={closePaymentModal}
-              width={400}
-              destroyOnClose
-            >
-              <Form
-                form={paymentForm}
-                layout="vertical"
-                onFinish={(values) => collectMutation.mutate(values)}
-              >
-                <Form.Item
-                  name="amount"
-                  label="Amount"
-                  rules={[{ required: true, message: "Please enter amount" }]}
-                >
-                  <InputNumber
-                    min={0}
-                    max={feeRecord.pending}
-                    style={{ width: "100%" }}
-                    placeholder={`Max: ₹${feeRecord.pending}`}
-                  />
-                </Form.Item>
-                <Form.Item
-                  name="payment_mode"
-                  label="Payment Mode"
-                  rules={[{ required: true }]}
-                >
-                  <Select placeholder="Select mode">
-                    <Select.Option value="Cash">Cash</Select.Option>
-                    <Select.Option value="Card">Card</Select.Option>
-                    <Select.Option value="UPI">UPI</Select.Option>
-                    <Select.Option value="Bank Transfer">Bank Transfer</Select.Option>
-                  </Select>
-                </Form.Item>
-                <Form.Item name="payment_date" label="Payment Date">
-                  <input type="date" style={{ width: "100%", padding: "4px 11px" }} />
-                </Form.Item>
-                <Form.Item name="base_amount" hidden initialValue={0} />
-                <Form.Item name="tax_amount" hidden initialValue={0} />
-                <Form.Item>
-                  <Button
-                    type="primary"
-                    htmlType="submit"
-                    loading={collectMutation.isLoading}
-                    block
-                  >
-                    Save Payment
-                  </Button>
-                </Form.Item>
-              </Form>
-            </Drawer>
+          {/* ─── Collect Payment Modal (enhanced) ─── */}
+          {collectingFee && (
+            <CollectPaymentModal
+              fee={collectingFee}
+              onClose={() => setCollectingFee(null)}
+              onSuccess={() => {
+                setCollectingFee(null);
+                queryClient.invalidateQueries({ queryKey: ["student-fee", studentId] });
+                queryClient.invalidateQueries({ queryKey: ["payments", feeRecord?.id] });
+              }}
+            />
           )}
         </>
       )}

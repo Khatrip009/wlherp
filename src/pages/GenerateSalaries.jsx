@@ -6,7 +6,6 @@ import {
   generateTeacherSalary,
 } from "../services/salaryService";
 import toast from "react-hot-toast";
-import AdminLayout from "../layouts/AdminLayout";
 import {
   Calendar,
   TrendingUp,
@@ -190,7 +189,7 @@ export default function GenerateSalaries() {
   const totalCount = teachers.length;
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-righteous text-primary-dark">
@@ -440,6 +439,6 @@ export default function GenerateSalaries() {
           )}
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

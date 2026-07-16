@@ -1,11 +1,9 @@
-// src/pages/TeacherAttendance.jsx
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import toast from "react-hot-toast";
-import AdminLayout from "../layouts/AdminLayout";
 import { useAuth } from "../context/AuthContext";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 import { Calendar, CheckCircle, XCircle, Clock, X } from "lucide-react";
 
 export default function TeacherAttendance() {
@@ -15,7 +13,7 @@ export default function TeacherAttendance() {
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
 
   // ── Branch & Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -28,8 +26,8 @@ export default function TeacherAttendance() {
         .from("teachers")
         .select("id")
         .eq("user_id", profile.id)
-        .eq("branch_id", branchId)                 // scoped
-        .eq("financial_year_id", financialYearId) // scoped
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
         .single();
       return data?.id || null;
     },
@@ -46,7 +44,6 @@ export default function TeacherAttendance() {
         .eq("status", "active")
         .order("first_name");
 
-      // Scope to branch & FY
       if (branchId) query = query.eq("branch_id", branchId);
       if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
@@ -69,8 +66,8 @@ export default function TeacherAttendance() {
         .from("teacher_attendance")
         .select("*")
         .eq("attendance_date", date)
-        .eq("branch_id", branchId)                  // scoped
-        .eq("financial_year_id", financialYearId); // scoped
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
 
       if (!isAdmin && ownTeacherId) {
         query = query.eq("teacher_id", ownTeacherId);
@@ -100,8 +97,8 @@ export default function TeacherAttendance() {
       const payload = {
         status,
         updated_at: new Date().toISOString(),
-        branch_id: branchId,                  // NEW
-        financial_year_id: financialYearId,   // NEW
+        branch_id: branchId,
+        financial_year_id: financialYearId,
       };
       if (existing) {
         const { error } = await supabase
@@ -116,8 +113,8 @@ export default function TeacherAttendance() {
             teacher_id,
             attendance_date: date,
             status,
-            branch_id: branchId,               // NEW
-            financial_year_id: financialYearId,// NEW
+            branch_id: branchId,
+            financial_year_id: financialYearId,
           });
         if (error) throw error;
       }
@@ -163,7 +160,7 @@ export default function TeacherAttendance() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">
           {isAdmin ? "Teacher Attendance" : "My Attendance"}
@@ -308,6 +305,6 @@ export default function TeacherAttendance() {
           </div>
         )}
       </div>
-    </AdminLayout>
+    </>
   );
 }

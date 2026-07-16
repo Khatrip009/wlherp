@@ -1,18 +1,14 @@
-// src/pages/SalaryPayments.jsx
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getSalaryPayments } from "../services/salaryService";
-import AdminLayout from "../layouts/AdminLayout";
 import BackButton from "../components/BackButton";
-
 import { Search, Download, Filter, X } from "lucide-react";
 import Papa from "papaparse";
 import toast from "react-hot-toast";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function SalaryPayments() {
-  // ── Branch & Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -22,7 +18,6 @@ export default function SalaryPayments() {
   const [endDate, setEndDate] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
-  // Fetch salary payments – now scoped to branch & FY
   const { data: payments = [], isLoading } = useQuery({
     queryKey: ["salary-payments", branchId, financialYearId],
     queryFn: () => getSalaryPayments({}, branchId, financialYearId),
@@ -81,7 +76,6 @@ export default function SalaryPayments() {
     URL.revokeObjectURL(url);
   };
 
-  // Get unique teachers for filter
   const teacherOptions = useMemo(() => {
     const map = {};
     payments.forEach((p) => {
@@ -93,7 +87,7 @@ export default function SalaryPayments() {
   }, [payments]);
 
   return (
-    <AdminLayout>
+    <>
       <BackButton to="/hr-hub" label="HR & Staff" />
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">Salary Payments</h1>
@@ -254,6 +248,6 @@ export default function SalaryPayments() {
           </div>
         )}
       </div>
-    </AdminLayout>
+    </>
   );
 }

@@ -497,10 +497,5 @@ export default function Attendance({ studentId: propStudentId = null, standalone
     return <div>{content}</div>;
   }
 
-  return (
-    <AdminLayout>
-      <BackButton to="/academics-hub" label="Academics Hub" />
-      {content}
-    </AdminLayout>
-  );
+  
 }

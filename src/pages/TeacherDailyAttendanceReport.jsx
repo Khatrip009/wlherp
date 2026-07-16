@@ -1,11 +1,9 @@
-// src/pages/TeacherDailyAttendanceReport.jsx
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
 import { generateDailyTeacherAttendancePDF } from "../utils/teacherDailyAttendancePdf";
 import toast from "react-hot-toast";
-import AdminLayout from "../layouts/AdminLayout";
 import { Calendar, Download } from "lucide-react";
 import { useOrg } from "../context/OrganizationContext";
 
@@ -13,7 +11,6 @@ export default function TeacherDailyAttendanceReport() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
 
-  // ── Branch & Financial Year context ──
   const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
@@ -102,11 +99,10 @@ export default function TeacherDailyAttendanceReport() {
       toast.error("No data to export");
       return;
     }
-    // Fetch organisation info for PDF header – uses current org id
     const { data: org } = await supabase
       .from("organization")
       .select("*")
-      .eq("id", currentOrg?.id)   // use current org id
+      .eq("id", currentOrg?.id)
       .single();
 
     const doc = await generateDailyTeacherAttendancePDF(reportData, startDate, endDate, org || {});
@@ -115,7 +111,7 @@ export default function TeacherDailyAttendanceReport() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">
           {isAdmin ? "Teacher Daily Attendance Report" : "My Daily Attendance"}
@@ -203,6 +199,6 @@ export default function TeacherDailyAttendanceReport() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

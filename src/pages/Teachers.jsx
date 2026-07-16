@@ -1,4 +1,3 @@
-// src/pages/Employees.jsx
 import React, { useState, useRef } from "react";
 import {
   useInfiniteQuery,
@@ -21,7 +20,6 @@ import {
   CreditCard,
 } from "lucide-react";
 import Papa from "papaparse";
-import AdminLayout from "../layouts/AdminLayout";
 import TeacherForm from "../components/TeacherForm";
 import BackButton from "../components/BackButton";
 import {
@@ -282,7 +280,7 @@ export default function Employees() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <BackButton to="/hr-hub" label="HR & Staff Hub" />
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
@@ -595,6 +593,6 @@ export default function Employees() {
           onClose={() => setEditing(null)}
         />
       )}
-    </AdminLayout>
+    </>
   );
 }

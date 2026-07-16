@@ -2,21 +2,18 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getActiveTeachers, updateTeacherSalary } from "../services/teacherService";
 import toast from "react-hot-toast";
-import AdminLayout from "../layouts/AdminLayout";
 import { Search, Save, RefreshCw } from "lucide-react";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function SalarySetup() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
 
-  // ── Branch & Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
 
-  // Fetch active teachers – scoped to branch & FY
   const { data: teachers = [], isLoading } = useQuery({
     queryKey: ["active-teachers-salary", branchId, financialYearId],
     queryFn: () => getActiveTeachers(branchId, financialYearId),
@@ -35,7 +32,7 @@ export default function SalarySetup() {
   }, [teachers, search]);
 
   const mutation = useMutation({
-    mutationFn: ({ id, payload }) => updateTeacherSalary(id, payload, ctx),   // pass context
+    mutationFn: ({ id, payload }) => updateTeacherSalary(id, payload, ctx),
     onSuccess: () => {
       toast.success("Salary settings updated");
       qc.invalidateQueries(["active-teachers-salary"]);
@@ -48,7 +45,7 @@ export default function SalarySetup() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">Salary Setup</h1>
         <div className="relative mt-2 sm:mt-0">
@@ -146,6 +143,6 @@ export default function SalarySetup() {
           </div>
         )}
       </div>
-    </AdminLayout>
+    </>
   );
 }

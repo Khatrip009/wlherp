@@ -1,21 +1,18 @@
-// src/pages/TeacherLectureReport.jsx
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
 import { generateTeacherLectureReportPDF } from "../utils/teacherLectureReportPdf";
 import toast from "react-hot-toast";
-import AdminLayout from "../layouts/AdminLayout";
 import { Calendar, Download } from "lucide-react";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function TeacherLectureReport() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
   const queryClient = useQueryClient();
 
-  // ── Branch & Financial Year context ──
-  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();   // NEW
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -116,7 +113,6 @@ export default function TeacherLectureReport() {
     queryKey: ["session-attendance-counts", sessionIds, branchId, financialYearId],
     queryFn: async () => {
       if (!sessionIds.length) return {};
-      // Fetch all attendance rows for these sessions – scoped
       let attendanceQuery = supabase
         .from("student_attendance")
         .select("session_id, status")
@@ -138,7 +134,6 @@ export default function TeacherLectureReport() {
         }
       });
 
-      // Ensure we have entries for all sessions even if no attendance rows exist
       sessionIds.forEach((id) => {
         if (!counts[id]) {
           counts[id] = { present: 0, total: 0 };
@@ -148,7 +143,7 @@ export default function TeacherLectureReport() {
       return counts;
     },
     enabled: sessionIds.length > 0 && !!branchId && !!financialYearId,
-    staleTime: 0, // we want fresh counts when sessions change
+    staleTime: 0,
   });
 
   // Build report data
@@ -178,11 +173,10 @@ export default function TeacherLectureReport() {
       toast.error("No data to export");
       return;
     }
-    // Fetch org info using the current org id from context
     const { data: org } = await supabase
       .from("organization")
       .select("*")
-      .eq("id", currentOrg?.id)   // now uses current org
+      .eq("id", currentOrg?.id)
       .single();
 
     const doc = await generateTeacherLectureReportPDF(
@@ -197,7 +191,7 @@ export default function TeacherLectureReport() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">Teacher Lecture Report</h1>
         <div className="flex flex-wrap gap-3 mt-2 sm:mt-0">
@@ -281,6 +275,6 @@ export default function TeacherLectureReport() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

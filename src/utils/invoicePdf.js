@@ -26,12 +26,13 @@ function drawCurrency(doc, amount, x, y, fontSize = 10, align = 'left', color = 
   doc.setFontSize(fontSize);
   doc.setTextColor(color);
   const amountText = amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const textWidth = doc.getTextWidth(amountText);
+  const imgSize = fontSize * 0.4; // dynamic size
   if (align === 'left') {
-    doc.addImage(img, 'PNG', x, y - fontSize * 0.35, 4, 4);
-    doc.text(amountText, x + 5, y);
+    doc.addImage(img, 'PNG', x, y - fontSize * 0.35, imgSize, imgSize);
+    doc.text(amountText, x + imgSize + 1, y);
   } else {
-    const textWidth = doc.getTextWidth(amountText);
-    doc.addImage(img, 'PNG', x - textWidth - 5, y - fontSize * 0.35, 4, 4);
+    doc.addImage(img, 'PNG', x - textWidth - imgSize - 1, y - fontSize * 0.35, imgSize, imgSize);
     doc.text(amountText, x - textWidth, y);
   }
 }

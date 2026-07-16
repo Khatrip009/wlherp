@@ -1,6 +1,8 @@
+// src/pages/InvoiceView.jsx
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "../api/supabase";
 import {
   getInvoice,
   finalizeInvoice,
@@ -16,9 +18,11 @@ import {
   Trash2,
   Loader,
   FileText,
+  DollarSign,
 } from "lucide-react";
 import { useOrg } from "../context/OrganizationContext";
 import { useTheme } from "../context/ThemeContext";
+import CollectPaymentModal from "../components/CollectPaymentModal";
 
 export default function InvoiceView() {
   const { id } = useParams();
@@ -26,21 +30,44 @@ export default function InvoiceView() {
   const queryClient = useQueryClient();
   const [printing, setPrinting] = useState(false);
   const [generatingPDF, setGeneratingPDF] = useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [selectedFee, setSelectedFee] = useState(null);
 
   const { branch, selectedFinancialYear, org } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
 
-  // ── Get theme from context (exactly as stored, with underscores) ──
+  // ── Get theme ──
   const theme = useTheme();
 
+  // ── Fetch invoice ──
   const { data: invoice, isLoading } = useQuery({
     queryKey: ["invoice", id, branchId, financialYearId],
     queryFn: () => getInvoice(id, branchId, financialYearId),
     enabled: !!id && !!branchId && !!financialYearId,
   });
 
+  // ── Fetch payments for this invoice ──
+  const { data: payments = [], refetch: refetchPayments } = useQuery({
+    queryKey: ["invoice-payments", id, branchId, financialYearId],
+    queryFn: async () => {
+      let query = supabase
+        .from("fee_payments")
+        .select(`
+          *,
+          receipts (*)
+        `)
+        .eq("invoice_id", id);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
+      return data || [];
+    },
+    enabled: !!id && !!branchId && !!financialYearId,
+  });
+
+  // ── Mutations ──
   const finalizeMutation = useMutation({
     mutationFn: () => finalizeInvoice(id, ctx),
     onSuccess: () => {
@@ -67,7 +94,7 @@ export default function InvoiceView() {
     try {
       const doc = await generateInvoicePDF(invoice, org, "sales", {
         autoPrint: true,
-        theme, // pass the full theme object
+        theme,
       });
       doc.output("dataurlnewwindow");
     } catch (err) {
@@ -78,13 +105,13 @@ export default function InvoiceView() {
     }
   };
 
-  // ── Download PDF (no auto‑print) ──
+  // ── Download PDF ──
   const handleDownloadPDF = async () => {
     if (!invoice || !org) return;
     setGeneratingPDF(true);
     try {
       const doc = await generateInvoicePDF(invoice, org, "sales", {
-        theme, // pass the full theme object
+        theme,
       });
       doc.save(`Invoice_${invoice.invoice_number}.pdf`);
       toast.success("PDF downloaded");
@@ -96,6 +123,16 @@ export default function InvoiceView() {
     }
   };
 
+  // ── Handle successful payment ──
+  const handlePaymentSuccess = () => {
+    setPaymentModalOpen(false);
+    queryClient.invalidateQueries({ queryKey: ["invoice", id] });
+    queryClient.invalidateQueries({ queryKey: ["invoices"] });
+    queryClient.invalidateQueries({ queryKey: ["invoice-payments", id] });
+    refetchPayments();
+    toast.success("Payment recorded successfully");
+  };
+
   if (isLoading) {
     return <div className="p-8 text-center">Loading invoice…</div>;
   }
@@ -103,6 +140,11 @@ export default function InvoiceView() {
   if (!invoice) {
     return <div className="p-8 text-center text-red-600">Invoice not found</div>;
   }
+
+  // ── Compute totals ──
+  const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+  const balance = invoice.grand_total - totalPaid;
+  const isFullyPaid = balance <= 0;
 
   const orgName = org?.company_name || "Academy";
   const student = invoice.students || {};
@@ -131,15 +173,15 @@ export default function InvoiceView() {
 
   return (
     <>
-      {/* Action buttons – hidden during print */}
-      <div className="no-print flex justify-between items-center mb-6">
+      {/* Action buttons */}
+      <div className="no-print flex justify-between items-center mb-6 flex-wrap gap-2">
         <button
           onClick={() => navigate("/invoices")}
           className="inline-flex items-center gap-2 text-secondary hover:text-primary-dark text-sm"
         >
           <ArrowLeft size={18} /> Back to Invoices
         </button>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={handleDownloadPDF}
             disabled={generatingPDF}
@@ -186,10 +228,36 @@ export default function InvoiceView() {
               <Trash2 size={16} /> Delete
             </button>
           )}
+          {!isFullyPaid && (
+            <button
+              onClick={() => {
+                // Create a fake fee object to pass to CollectPaymentModal
+                // The modal expects a fee object with student details and fee structure
+                setSelectedFee({
+                  id: invoice.student_fee_id || null,
+                  student_id: invoice.student_id,
+                  students: invoice.students || {},
+                  final_fee: invoice.grand_total,
+                  pending: balance,
+                  total_paid: totalPaid,
+                  fee_structures: {
+                    courses: { course_name: "Invoice Payment" },
+                    tax_rate_id: null,
+                    tax_inclusive: false,
+                    tax_rates: null,
+                  },
+                });
+                setPaymentModalOpen(true);
+              }}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            >
+              <DollarSign size={16} /> Record Payment
+            </button>
+          )}
         </div>
       </div>
 
-      {/* ─── Invoice Preview (visible only on screen) ─── */}
+      {/* ─── Invoice Preview ─── */}
       <div
         className="invoice-preview"
         style={{
@@ -217,8 +285,11 @@ export default function InvoiceView() {
             <div>No: {invoice.invoice_number}</div>
             <div>Date: {invoice.invoice_date}</div>
             <div>Status: {invoice.status}</div>
+            {invoice.due_date && <div>Due Date: {invoice.due_date}</div>}
           </div>
         </div>
+
+        {/* Items table */}
         <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "16px" }}>
           <thead>
             <tr style={{ background: primaryColor, color: "#fff" }}>
@@ -226,6 +297,10 @@ export default function InvoiceView() {
               <th style={{ padding: "6px", border: "1px solid #ccc", textAlign: "left" }}>Description</th>
               <th style={{ padding: "6px", border: "1px solid #ccc", textAlign: "right" }}>Qty</th>
               <th style={{ padding: "6px", border: "1px solid #ccc", textAlign: "right" }}>Unit Price</th>
+              <th style={{ padding: "6px", border: "1px solid #ccc", textAlign: "right" }}>Taxable</th>
+              <th style={{ padding: "6px", border: "1px solid #ccc", textAlign: "right" }}>CGST</th>
+              <th style={{ padding: "6px", border: "1px solid #ccc", textAlign: "right" }}>SGST</th>
+              <th style={{ padding: "6px", border: "1px solid #ccc", textAlign: "right" }}>IGST</th>
               <th style={{ padding: "6px", border: "1px solid #ccc", textAlign: "right" }}>Total</th>
             </tr>
           </thead>
@@ -236,11 +311,17 @@ export default function InvoiceView() {
                 <td style={{ padding: "6px", border: "1px solid #ccc" }}>{item.description}</td>
                 <td style={{ padding: "6px", border: "1px solid #ccc", textAlign: "right" }}>{item.quantity}</td>
                 <td style={{ padding: "6px", border: "1px solid #ccc", textAlign: "right" }}>{formatCurrency(item.unit_price)}</td>
+                <td style={{ padding: "6px", border: "1px solid #ccc", textAlign: "right" }}>{formatCurrency(item.taxable_amount)}</td>
+                <td style={{ padding: "6px", border: "1px solid #ccc", textAlign: "right" }}>{formatCurrency(item.cgst_amount)}</td>
+                <td style={{ padding: "6px", border: "1px solid #ccc", textAlign: "right" }}>{formatCurrency(item.sgst_amount)}</td>
+                <td style={{ padding: "6px", border: "1px solid #ccc", textAlign: "right" }}>{formatCurrency(item.igst_amount)}</td>
                 <td style={{ padding: "6px", border: "1px solid #ccc", textAlign: "right" }}>{formatCurrency(item.total_amount)}</td>
               </tr>
             ))}
           </tbody>
         </table>
+
+        {/* Totals */}
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8px" }}>
           <div style={{ width: "250px" }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
@@ -281,10 +362,80 @@ export default function InvoiceView() {
             </div>
           </div>
         </div>
-        <div>
+
+        {/* Amount in words */}
+        <div style={{ marginBottom: "8px" }}>
           <strong>Amount in words:</strong> {words}
         </div>
+
+        {/* Reverse Charge Note */}
+        {reverseCharge && (
+          <div style={{ color: "#CC0000", fontWeight: "bold", marginBottom: "8px" }}>
+            ** Reverse Charge Applicable – Tax payable by recipient **
+          </div>
+        )}
+
+        {/* ─── Payment History ─── */}
+        <div style={{ marginTop: "20px", borderTop: `1px solid #ddd`, paddingTop: "16px" }}>
+          <h3 style={{ margin: "0 0 8px 0" }}>Payment History</h3>
+          {payments.length === 0 ? (
+            <p style={{ color: "#888" }}>No payments recorded.</p>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "9pt" }}>
+              <thead>
+                <tr style={{ background: "#f0f0f0" }}>
+                  <th style={{ padding: "4px", border: "1px solid #ddd", textAlign: "left" }}>Date</th>
+                  <th style={{ padding: "4px", border: "1px solid #ddd", textAlign: "right" }}>Amount</th>
+                  <th style={{ padding: "4px", border: "1px solid #ddd", textAlign: "left" }}>Mode</th>
+                  <th style={{ padding: "4px", border: "1px solid #ddd", textAlign: "left" }}>Receipt No</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((p) => (
+                  <tr key={p.id}>
+                    <td style={{ padding: "4px", border: "1px solid #ddd" }}>{p.payment_date}</td>
+                    <td style={{ padding: "4px", border: "1px solid #ddd", textAlign: "right" }}>
+                      {formatCurrency(p.amount)}
+                    </td>
+                    <td style={{ padding: "4px", border: "1px solid #ddd" }}>{p.payment_mode || "—"}</td>
+                    <td style={{ padding: "4px", border: "1px solid #ddd" }}>
+                      {p.receipts?.[0]?.receipt_no || "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ fontWeight: "bold" }}>
+                  <td style={{ padding: "4px", border: "1px solid #ddd" }}>Total Paid</td>
+                  <td style={{ padding: "4px", border: "1px solid #ddd", textAlign: "right" }}>
+                    {formatCurrency(totalPaid)}
+                  </td>
+                  <td colSpan="2" style={{ padding: "4px", border: "1px solid #ddd" }}></td>
+                </tr>
+                <tr style={{ fontWeight: "bold" }}>
+                  <td style={{ padding: "4px", border: "1px solid #ddd" }}>Balance Due</td>
+                  <td style={{ padding: "4px", border: "1px solid #ddd", textAlign: "right", color: balance > 0 ? "#cc0000" : "#008000" }}>
+                    {formatCurrency(balance)}
+                  </td>
+                  <td colSpan="2" style={{ padding: "4px", border: "1px solid #ddd" }}></td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </div>
       </div>
+
+      {/* ─── Collect Payment Modal ─── */}
+      {selectedFee && (
+        <CollectPaymentModal
+          fee={selectedFee}
+          onClose={() => {
+            setPaymentModalOpen(false);
+            setSelectedFee(null);
+          }}
+          onSuccess={handlePaymentSuccess}
+        />
+      )}
 
       <style>{`
         @media print {

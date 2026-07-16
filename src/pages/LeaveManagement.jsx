@@ -13,19 +13,16 @@ import {
   User,
   Clock,
 } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
 import BackButton from "../components/BackButton";
-
 import { getLeaves, updateLeaveStatus } from "../services/leaveService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function LeaveManagement() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
 
-  // ── Branch & Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
@@ -59,7 +56,7 @@ export default function LeaveManagement() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, status, adminRemarks }) =>
-      updateLeaveStatus(id, status, adminRemarks, ctx),   // pass context
+      updateLeaveStatus(id, status, adminRemarks, ctx),
     onSuccess: () => {
       toast.success("Leave updated");
       queryClient.invalidateQueries({ queryKey: ["leaves"] });
@@ -68,7 +65,7 @@ export default function LeaveManagement() {
   });
 
   return (
-    <AdminLayout>
+    <>
       <BackButton to="/hr-hub" label="HR & Staff" />
       <div className="mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">Leave Management</h1>
@@ -86,7 +83,11 @@ export default function LeaveManagement() {
             className="w-full border border-secondary-light rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
           />
         </div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="border border-secondary-light rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-primary outline-none">
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="border border-secondary-light rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-primary outline-none"
+        >
           <option value="">All Status</option>
           <option value="Pending">Pending</option>
           <option value="Approved">Approved</option>
@@ -129,8 +130,25 @@ export default function LeaveManagement() {
                     <td className="text-sm">
                       {l.status === "Pending" && (
                         <div className="flex gap-2">
-                          <button onClick={() => updateMutation.mutate({ id: l.id, status: "Approved" })} className="text-green-600 hover:underline"><Check size={15} /> Approve</button>
-                          <button onClick={() => { const remark = prompt("Rejection reason (optional):"); updateMutation.mutate({ id: l.id, status: "Rejected", adminRemarks: remark || "" }); }} className="text-red-600 hover:underline"><X size={15} /> Reject</button>
+                          <button
+                            onClick={() => updateMutation.mutate({ id: l.id, status: "Approved" })}
+                            className="text-green-600 hover:underline"
+                          >
+                            <Check size={15} /> Approve
+                          </button>
+                          <button
+                            onClick={() => {
+                              const remark = prompt("Rejection reason (optional):");
+                              updateMutation.mutate({
+                                id: l.id,
+                                status: "Rejected",
+                                adminRemarks: remark || "",
+                              });
+                            }}
+                            className="text-red-600 hover:underline"
+                          >
+                            <X size={15} /> Reject
+                          </button>
                         </div>
                       )}
                     </td>
@@ -144,11 +162,15 @@ export default function LeaveManagement() {
 
       {hasNextPage && (
         <div className="flex justify-center mt-6">
-          <button onClick={() => fetchNextPage()} disabled={isFetchingNextPage} className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat text-sm transition disabled:opacity-60">
+          <button
+            onClick={() => fetchNextPage()}
+            disabled={isFetchingNextPage}
+            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat text-sm transition disabled:opacity-60"
+          >
             {isFetchingNextPage ? "Loading more…" : "Load More"}
           </button>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

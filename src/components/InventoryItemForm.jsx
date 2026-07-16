@@ -1,8 +1,9 @@
-// src/components/InventoryItemForm.jsx
 import { useState, useEffect } from "react";
 import { Form, Input, InputNumber, Select, Button, Space, message } from "antd";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+
+const { TextArea } = Input;
 
 export default function InventoryItemForm({ initialData = {}, onSubmit, onClose, loading = false }) {
   const [form] = Form.useForm();
@@ -11,20 +12,36 @@ export default function InventoryItemForm({ initialData = {}, onSubmit, onClose,
   const financialYearId = selectedFinancialYear?.id;
   const [categories, setCategories] = useState([]);
 
+  // ── Fetch categories (scoped to branch & FY if available) ──
   useEffect(() => {
-    if (!branchId || !financialYearId) return;
-    supabase
-      .from("inventory_categories")
-      .select("id, name")
-      .order("name")
-      .then(({ data }) => setCategories(data || []));
+    const fetchCategories = async () => {
+      let query = supabase
+        .from("inventory_categories")
+        .select("id, name")
+        .order("name");
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data } = await query;
+      setCategories(data || []);
+    };
+    fetchCategories();
   }, [branchId, financialYearId]);
 
+  // ── Set form values when editing ──
   useEffect(() => {
     if (initialData?.id) {
       form.setFieldsValue(initialData);
     } else {
       form.resetFields();
+      // Set defaults
+      form.setFieldsValue({
+        unit: "pcs",
+        unit_price: 0,
+        current_stock: 0,
+        reorder_level: 5,
+      });
     }
   }, [initialData, form]);
 
@@ -42,18 +59,36 @@ export default function InventoryItemForm({ initialData = {}, onSubmit, onClose,
       <Form.Item name="item_name" label="Item Name" rules={[{ required: true }]}>
         <Input placeholder="e.g., Notebook" />
       </Form.Item>
-      <Form.Item name="category_id" label="Category">
-        <Select allowClear placeholder="Select category" options={categories.map(c => ({ label: c.name, value: c.id }))} />
+
+      <Form.Item name="description" label="Description">
+        <TextArea rows={2} placeholder="Optional description" />
       </Form.Item>
+
+      <Form.Item name="category_id" label="Category">
+        <Select
+          allowClear
+          placeholder="Select category"
+          options={categories.map((c) => ({ label: c.name, value: c.id }))}
+        />
+      </Form.Item>
+
       <Form.Item name="unit" label="Unit" initialValue="pcs">
         <Input placeholder="e.g., pcs, kg, box" />
       </Form.Item>
+
       <Form.Item name="unit_price" label="Unit Price" initialValue={0}>
         <InputNumber min={0} style={{ width: "100%" }} placeholder="0.00" />
       </Form.Item>
+
+      {/* ─── NEW: Current Stock (quantity) ─── */}
+      <Form.Item name="current_stock" label="Current Stock" initialValue={0}>
+        <InputNumber min={0} style={{ width: "100%" }} placeholder="0" />
+      </Form.Item>
+
       <Form.Item name="reorder_level" label="Reorder Level" initialValue={5}>
         <InputNumber min={0} style={{ width: "100%" }} />
       </Form.Item>
+
       <Form.Item>
         <Space style={{ float: "right" }}>
           <Button onClick={onClose}>Cancel</Button>

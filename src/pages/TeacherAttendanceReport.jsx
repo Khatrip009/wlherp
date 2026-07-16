@@ -1,12 +1,10 @@
-// src/pages/TeacherAttendanceReport.jsx
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import { generateTeacherAttendancePDF } from "../utils/teacherAttendancePdf";
 import toast from "react-hot-toast";
-import AdminLayout from "../layouts/AdminLayout";
 import { Calendar, Download, FileText } from "lucide-react";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 const STATUS_COLORS = {
   present: "bg-green-100 text-green-700",
@@ -20,8 +18,7 @@ export default function TeacherAttendanceReport() {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth() + 1); // 1-12
 
-  // ── Branch & Financial Year context ──
-  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();   // NEW
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -97,11 +94,10 @@ export default function TeacherAttendanceReport() {
     }
     const monthLabel = new Date(year, month - 1).toLocaleString("default", { month: "long", year: "numeric" });
 
-    // Fetch organisation info for the PDF header – uses the current org id
     const { data: org } = await supabase
       .from("organization")
       .select("*")
-      .eq("id", currentOrg?.id)   // use current org id
+      .eq("id", currentOrg?.id)
       .single();
 
     const doc = await generateTeacherAttendancePDF(reportData, monthLabel, org || {});
@@ -112,7 +108,7 @@ export default function TeacherAttendanceReport() {
   const monthLabel = new Date(year, month - 1).toLocaleString("default", { month: "long", year: "numeric" });
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">Teacher Attendance Report</h1>
         <div className="flex flex-wrap gap-3 mt-2 sm:mt-0">
@@ -181,6 +177,6 @@ export default function TeacherAttendanceReport() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

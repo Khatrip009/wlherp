@@ -1,4 +1,3 @@
-// src/layouts/AdminLayout.jsx
 import { useState } from "react";
 import { Outlet, useLocation, Link } from "react-router-dom";
 import { Layout, Menu, Breadcrumb, Button, theme } from "antd";
@@ -12,8 +11,9 @@ import {
   SettingOutlined,
   CalendarOutlined,
   BellOutlined,
-  PhoneOutlined,        // <-- added for Inquiries
-  FormOutlined,         // alternative
+  PhoneOutlined,
+  FormOutlined,
+  TeamOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
@@ -24,17 +24,17 @@ import UserMenu from "../components/UserMenu";
 
 const { Header, Sider, Content } = Layout;
 
-// ── Breadcrumb name map (fill in all your routes) ──
+// ── Breadcrumb name map ──
 const breadcrumbNameMap = {
   "/": "Dashboard",
   "/students": "Students",
   "/students/:id": "Student Details",
-  "/inquiries": "Inquiries",        // <-- added
+  "/inquiries": "Inquiries",
   "/accounting": "Accounting Hub",
   "/accounting/vouchers": "Vouchers",
   "/accounting/ledger": "Ledger",
   "/accounting/trial-balance": "Trial Balance",
-  // … add the rest of your routes as needed
+  // Add more as needed
 };
 
 // ── Sidebar menu items ──
@@ -44,7 +44,7 @@ function getMenuItems(role) {
     return [
       { key: "/student", icon: <DashboardOutlined />, label: <Link to="/student">Dashboard</Link> },
       { key: "/student/fees", icon: <DollarOutlined />, label: <Link to="/student/fees">Fees</Link> },
-      // … add all student links
+      // add other student links
     ];
   }
 
@@ -53,21 +53,22 @@ function getMenuItems(role) {
     return [
       { key: "/teacher", icon: <DashboardOutlined />, label: <Link to="/teacher">Dashboard</Link> },
       { key: "/teacher/salary", icon: <DollarOutlined />, label: <Link to="/teacher/salary">My Salary</Link> },
-      // … add all teacher links
+      // add other teacher links
     ];
   }
 
   // Admin / Super Admin menu (full access)
   return [
     { key: "/", icon: <DashboardOutlined />, label: <Link to="/">Dashboard</Link> },
-    { key: "/master-data", icon: <SettingOutlined />, label: <Link to="/master-data">Master Data</Link>},
-    { key: "/inquiries", icon: <PhoneOutlined />, label: <Link to="/inquiries">Inquiries</Link> },  // <-- added
+    { key: "/master-data", icon: <SettingOutlined />, label: <Link to="/master-data">Master Data</Link> },
+    { key: "/inquiries", icon: <PhoneOutlined />, label: <Link to="/inquiries">Inquiries</Link> },
     { key: "/students", icon: <UserOutlined />, label: <Link to="/students">Students</Link> },
     { key: "/student-management", icon: <UserOutlined />, label: <Link to="/student-management">Student Hub</Link> },
+    { key: "/hr-hub", icon: <TeamOutlined />, label: <Link to="/hr-hub">HR Hub</Link> },
     { key: "/fees", icon: <DollarOutlined />, label: <Link to="/fees">Student Fees</Link> },
-    { key: "/Finance", icon: <DollarOutlined />, label: <Link to="Home/FinanceHub">Finance</Link> },
+    { key: "/Finance", icon: <DollarOutlined />, label: <Link to="/Home/FinanceHub">Finance</Link> },
     { key: "/settings-hub", icon: <SettingOutlined />, label: <Link to="/settings-hub">Settings</Link> },
-    // … add all admin links (hubs, reports, etc.)
+    // add more admin links (e.g., reports, etc.)
   ];
 }
 
@@ -115,13 +116,15 @@ export default function AdminLayout() {
           zIndex: 10,
         }}
       >
-        {/* Logo */}
-        <div
+        {/* Logo – clickable to dashboard */}
+        <Link
+          to="/"
           style={{
             height: 64,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            textDecoration: "none",
           }}
         >
           <img
@@ -132,7 +135,7 @@ export default function AdminLayout() {
               transition: "height 0.3s",
             }}
           />
-        </div>
+        </Link>
 
         {/* Navigation Menu */}
         <Menu
@@ -143,9 +146,9 @@ export default function AdminLayout() {
         />
       </Sider>
 
-      {/* ── Main Layout (Header + Content) ── */}
+      {/* ── Main Layout ── */}
       <Layout style={{ marginLeft: collapsed ? 0 : 200 }}>
-        {/* Top Header */}
+        {/* Header */}
         <Header
           style={{
             padding: "0 24px",
@@ -179,7 +182,7 @@ export default function AdminLayout() {
           <Breadcrumb items={breadcrumbItems} />
         </div>
 
-        {/* Page Content */}
+        {/* Content */}
         <Content
           style={{
             margin: "16px 24px",

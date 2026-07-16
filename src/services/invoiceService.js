@@ -1,6 +1,28 @@
+// src/services/invoiceService.js
 import { supabase } from "../api/supabase";
 
 // ─── HELPERS ───────────────────────────────────────────────
+
+// Generate a unique invoice number (with retry on conflict)
+async function generateInvoiceNumber() {
+  const maxAttempts = 3;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const { data, error } = await supabase.rpc("generate_invoice_number");
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      if (attempt === maxAttempts - 1) {
+        console.warn("RPC generate_invoice_number failed, using fallback.", err);
+        const now = Date.now();
+        const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+        return `INV-${now}-${random}`;
+      }
+      // Wait a short time before retrying
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+  }
+}
 
 // Get the current user's organization ID using the database function
 async function getCurrentUserOrgId() {
@@ -110,7 +132,8 @@ export async function getInvoice(id, branchId, financialYearId) {
   };
 }
 
-// context: { branchId, financialYearId }
+// ─── Create Invoice ─────────────────────────────────────────
+
 export async function createInvoice(payload, context) {
   const {
     student_id,
@@ -127,7 +150,7 @@ export async function createInvoice(payload, context) {
 
   const { branchId, financialYearId } = context;
 
-  // Get the current user's organization state code (multi‑tenant safe)
+  // Get the current user's organization state code
   const orgId = await getCurrentUserOrgId();
   if (!orgId) throw new Error("Could not determine your organization");
   const { data: org } = await supabase
@@ -183,13 +206,14 @@ export async function createInvoice(payload, context) {
   const roundOff = Math.round(totalAmount) - totalAmount;
   const grandTotal = totalAmount + roundOff;
 
-  // ✅ invoice_number is omitted – the database trigger will generate it automatically
+  // Generate invoice number
+  const invoiceNumber = await generateInvoiceNumber();
 
   // Insert header
   const { data: invoice, error } = await supabase
     .from("invoices")
     .insert({
-      // invoice_number is NOT included – trigger will set it
+      invoice_number: invoiceNumber,
       invoice_date: invoice_date || new Date().toISOString().split("T")[0],
       student_id,
       due_date: due_date || null,
@@ -211,6 +235,17 @@ export async function createInvoice(payload, context) {
     })
     .select()
     .single();
+
+  if (error?.code === '23505') {
+    // Duplicate invoice number – fetch existing and return it
+    const { data: existing } = await supabase
+      .from("invoices")
+      .select("*")
+      .eq("invoice_number", invoiceNumber)
+      .single();
+    if (existing) return existing;
+    throw error;
+  }
   if (error) throw error;
 
   // Insert items
@@ -238,17 +273,19 @@ export async function createInvoice(payload, context) {
   return invoice;
 }
 
+// ─── Update Invoice ─────────────────────────────────────────
+
 export async function updateInvoice(id, payload, context) {
   const { items, ...headerData } = payload;
   const { branchId, financialYearId } = context;
 
-  // Scope the update
   let updateQuery = supabase
     .from("invoices")
     .update({
       ...headerData,
       updated_at: new Date(),
-      
+      branch_id: branchId,
+      financial_year_id: financialYearId,
     })
     .eq("id", id);
 
@@ -293,22 +330,23 @@ export async function updateInvoice(id, payload, context) {
   return invoice;
 }
 
-// deleteInvoice now scoped
+// ─── Delete Invoice ─────────────────────────────────────────
+
 export async function deleteInvoice(id, branchId, financialYearId) {
-  // Read status – scoped
   let statusQuery = supabase.from("invoices").select("status").eq("id", id);
   if (branchId) statusQuery = statusQuery.eq("branch_id", branchId);
   if (financialYearId) statusQuery = statusQuery.eq("financial_year_id", financialYearId);
   const { data: invoice } = await statusQuery.single();
   if (invoice?.status !== "Draft") throw new Error("Cannot delete finalized invoice");
 
-  // Delete – scoped
   let deleteQuery = supabase.from("invoices").delete().eq("id", id);
   if (branchId) deleteQuery = deleteQuery.eq("branch_id", branchId);
   if (financialYearId) deleteQuery = deleteQuery.eq("financial_year_id", financialYearId);
   const { error } = await deleteQuery;
   if (error) throw error;
 }
+
+// ─── Finalize Invoice ───────────────────────────────────────
 
 export async function finalizeInvoice(id, context) {
   const { branchId, financialYearId } = context;
@@ -328,6 +366,41 @@ export async function finalizeInvoice(id, context) {
   const { data, error } = await query.select().single();
   if (error) throw error;
   return data;
+}
+
+// ─── Additional Helpers ──────────────────────────────────────
+
+// Get invoices by student ID (for payment modals)
+export async function getInvoicesByStudent(studentId, branchId, financialYearId) {
+  let query = supabase
+    .from("invoices")
+    .select("id, invoice_number, grand_total, status, paid_amount, balance_due")
+    .eq("student_id", studentId)
+    .order("invoice_date", { ascending: false });
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+// Get invoice by student fee ID (for automatic linking)
+export async function getInvoiceByStudentFee(studentFeeId, branchId, financialYearId) {
+  let query = supabase
+    .from("invoices")
+    .select("id, invoice_number, grand_total, status")
+    .eq("student_fee_id", studentFeeId)
+    .order("invoice_date", { ascending: false })
+    .limit(1);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data?.[0] || null;
 }
 
 // ─── CREDIT NOTES ──────────────────────────────────────────

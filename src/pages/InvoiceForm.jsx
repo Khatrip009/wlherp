@@ -1,3 +1,4 @@
+// src/pages/InvoiceForm.jsx
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -8,12 +9,12 @@ import {
   updateInvoice,
   finalizeInvoice,
 } from "../services/invoiceService";
-import { getOrganization } from "../services/organizationService";
 import { getTaxRates } from "../services/feeService";
 import toast from "react-hot-toast";
 import { ArrowLeft, Save, Plus, Trash2, CheckCircle, Loader } from "lucide-react";
 import GSTLookup from "../components/GSTLookup";
 import { useOrg } from "../context/OrganizationContext";
+import CollectPaymentModal from "../components/CollectPaymentModal";
 
 // Helper to split GST
 const splitGST = (rate, placeOfSupply, orgState) => {
@@ -31,10 +32,11 @@ export default function InvoiceForm() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
+  const orgState = org?.state_code || "";
 
   const [form, setForm] = useState({
     student_id: "",
@@ -57,19 +59,10 @@ export default function InvoiceForm() {
     },
   ]);
   const [studentDetails, setStudentDetails] = useState(null);
-  const [orgState, setOrgState] = useState("");
   const [saving, setSaving] = useState(false);
-
-  // Fetch organization state
-  const { data: org } = useQuery({
-    queryKey: ["organization", branchId, financialYearId],
-    queryFn: () => getOrganization(branchId, financialYearId),
-    enabled: !!branchId && !!financialYearId,
-  });
-
-  useEffect(() => {
-    if (org?.state_code) setOrgState(org.state_code);
-  }, [org]);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [createdInvoiceId, setCreatedInvoiceId] = useState(null);
+  const [selectedFee, setSelectedFee] = useState(null);
 
   // Students dropdown (scoped)
   const {
@@ -81,7 +74,7 @@ export default function InvoiceForm() {
     queryFn: async () => {
       let query = supabase
         .from("students")
-        .select("id, first_name, last_name, admission_no, gstin, state_code");
+        .select("id, first_name, last_name, admission_no, gstin, state_code, billing_address");
 
       if (branchId) query = query.eq("branch_id", branchId);
       if (financialYearId) query = query.eq("financial_year_id", financialYearId);
@@ -103,10 +96,6 @@ export default function InvoiceForm() {
     enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
-
-  useEffect(() => {
-    if (studentsError) console.error("Error loading students:", studentsError);
-  }, [studentsError]);
 
   // Tax rates (scoped)
   const { data: taxRates = [] } = useQuery({
@@ -292,7 +281,28 @@ export default function InvoiceForm() {
     onSuccess: (data) => {
       toast.success("Invoice created");
       queryClient.invalidateQueries(["invoices"]);
-      navigate(`/invoices/${data.id}`);
+      if (showPaymentModal) {
+        setCreatedInvoiceId(data.id);
+        // Prepare fee object for payment modal
+        setSelectedFee({
+          id: data.student_fee_id || null,
+          student_id: data.student_id,
+          students: studentDetails || {},
+          final_fee: data.grand_total,
+          pending: data.grand_total,
+          total_paid: 0,
+          fee_structures: {
+            courses: { course_name: "Invoice Payment" },
+            tax_rate_id: null,
+            tax_inclusive: false,
+            tax_rates: null,
+          },
+        });
+        // Open payment modal after a short delay to let the invoice be saved
+        setTimeout(() => setShowPaymentModal(true), 300);
+      } else {
+        navigate(`/invoices/${data.id}`);
+      }
     },
     onError: (err) => toast.error(err.message),
   });
@@ -317,7 +327,7 @@ export default function InvoiceForm() {
     onError: (err) => toast.error(err.message),
   });
 
-  const handleSubmit = async (e, finalize = false) => {
+  const handleSubmit = async (e, finalize = false, collectPayment = false) => {
     e.preventDefault();
     setSaving(true);
 
@@ -356,9 +366,11 @@ export default function InvoiceForm() {
       if (isEditing) {
         result = await updateMutation.mutateAsync({ id, payload });
       } else {
+        // Set flag to show payment modal after creation
+        setShowPaymentModal(collectPayment);
         result = await createMutation.mutateAsync(payload);
       }
-      if (finalize) {
+      if (finalize && result) {
         await finalizeMutation.mutateAsync(result.id);
       }
     } catch (err) {
@@ -368,13 +380,20 @@ export default function InvoiceForm() {
     }
   };
 
+  // ── Payment modal success handler ──
+  const handlePaymentSuccess = () => {
+    setShowPaymentModal(false);
+    setSelectedFee(null);
+    toast.success("Payment recorded successfully");
+    navigate("/invoices");
+  };
+
   if (loadingInvoice) {
     return <div className="p-8 text-center">Loading invoice…</div>;
   }
 
   return (
     <>
-      {/* Back button – always visible now */}
       <button
         onClick={() => navigate("/invoices")}
         className="inline-flex items-center gap-2 text-secondary hover:text-primary-dark mb-4 text-sm"
@@ -704,7 +723,7 @@ export default function InvoiceForm() {
           </button>
           <button
             type="button"
-            onClick={(e) => handleSubmit(e, false)}
+            onClick={(e) => handleSubmit(e, false, false)}
             disabled={saving}
             className="bg-primary text-white px-6 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
           >
@@ -714,7 +733,7 @@ export default function InvoiceForm() {
           {(!isEditing || (isEditing && invoice?.status === "Draft")) && (
             <button
               type="button"
-              onClick={(e) => handleSubmit(e, true)}
+              onClick={(e) => handleSubmit(e, true, false)}
               disabled={saving}
               className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
             >
@@ -722,8 +741,37 @@ export default function InvoiceForm() {
               Finalize
             </button>
           )}
+          {!isEditing && (
+            <button
+              type="button"
+              onClick={(e) => handleSubmit(e, false, true)}
+              disabled={saving}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
+            >
+              {saving ? <Loader className="w-4 h-4 animate-spin" /> : <Save size={16} />}
+              Save & Collect Payment
+            </button>
+          )}
         </div>
       </form>
+
+      {/* ─── Collect Payment Modal ─── */}
+      {showPaymentModal && selectedFee && (
+        <CollectPaymentModal
+          fee={selectedFee}
+          onClose={() => {
+            setShowPaymentModal(false);
+            setSelectedFee(null);
+            // If we came from a new invoice creation, go to the invoice view
+            if (createdInvoiceId) {
+              navigate(`/invoices/${createdInvoiceId}`);
+            } else {
+              navigate("/invoices");
+            }
+          }}
+          onSuccess={handlePaymentSuccess}
+        />
+      )}
     </>
   );
 }

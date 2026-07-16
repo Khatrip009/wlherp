@@ -1,4 +1,3 @@
-// src/pages/TeacherProfile.jsx
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -15,19 +14,16 @@ import {
   Layers,
   FileText,
 } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
 import BackButton from "../components/BackButton";
-
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../api/supabase";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function TeacherProfile() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  // ── Branch & financial year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -71,7 +67,7 @@ export default function TeacherProfile() {
         .eq("teacher_id", teacher.id)
         .eq("branch_id", branchId)
         .eq("financial_year_id", financialYearId)
-        .eq("batches.branch_id", branchId)           // scope the nested batches
+        .eq("batches.branch_id", branchId)
         .eq("batches.financial_year_id", financialYearId);
       return data || [];
     },
@@ -188,23 +184,24 @@ export default function TeacherProfile() {
 
   if (isLoading) {
     return (
-      <AdminLayout>
-      <BackButton to="/teacher" label="My Dashboard" />
+      <>
+        <BackButton to="/teacher" label="My Dashboard" />
         <div className="p-8 text-center text-secondary font-montserrat">Loading profile…</div>
-      </AdminLayout>
+      </>
     );
   }
 
   if (error || !teacher) {
     return (
-      <AdminLayout>
+      <>
+        <BackButton to="/teacher" label="My Dashboard" />
         <div className="p-8 text-center text-red-500">No teacher record found.</div>
-      </AdminLayout>
+      </>
     );
   }
 
   return (
-    <AdminLayout>
+    <>
       <div className="mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">My Profile</h1>
         <p className="text-sm text-secondary-dark font-montserrat mt-1">Manage your personal details</p>
@@ -456,6 +453,6 @@ export default function TeacherProfile() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

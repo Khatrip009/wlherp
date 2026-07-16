@@ -1,20 +1,17 @@
-// src/pages/TeacherLectureCountReport.jsx
 import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
-import AdminLayout from "../layouts/AdminLayout";
 import { Calendar, Download } from "lucide-react";
 import { generateTeacherLectureCountPDF } from "../utils/teacherLectureCountPdf";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function TeacherLectureCountReport() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
 
-  // ── Branch & Financial Year context ──
-  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();   // NEW
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -114,11 +111,10 @@ export default function TeacherLectureCountReport() {
       toast.error("No data to export");
       return;
     }
-    // Fetch org info using the current org id from context
     const { data: org } = await supabase
       .from("organization")
       .select("*")
-      .eq("id", currentOrg?.id)   // now uses current org
+      .eq("id", currentOrg?.id)
       .single();
 
     const doc = await generateTeacherLectureCountPDF(
@@ -135,13 +131,12 @@ export default function TeacherLectureCountReport() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">
           Teacher Lecture Count
         </h1>
         <div className="flex flex-wrap gap-3 mt-2 sm:mt-0">
-          {/* Admin teacher selector */}
           {isAdmin && (
             <select
               value={teacherId}
@@ -157,7 +152,6 @@ export default function TeacherLectureCountReport() {
             </select>
           )}
 
-          {/* Month/Year selectors */}
           <div className="flex items-center gap-2">
             <Calendar className="text-secondary-light w-4 h-4" />
             <select
@@ -203,7 +197,6 @@ export default function TeacherLectureCountReport() {
         </div>
       ) : (
         <>
-          {/* Summary Card */}
           <div className="bg-white rounded-lg shadow-sm p-4 mb-4 border flex items-center justify-between">
             <div>
               <p className="text-sm text-secondary-dark">
@@ -219,7 +212,6 @@ export default function TeacherLectureCountReport() {
             </div>
           </div>
 
-          {/* Daily Breakdown */}
           {dailyCounts.length === 0 ? (
             <div className="text-center py-8 text-secondary">
               No lectures found for this month.
@@ -254,6 +246,6 @@ export default function TeacherLectureCountReport() {
           )}
         </>
       )}
-    </AdminLayout>
+    </>
   );
 }
