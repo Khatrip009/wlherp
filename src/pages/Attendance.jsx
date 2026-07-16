@@ -1,4 +1,5 @@
-import React, { useState, useRef } from "react";
+// src/pages/Attendance.jsx
+import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   useInfiniteQuery,
@@ -34,8 +35,9 @@ import {
 } from "../services/attendanceService";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
+import { supabase } from "../api/supabase";
 
-export default function Attendance() {
+export default function Attendance({ studentId: propStudentId = null, standalone = true }) {
   const { profile } = useAuth();
   const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
@@ -54,7 +56,36 @@ export default function Attendance() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const allFilters = { batchId: batchFilter, medium_id: mediumFilter, search, startDate, endDate };
+  const [studentBatchIds, setStudentBatchIds] = useState([]);
+
+  // ── If studentId is provided, fetch their active batch IDs ──
+  useEffect(() => {
+    if (propStudentId && branchId && financialYearId) {
+      const fetchStudentBatches = async () => {
+        let query = supabase
+          .from("student_batches")
+          .select("batch_id")
+          .eq("student_id", propStudentId)
+          .eq("status", "active");
+        if (branchId) query = query.eq("branch_id", branchId);
+        if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+        const { data } = await query;
+        setStudentBatchIds(data?.map((row) => row.batch_id) || []);
+      };
+      fetchStudentBatches();
+    } else {
+      setStudentBatchIds([]);
+    }
+  }, [propStudentId, branchId, financialYearId]);
+
+  // All filters combined
+  const allFilters = {
+    batchId: batchFilter || (studentBatchIds.length > 0 ? studentBatchIds : undefined),
+    medium_id: mediumFilter,
+    search,
+    startDate,
+    endDate,
+  };
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -83,7 +114,7 @@ export default function Attendance() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["attendance-sessions", allFilters, branchId, financialYearId],
+    queryKey: ["attendance-sessions", allFilters, branchId, financialYearId, propStudentId],
     queryFn: ({ pageParam = 0 }) =>
       getAttendanceSessions({
         pageParam,
@@ -103,7 +134,7 @@ export default function Attendance() {
 
   const sessions = data?.pages.flatMap((page) => page.data) || [];
 
-  // Mutations – now pass branchId and financialYearId to all write functions
+  // Mutations – pass branchId and financialYearId
   const createMutation = useMutation({
     mutationFn: (payload) => createAttendanceSession(payload, branchId, financialYearId),
     onSuccess: () => {
@@ -201,9 +232,9 @@ export default function Attendance() {
     setConfirmDelete(id);
   }
 
-  return (
-    <AdminLayout>
-      <BackButton to="/academics-hub" label="Academics Hub" />
+  // ── Content ──
+  const content = (
+    <>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
           <h1 className="text-3xl font-righteous text-primary-dark">Attendance</h1>
@@ -212,7 +243,7 @@ export default function Attendance() {
           </p>
         </div>
 
-        {(isAdmin || isTeacher) && (
+        {(isAdmin || isTeacher) && !propStudentId && (
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setShowForm(true)}
@@ -268,21 +299,24 @@ export default function Attendance() {
 
       {showFilters && (
         <div className="bg-white rounded-xl p-4 shadow-sm mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 border border-secondary-light">
-          <div>
-            <label className="text-xs font-montserrat text-secondary-dark">Batch</label>
-            <select
-              value={batchFilter}
-              onChange={(e) => setBatchFilter(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
-            >
-              <option value="">All Batches</option>
-              {batches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.batch_name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Batch filter – show only if no studentId (or if you want to override) */}
+          {!propStudentId && (
+            <div>
+              <label className="text-xs font-montserrat text-secondary-dark">Batch</label>
+              <select
+                value={batchFilter}
+                onChange={(e) => setBatchFilter(e.target.value)}
+                className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              >
+                <option value="">All Batches</option>
+                {batches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.batch_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className="text-xs font-montserrat text-secondary-dark">Medium</label>
             <select
@@ -456,6 +490,17 @@ export default function Attendance() {
           onClose={() => setEditing(null)}
         />
       )}
+    </>
+  );
+
+  if (!standalone) {
+    return <div>{content}</div>;
+  }
+
+  return (
+    <AdminLayout>
+      <BackButton to="/academics-hub" label="Academics Hub" />
+      {content}
     </AdminLayout>
   );
 }

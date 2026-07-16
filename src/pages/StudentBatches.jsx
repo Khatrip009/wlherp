@@ -1,5 +1,5 @@
 // src/pages/StudentBatches.jsx
-import React, { useState, useRef, useMemo } from "react";
+import React, { useState, useRef, useMemo, useEffect } from "react";
 import {
   useInfiniteQuery,
   useMutation,
@@ -21,6 +21,7 @@ import {
 import Papa from "papaparse";
 import AdminLayout from "../layouts/AdminLayout";
 import BackButton from "../components/BackButton";
+import { supabase } from "../api/supabase";
 
 import AssignBatchModal from "../components/AssignBatchModal";
 import {
@@ -34,7 +35,7 @@ import {
 } from "../services/batchAssignmentService";
 import { useOrg } from "../context/OrganizationContext";
 
-export default function StudentBatches() {
+export default function StudentBatches({ studentId: propStudentId = null, standalone = true }) {
   const queryClient = useQueryClient();
 
   // ── Organisation / Branch / Financial Year context ──
@@ -50,9 +51,15 @@ export default function StudentBatches() {
     course_id: "",
     medium_id: "",
     status: "",
+    student_id: propStudentId || "", // Add student_id filter
   });
   const [showFilters, setShowFilters] = useState(false);
   const allFilters = { ...filters, search };
+
+  // When propStudentId changes, update filter
+  useEffect(() => {
+    setFilters(prev => ({ ...prev, student_id: propStudentId || "" }));
+  }, [propStudentId]);
 
   // ---- Paginated data – scoped to branch & FY ----
   const {
@@ -92,7 +99,7 @@ export default function StudentBatches() {
 
   const { data: courses = [] } = useQuery({
     queryKey: ["coursesFilter"],
-    queryFn: getCoursesForFilter,   // organisation‑wide
+    queryFn: getCoursesForFilter,
     staleTime: 10 * 60 * 1000,
   });
 
@@ -210,9 +217,9 @@ export default function StudentBatches() {
     deleteMutation.mutate(id);
   }
 
-  return (
-    <AdminLayout>
-      <BackButton to="/admissions-hub" label="Admissions" />
+  // ── Content ──
+  const content = (
+    <>
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
@@ -362,6 +369,7 @@ export default function StudentBatches() {
                   course_id: "",
                   medium_id: "",
                   status: "",
+                  student_id: propStudentId || "",
                 });
               }}
               className="text-primary text-sm hover:underline"
@@ -531,7 +539,7 @@ export default function StudentBatches() {
         </div>
       )}
 
-      {/* Assign Batch Modal (already context-aware) */}
+      {/* Assign Batch Modal */}
       {showModal && (
         <AssignBatchModal
           onSubmit={() => {
@@ -541,6 +549,16 @@ export default function StudentBatches() {
           onClose={() => setShowModal(false)}
         />
       )}
-    </AdminLayout>
+    </>
+  );
+
+  if (!standalone) {
+    return <div>{content}</div>;
+  }
+
+  return (
+    
+      <BackButton to="/admissions-hub" label="Admissions" />
+      
   );
 }

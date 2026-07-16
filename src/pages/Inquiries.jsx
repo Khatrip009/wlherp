@@ -1,4 +1,6 @@
-import React, { useState, useRef } from "react";
+// src/pages/Inquiries.jsx
+import React, { useState, useRef } from "react"; 
+import { useNavigate } from "react-router-dom";
 import {
   useInfiniteQuery,
   useMutation,
@@ -15,13 +17,15 @@ import {
   Download,
   Upload,
   X,
+  Calendar as CalendarIcon,
+  ThumbsDown,
   PhoneCall,
+  FileText,
 } from "lucide-react";
 import Papa from "papaparse";
-import AdminLayout from "../layouts/AdminLayout";
 import InquiryForm from "../components/InquiryForm";
 import BackButton from "../components/BackButton";
-import { convertInquiryToStudent } from "../services/admissionService";
+import StudentForm from "../components/StudentForm";
 import {
   getInquiries,
   createInquiry,
@@ -30,10 +34,125 @@ import {
   getAllInquiriesForExport,
   getCourseOptions,
   getMediumOptions,
+  scheduleDemo,
+  rejectInquiry,
 } from "../services/inquiryService";
 import { useOrg } from "../context/OrganizationContext";
 
+
+
+// ── Reject Modal ──
+function RejectModal({ inquiry, onConfirm, onClose }) {
+  const [reason, setReason] = useState("");
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!reason.trim()) {
+      toast.error("Rejection reason is required");
+      return;
+    }
+    onConfirm(inquiry.id, reason);
+  };
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
+        <div className="px-6 py-4 border-b border-secondary-light flex justify-between items-center">
+          <h3 className="font-righteous text-lg">Reject Inquiry</h3>
+          <button onClick={onClose} className="text-secondary-dark hover:text-primary">
+            <X size={20} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              Reason for rejection *
+            </label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={4}
+              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+              placeholder="Why is this inquiry being rejected?"
+              required
+            />
+          </div>
+          <div className="flex gap-3 justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="border border-secondary-light text-secondary-dark px-4 py-2 rounded-lg hover:bg-secondary-bg transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition"
+            >
+              Reject
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Schedule Demo Modal ──
+function ScheduleDemoModal({ inquiry, onConfirm, onClose }) {
+  const [datetime, setDatetime] = useState("");
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!datetime) {
+      toast.error("Please select a date and time");
+      return;
+    }
+    onConfirm(inquiry.id, new Date(datetime).toISOString());
+  };
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
+        <div className="px-6 py-4 border-b border-secondary-light flex justify-between items-center">
+          <h3 className="font-righteous text-lg">Schedule Demo</h3>
+          <button onClick={onClose} className="text-secondary-dark hover:text-primary">
+            <X size={20} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              Demo Date & Time *
+            </label>
+            <input
+              type="datetime-local"
+              value={datetime}
+              onChange={(e) => setDatetime(e.target.value)}
+              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+              required
+            />
+          </div>
+          <div className="flex gap-3 justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="border border-secondary-light text-secondary-dark px-4 py-2 rounded-lg hover:bg-secondary-bg transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg transition"
+            >
+              Schedule
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ──
 export default function Inquiries() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
@@ -56,9 +175,13 @@ export default function Inquiries() {
   // UI state
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [showRejectModal, setShowRejectModal] = useState(null);
+  const [showScheduleModal, setShowScheduleModal] = useState(null);
+  const [showStudentForm, setShowStudentForm] = useState(false);
+  const [studentFormInquiryId, setStudentFormInquiryId] = useState(null);
   const fileInputRef = useRef(null);
 
-  // Paginated data – scoped to branch & FY
+  // ── Data fetching ──
   const {
     data,
     isLoading,
@@ -91,13 +214,12 @@ export default function Inquiries() {
 
   const inquiries = data?.pages.flatMap((page) => page.data) || [];
 
-  // Dropdowns for filters (organisation‑wide, no scoping needed)
+  // Dropdowns
   const { data: courses = [] } = useQuery({
     queryKey: ["coursesDropdown"],
     queryFn: getCourseOptions,
     staleTime: 10 * 60 * 1000,
   });
-
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediumsDropdown"],
     queryFn: getMediumOptions,
@@ -114,72 +236,61 @@ export default function Inquiries() {
     medium_id: cleanNullable(payload.medium_id),
   });
 
-  // ────────── Mutations ──────────
+  // ── Mutations ──
   const createMutation = useMutation({
     mutationFn: async (payload) => {
       const clean = cleanPayload(payload);
-      return createInquiry(clean, {
-        branchId,
-        financialYearId,
-      });
+      return createInquiry(clean, { branchId, financialYearId });
     },
     onSuccess: () => {
       toast.success("Inquiry created");
       queryClient.invalidateQueries({ queryKey: ["inquiries"] });
       setShowForm(false);
     },
-    onError: (err) => {
-      console.error("Create inquiry error:", err);
-      toast.error("Failed to create inquiry: " + err.message);
-    },
+    onError: (err) => toast.error("Failed to create: " + err.message),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }) =>
-      updateInquiry(id, cleanPayload(payload), {
-        branchId,
-        financialYearId,
-      }),
+      updateInquiry(id, cleanPayload(payload), { branchId, financialYearId }),
     onSuccess: () => {
       toast.success("Inquiry updated");
       queryClient.invalidateQueries({ queryKey: ["inquiries"] });
       setEditing(null);
     },
-    onError: (err) => toast.error("Failed to update inquiry: " + err.message),
+    onError: (err) => toast.error("Failed to update: " + err.message),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) =>
-      deleteInquiry(id, {
-        branchId,
-        financialYearId,
-      }),
+    mutationFn: (id) => deleteInquiry(id, { branchId, financialYearId }),
     onSuccess: () => {
       toast.success("Inquiry deleted");
       queryClient.invalidateQueries({ queryKey: ["inquiries"] });
     },
-    onError: (err) => toast.error("Failed to delete inquiry: " + err.message),
+    onError: (err) => toast.error("Failed to delete: " + err.message),
   });
 
-  const convertMutation = useMutation({
-    mutationFn: (inquiry) =>
-      convertInquiryToStudent(inquiry, {
-        branchId,
-        financialYearId,
-      }),
-    onSuccess: (result) => {
-      if (result.success) {
-        toast.success("Admission created successfully");
-        queryClient.invalidateQueries({ queryKey: ["inquiries"] });
-        queryClient.invalidateQueries({ queryKey: ["students"] });
-      } else {
-        toast.error("Conversion failed");
-      }
+  const scheduleMutation = useMutation({
+    mutationFn: ({ id, datetime }) => scheduleDemo(id, datetime, { branchId, financialYearId }),
+    onSuccess: () => {
+      toast.success("Demo scheduled");
+      queryClient.invalidateQueries({ queryKey: ["inquiries"] });
+      setShowScheduleModal(null);
     },
-    onError: (err) => toast.error("Conversion error: " + err.message),
+    onError: (err) => toast.error("Failed to schedule demo: " + err.message),
   });
 
-  // CSV Import (with context)
+  const rejectMutation = useMutation({
+    mutationFn: ({ id, reason }) => rejectInquiry(id, reason, { branchId, financialYearId }),
+    onSuccess: () => {
+      toast.success("Inquiry rejected");
+      queryClient.invalidateQueries({ queryKey: ["inquiries"] });
+      setShowRejectModal(null);
+    },
+    onError: (err) => toast.error("Failed to reject: " + err.message),
+  });
+
+  // ── CSV Import ──
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -201,12 +312,8 @@ export default function Inquiries() {
               source: row.source || "",
               remarks: row.remarks || "",
               followup_date: row.followup_date || "",
-              status: row.status || "New",
             });
-            await createInquiry(payload, {
-              branchId,
-              financialYearId,
-            });
+            await createInquiry(payload, { branchId, financialYearId });
             successCount++;
           } catch (err) {
             console.error("CSV import error:", err);
@@ -219,14 +326,10 @@ export default function Inquiries() {
     });
   }
 
-  // CSV Export (with branch/FY scope)
+  // ── CSV Export ──
   async function handleCSVExport() {
     try {
-      const allData = await getAllInquiriesForExport(
-        allFilters,
-        branchId,
-        financialYearId
-      );
+      const allData = await getAllInquiriesForExport(allFilters, branchId, financialYearId);
       const csv = Papa.unparse(
         allData.map((inq) => ({
           inquiry_no: inq.inquiry_no,
@@ -235,13 +338,13 @@ export default function Inquiries() {
           mobile: inq.mobile,
           whatsapp: inq.whatsapp,
           email: inq.email,
-          interested_course: courses.find(
-            (c) => c.id === inq.interested_course_id
-          )?.course_name,
+          interested_course: courses.find((c) => c.id === inq.interested_course_id)?.course_name,
           medium: inq.medium_name || "",
           source: inq.source,
           status: inq.status,
           followup_date: inq.followup_date,
+          demo_scheduled_at: inq.demo_scheduled_at,
+          rejection_reason: inq.rejection_reason,
           remarks: inq.remarks,
           created_at: inq.created_at,
         }))
@@ -258,7 +361,7 @@ export default function Inquiries() {
     }
   }
 
-  // Handlers
+  // ── Handlers ──
   function handleCreate(payload) {
     createMutation.mutate(payload);
   }
@@ -272,13 +375,20 @@ export default function Inquiries() {
     deleteMutation.mutate(id);
   }
 
-  function handleConvert(inquiry) {
-    if (inquiry.status === "Joined") {
-      toast.error("This inquiry is already converted");
+  function handleSchedule(inquiry) {
+    if (inquiry.status === "Admitted" || inquiry.status === "Rejected") {
+      toast.error("Cannot schedule demo for admitted/rejected inquiry");
       return;
     }
-    if (!window.confirm("Convert this inquiry into admission?")) return;
-    convertMutation.mutate(inquiry);
+    setShowScheduleModal(inquiry);
+  }
+
+  function handleReject(inquiry) {
+    if (inquiry.status === "Admitted" || inquiry.status === "Rejected") {
+      toast.error("Cannot reject admitted/rejected inquiry");
+      return;
+    }
+    setShowRejectModal(inquiry);
   }
 
   function getCourseName(courseId) {
@@ -286,15 +396,23 @@ export default function Inquiries() {
     return course ? course.course_name : "—";
   }
 
+  function getStatusBadge(status) {
+    const map = {
+      "Interested": "bg-blue-100 text-blue-700",
+      "Demo Scheduled": "bg-yellow-100 text-yellow-700",
+      "Admitted": "bg-green-100 text-green-700",
+      "Rejected": "bg-red-100 text-red-700",
+    };
+    return map[status] || "bg-gray-100 text-gray-700";
+  }
+
   return (
-    <AdminLayout>
+    <div className="p-6 max-w-7xl mx-auto">
       <BackButton to="/admissions-hub" label="Admissions Hub" />
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
-          <h1 className="text-3xl font-righteous text-primary-dark">
-            Inquiries
-          </h1>
+          <h1 className="text-3xl font-righteous text-primary-dark">Inquiries</h1>
           <p className="text-sm text-secondary-dark font-montserrat mt-1">
             Manage prospective student inquiries
           </p>
@@ -304,7 +422,6 @@ export default function Inquiries() {
             onClick={() => setShowForm(true)}
             disabled={!isBranchReady}
             className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2 disabled:opacity-50"
-            title={!isBranchReady ? "Loading branch data…" : ""}
           >
             <PhoneCall size={18} /> New Inquiry
           </button>
@@ -320,13 +437,13 @@ export default function Inquiries() {
           >
             <Upload size={18} /> Import
           </button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            className="hidden"
-            accept=".csv"
-            onChange={handleCSVImport}
-          />
+          {/* NEW: Pipeline Report button */}
+          <button
+            onClick={() => navigate("/reports/admission_pipeline")}
+            className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+          >
+            <FileText size={18} /> Pipeline Report
+          </button>
         </div>
       </div>
 
@@ -358,119 +475,75 @@ export default function Inquiries() {
       {showFilters && (
         <div className="bg-white rounded-xl p-4 shadow-sm mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border border-secondary-light">
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">
-              Status
-            </label>
+            <label className="text-xs font-montserrat text-secondary-dark">Status</label>
             <select
               value={filters.status}
-              onChange={(e) =>
-                setFilters((prev) => ({ ...prev, status: e.target.value }))
-              }
+              onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}
               className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
             >
               <option value="">All Statuses</option>
-              <option>New</option>
-              <option>Contacted</option>
-              <option>Demo Scheduled</option>
               <option>Interested</option>
-              <option>Joined</option>
-              <option>Closed</option>
+              <option>Demo Scheduled</option>
+              <option>Admitted</option>
+              <option>Rejected</option>
             </select>
           </div>
-
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">
-              Interested Course
-            </label>
+            <label className="text-xs font-montserrat text-secondary-dark">Interested Course</label>
             <select
               value={filters.interested_course_id}
-              onChange={(e) =>
-                setFilters((prev) => ({
-                  ...prev,
-                  interested_course_id: e.target.value,
-                }))
-              }
+              onChange={(e) => setFilters((prev) => ({ ...prev, interested_course_id: e.target.value }))}
               className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
             >
               <option value="">All Courses</option>
               {courses.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.course_name}
-                </option>
+                <option key={c.id} value={c.id}>{c.course_name}</option>
               ))}
             </select>
           </div>
-
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">
-              Medium
-            </label>
+            <label className="text-xs font-montserrat text-secondary-dark">Medium</label>
             <select
               value={filters.medium_id}
-              onChange={(e) =>
-                setFilters((prev) => ({ ...prev, medium_id: e.target.value }))
-              }
+              onChange={(e) => setFilters((prev) => ({ ...prev, medium_id: e.target.value }))}
               className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
             >
               <option value="">All Mediums</option>
               {mediums.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
+                <option key={m.id} value={m.id}>{m.name}</option>
               ))}
             </select>
           </div>
-
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">
-              Source
-            </label>
+            <label className="text-xs font-montserrat text-secondary-dark">Source</label>
             <input
               type="text"
               value={filters.source}
-              onChange={(e) =>
-                setFilters((prev) => ({ ...prev, source: e.target.value }))
-              }
-              placeholder="e.g., Walk-in, Online"
+              onChange={(e) => setFilters((prev) => ({ ...prev, source: e.target.value }))}
+              placeholder="e.g., Walk-in"
               className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
             />
           </div>
-
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-xs font-montserrat text-secondary-dark">
-                From Date
-              </label>
+              <label className="text-xs font-montserrat text-secondary-dark">From Date</label>
               <input
                 type="date"
                 value={filters.start_date}
-                onChange={(e) =>
-                  setFilters((prev) => ({
-                    ...prev,
-                    start_date: e.target.value,
-                  }))
-                }
+                onChange={(e) => setFilters((prev) => ({ ...prev, start_date: e.target.value }))}
                 className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
               />
             </div>
             <div>
-              <label className="text-xs font-montserrat text-secondary-dark">
-                To Date
-              </label>
+              <label className="text-xs font-montserrat text-secondary-dark">To Date</label>
               <input
                 type="date"
                 value={filters.end_date}
-                onChange={(e) =>
-                  setFilters((prev) => ({
-                    ...prev,
-                    end_date: e.target.value,
-                  }))
-                }
+                onChange={(e) => setFilters((prev) => ({ ...prev, end_date: e.target.value }))}
                 className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
               />
             </div>
           </div>
-
           <div className="flex items-end">
             <button
               onClick={() => {
@@ -495,45 +568,24 @@ export default function Inquiries() {
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[800px]">
+          <table className="w-full min-w-[900px]">
             <thead className="bg-slate-100 border-b border-secondary-light">
               <tr>
-                <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">
-                  Inquiry No
-                </th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">
-                  Student
-                </th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">
-                  Parent
-                </th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">
-                  Mobile
-                </th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">
-                  Course
-                </th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">
-                  Medium
-                </th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">
-                  Status
-                </th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">
-                  Actions
-                </th>
+                <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Inquiry No</th>
+                <th className="text-left text-sm font-montserrat text-secondary-dark">Student</th>
+                <th className="text-left text-sm font-montserrat text-secondary-dark">Parent</th>
+                <th className="text-left text-sm font-montserrat text-secondary-dark">Mobile</th>
+                <th className="text-left text-sm font-montserrat text-secondary-dark">Course</th>
+                <th className="text-left text-sm font-montserrat text-secondary-dark">Status</th>
+                <th className="text-left text-sm font-montserrat text-secondary-dark">Actions</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr>
-                  <td colSpan={8} className="p-6 text-center text-secondary">
-                    Loading inquiries…
-                  </td>
-                </tr>
+                <tr><td colSpan={7} className="p-6 text-center text-secondary">Loading inquiries…</td></tr>
               ) : inquiries.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-6 text-center text-secondary">
+                  <td colSpan={7} className="p-6 text-center text-secondary">
                     <div className="flex flex-col items-center gap-2">
                       <PhoneCall size={32} className="text-secondary-light" />
                       <span>No inquiries found</span>
@@ -547,41 +599,29 @@ export default function Inquiries() {
                 </tr>
               ) : (
                 inquiries.map((inquiry) => (
-                  <tr
-                    key={inquiry.id}
-                    className="border-b border-secondary-light hover:bg-primary-bg transition"
-                  >
-                    <td className="p-3 text-sm font-medium">
-                      {inquiry.inquiry_no}
-                    </td>
+                  <tr key={inquiry.id} className="border-b border-secondary-light hover:bg-primary-bg transition">
+                    <td className="p-3 text-sm font-medium">{inquiry.inquiry_no}</td>
                     <td className="text-sm">{inquiry.student_name}</td>
                     <td className="text-sm">{inquiry.parent_name || "-"}</td>
                     <td className="text-sm">{inquiry.mobile}</td>
+                    <td className="text-sm">{getCourseName(inquiry.interested_course_id)}</td>
                     <td className="text-sm">
-                      {getCourseName(inquiry.interested_course_id)}
-                    </td>
-                    <td className="text-sm">
-                      {inquiry.medium_name || "—"}
-                    </td>
-                    <td className="text-sm">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                          inquiry.status === "New"
-                            ? "bg-blue-100 text-blue-700"
-                            : inquiry.status === "Contacted"
-                            ? "bg-yellow-100 text-yellow-700"
-                            : inquiry.status === "Interested"
-                            ? "bg-orange-100 text-orange-700"
-                            : inquiry.status === "Joined"
-                            ? "bg-green-100 text-green-700"
-                            : "bg-gray-100 text-gray-700"
-                        }`}
-                      >
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(inquiry.status)}`}>
                         {inquiry.status}
                       </span>
+                      {inquiry.status === "Rejected" && inquiry.rejection_reason && (
+                        <span className="block text-xs text-secondary-light mt-1" title={inquiry.rejection_reason}>
+                          (reason given)
+                        </span>
+                      )}
+                      {inquiry.demo_scheduled_at && inquiry.status === "Demo Scheduled" && (
+                        <span className="block text-xs text-secondary-light mt-1">
+                          {new Date(inquiry.demo_scheduled_at).toLocaleString()}
+                        </span>
+                      )}
                     </td>
                     <td className="text-sm">
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-1">
                         <button
                           onClick={() => setEditing(inquiry)}
                           className="text-blue-600 hover:underline flex items-center gap-1"
@@ -589,14 +629,38 @@ export default function Inquiries() {
                           <Edit3 size={15} />
                         </button>
                         <button
-                          onClick={() => handleConvert(inquiry)}
-                          className="text-green-600 hover:underline flex items-center gap-1"
+                          onClick={() => handleSchedule(inquiry)}
+                          disabled={inquiry.status === "Admitted" || inquiry.status === "Rejected"}
+                          className={`text-amber-600 hover:underline flex items-center gap-1 ${
+                            (inquiry.status === "Admitted" || inquiry.status === "Rejected") && "opacity-50 cursor-not-allowed"
+                          }`}
+                        >
+                          <CalendarIcon size={15} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setStudentFormInquiryId(inquiry.id);
+                            setShowStudentForm(true);
+                          }}
+                          disabled={inquiry.status === "Admitted" || inquiry.status === "Rejected"}
+                          className={`text-green-600 hover:underline flex items-center gap-1 ${
+                            (inquiry.status === "Admitted" || inquiry.status === "Rejected") && "opacity-50 cursor-not-allowed"
+                          }`}
                         >
                           <UserPlus size={15} /> Convert
                         </button>
                         <button
+                          onClick={() => handleReject(inquiry)}
+                          disabled={inquiry.status === "Admitted" || inquiry.status === "Rejected"}
+                          className={`text-red-600 hover:underline flex items-center gap-1 ${
+                            (inquiry.status === "Admitted" || inquiry.status === "Rejected") && "opacity-50 cursor-not-allowed"
+                          }`}
+                        >
+                          <ThumbsDown size={15} />
+                        </button>
+                        <button
                           onClick={() => handleDelete(inquiry.id)}
-                          className="text-red-600 hover:underline flex items-center gap-1"
+                          className="text-gray-500 hover:underline flex items-center gap-1"
                         >
                           <Trash2 size={15} />
                         </button>
@@ -624,19 +688,36 @@ export default function Inquiries() {
       )}
 
       {/* Modals */}
-      {showForm && (
-        <InquiryForm
-          onSubmit={handleCreate}
-          onClose={() => setShowForm(false)}
+      {showForm && <InquiryForm onSubmit={handleCreate} onClose={() => setShowForm(false)} />}
+      {editing && <InquiryForm initialData={editing} onSubmit={handleUpdate} onClose={() => setEditing(null)} />}
+      {showScheduleModal && (
+        <ScheduleDemoModal
+          inquiry={showScheduleModal}
+          onConfirm={(id, datetime) => scheduleMutation.mutate({ id, datetime })}
+          onClose={() => setShowScheduleModal(null)}
         />
       )}
-      {editing && (
-        <InquiryForm
-          initialData={editing}
-          onSubmit={handleUpdate}
-          onClose={() => setEditing(null)}
+      {showRejectModal && (
+        <RejectModal
+          inquiry={showRejectModal}
+          onConfirm={(id, reason) => rejectMutation.mutate({ id, reason })}
+          onClose={() => setShowRejectModal(null)}
         />
       )}
-    </AdminLayout>
+      {showStudentForm && (
+        <StudentForm
+          inquiryId={studentFormInquiryId}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ["inquiries"] });
+            setShowStudentForm(false);
+            setStudentFormInquiryId(null);
+          }}
+          onClose={() => {
+            setShowStudentForm(false);
+            setStudentFormInquiryId(null);
+          }}
+        />
+      )}
+    </div>
   );
-} 
+}

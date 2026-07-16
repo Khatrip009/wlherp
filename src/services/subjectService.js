@@ -14,7 +14,7 @@ export async function getSubjects({ pageParam = 0, filters = {}, branchId, finan
     .range(from, to);
 
   // Scope main table
-  if (branchId) query = query.eq("branch_id", branchId);
+   if (branchId) query = query.eq("branch_id", branchId);
   if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
   if (filters.search) {

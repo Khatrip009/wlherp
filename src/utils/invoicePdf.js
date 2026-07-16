@@ -2,7 +2,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
-// ─── Rupee symbol as image ──────────────────────────────
+// ─── Rupee symbol helper ──────────────────────────────────
 function createRupeeSymbolImage() {
   const canvas = document.createElement('canvas');
   canvas.width = 30;
@@ -26,10 +26,7 @@ function drawCurrency(doc, amount, x, y, fontSize = 10, align = 'left', color = 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(fontSize);
   doc.setTextColor(color);
-  const amountText = amount.toLocaleString('en-IN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  const amountText = amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   if (align === 'left') {
     doc.addImage(img, 'PNG', x, y - fontSize * 0.35, 4, 4);
     doc.text(amountText, x + 5, y);
@@ -57,61 +54,104 @@ export function numberToWords(num) {
   const rupees = Math.floor(num);
   const paise = Math.round((num - rupees) * 100);
   let result = numToWords(rupees) + ' Rupee' + (rupees !== 1 ? 's' : '');
-  if (paise > 0) {
-    result += ' and ' + numToWords(paise) + ' Paise';
-  }
+  if (paise > 0) result += ' and ' + numToWords(paise) + ' Paise';
   return result;
 }
 
-// ─── Main export ─────────────────────────────────────────
-/**
- * Generates a PDF invoice.
- * @param {Object} invoice - The invoice object from the database.
- * @param {Object} org - The organisation object from useOrg() (must contain letterhead_url).
- * @param {string} type - 'sales' or 'purchase'
- */
+// ─── Load image as base64 ────────────────────────────────
+async function loadImageAsBase64(url) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (err) {
+    console.warn("Could not load logo image:", err);
+    return null;
+  }
+}
+
+// ─── Main PDF generator ──────────────────────────────────
 export async function generateInvoicePDF(invoice, org, type = 'sales') {
+  console.log('Generating invoice PDF with:', invoice);
+
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
   const pageWidth = doc.internal.pageSize.getWidth();   // 210 mm
   const pageHeight = doc.internal.pageSize.getHeight(); // 297 mm
   const margin = 14;
-  const topMargin = 85;   // space for letterhead header
 
-  // ── Load letterhead background ──
-  let letterheadBase64 = null;
-  if (org?.letterhead_url) {
-    try {
-      const response = await fetch(org.letterhead_url);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const blob = await response.blob();
-      letterheadBase64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-    } catch (err) {
-      console.warn("Letterhead could not be loaded – using blank background.", err);
-    }
-  } else {
-    console.warn("No letterhead URL found in organisation object. Make sure you pass org from useOrg().");
+  // ── Load company dark logo ──
+  let logoBase64 = null;
+  if (org?.logo_dark_url) {
+    logoBase64 = await loadImageAsBase64(org.logo_dark_url);
   }
 
-  const addLetterhead = () => {
-    if (letterheadBase64) {
-      doc.addImage(letterheadBase64, "PNG", 0, 0, pageWidth, pageHeight);
-    }
-  };
+  // ── Header ──
+  let y = 12;
 
-  // Draw letterhead on the first page
-  addLetterhead();
+  // Logo (left) and company details (right)
+  const logoWidth = 40;
+  const logoHeight = 16;
+  if (logoBase64) {
+    doc.addImage(logoBase64, 'PNG', margin, y, logoWidth, logoHeight);
+  }
+  const companyName = org?.company_name || "ShreeVidhya Academy";
+  const address = org?.address || "";
+  const gstin = org?.gstin || "";
+  const phone = org?.phone || "";
+  const email = org?.email || "";
+  const website = org?.website || "";
 
-  let y = topMargin;
+  // Company details on the right (next to logo)
+  const textX = margin + (logoBase64 ? logoWidth + 6 : 0);
+  const textY = y + 2;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor('#0D47A1');
+  doc.text(companyName, textX, textY);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor('#333');
+  let detailY = textY + 5;
+  if (address) {
+    const addrLines = doc.splitTextToSize(address, pageWidth - textX - margin - 10);
+    doc.text(addrLines, textX, detailY);
+    detailY += addrLines.length * 4 + 1;
+  }
+  if (gstin) {
+    doc.text(`GSTIN: ${gstin}`, textX, detailY);
+    detailY += 4.5;
+  }
+  if (phone) {
+    doc.text(`Phone: ${phone}`, textX, detailY);
+    detailY += 4.5;
+  }
+  if (email) {
+    doc.text(`Email: ${email}`, textX, detailY);
+    detailY += 4.5;
+  }
+  if (website) {
+    doc.text(`Web: ${website}`, textX, detailY);
+  }
+
+  // Move y below the header (max of logo height and text height)
+  const headerHeight = Math.max(logoHeight + 6, detailY - textY + 8);
+  y += headerHeight + 4;
+
+  // ── Separator line ──
+  doc.setDrawColor('#0D47A1');
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 6;
 
   // ── Title ──
   const title = type === 'sales' ? 'TAX INVOICE' : 'PURCHASE INVOICE';
-  doc.setFontSize(22);
   doc.setFont('helvetica', 'bold');
+  doc.setFontSize(22);
   doc.setTextColor('#0D47A1');
   doc.text(title, pageWidth / 2, y, { align: 'center' });
   y += 12;
@@ -125,14 +165,14 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
   const partyAddress = isSales ? invoice.students?.billing_address : invoice.vendors?.address;
   const placeOfSupply = invoice.place_of_supply || '';
   const paymentTerms = invoice.payment_terms || 'Standard';
-  const invNo = invoice.invoice_number || '';
+  const invNo = invoice.invoice_number || 'N/A';
   const invDate = invoice.invoice_date || '';
   const dueDate = invoice.due_date || '';
   const status = invoice.status || 'Draft';
 
   // Left column
-  doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
   doc.setTextColor('#0D47A1');
   doc.text(isSales ? 'Billed To:' : 'Vendor:', margin, y);
   doc.setFont('helvetica', 'normal');
@@ -165,10 +205,11 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
   doc.text(`Payment Terms: ${paymentTerms}`, margin, leftY);
   const leftBottom = leftY + 4;
 
-  // Right column – aligned to the right margin
+  // Right column
   let rightY = y;
-  doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor('#0D47A1');
   doc.text('Invoice Details', pageWidth - margin, rightY, { align: 'right' });
   rightY += 6;
   doc.setFont('helvetica', 'normal');
@@ -188,26 +229,31 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
   y = Math.max(leftBottom, rightBottom) + 6;
 
   // ── Items Table ──
-  const items = type === 'sales' ? invoice.invoice_items || [] : invoice.purchase_invoice_items || [];
-  const tableRows = items.map((item, idx) => {
-    let desc;
-    if (type === 'sales') {
-      desc = item.description || '';
-    } else {
-      const itemName = item.inventory_items?.item_name || '';
-      const extraDesc = item.description && item.description !== itemName ? ` (${item.description})` : '';
-      desc = itemName + extraDesc;
-    }
-    const hsn = item.hsn_sac_code || '—';
-    const qty = Number(item.quantity || 1);
-    const unitPrice = Number(item.unit_price || 0);
-    const taxable = Number(item.taxable_amount || 0);
-    const cgst = Number(item.cgst_amount || 0);
-    const sgst = Number(item.sgst_amount || 0);
-    const igst = Number(item.igst_amount || 0);
-    const total = Number(item.total_amount || 0);
-    return [idx + 1, desc, hsn, qty, unitPrice, taxable, cgst, sgst, igst, total];
-  });
+  const items = (type === 'sales' ? invoice.invoice_items : invoice.purchase_invoice_items) || [];
+  let tableRows = [];
+  if (items.length === 0) {
+    tableRows.push(["", "No items found", "", "", "", "", "", "", "", ""]);
+  } else {
+    tableRows = items.map((item, idx) => {
+      let desc;
+      if (type === 'sales') {
+        desc = item.description || '';
+      } else {
+        const itemName = item.inventory_items?.item_name || '';
+        const extraDesc = item.description && item.description !== itemName ? ` (${item.description})` : '';
+        desc = itemName + extraDesc;
+      }
+      const hsn = item.hsn_sac_code || '—';
+      const qty = Number(item.quantity || 1);
+      const unitPrice = Number(item.unit_price || 0);
+      const taxable = Number(item.taxable_amount || 0);
+      const cgst = Number(item.cgst_amount || 0);
+      const sgst = Number(item.sgst_amount || 0);
+      const igst = Number(item.igst_amount || 0);
+      const total = Number(item.total_amount || 0);
+      return [idx + 1, desc, hsn, qty, unitPrice, taxable, cgst, sgst, igst, total];
+    });
+  }
 
   const totals = {
     taxable: items.reduce((sum, item) => sum + Number(item.taxable_amount || 0), 0),
@@ -219,6 +265,7 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
   const roundOff = Number(invoice.round_off || 0);
   const grandTotal = totals.total + roundOff;
 
+  // ── Updated column widths for better readability ──
   autoTable(doc, {
     startY: y,
     head: [['#', 'Description', 'HSN/SAC', 'Qty', 'Unit Price', 'Taxable', 'CGST', 'SGST', 'IGST', 'Total']],
@@ -227,19 +274,18 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
     styles: { fontSize: 8, cellPadding: 2 },
     headStyles: { fillColor: '#0D47A1', textColor: '#FFFFFF', fontSize: 8, fontStyle: 'bold' },
     columnStyles: {
-      0: { cellWidth: 7, halign: 'center' },
-      1: { cellWidth: 34 },
-      2: { cellWidth: 16, halign: 'center' },
-      3: { cellWidth: 8, halign: 'center' },
-      4: { cellWidth: 18, halign: 'right' },
+      0: { cellWidth: 10, halign: 'center' },
+      1: { cellWidth: 38, halign: 'left' },   // Description wider
+      2: { cellWidth: 18, halign: 'center' },
+      3: { cellWidth: 10, halign: 'center' },
+      4: { cellWidth: 20, halign: 'right' },
       5: { cellWidth: 18, halign: 'right' },
-      6: { cellWidth: 16, halign: 'right' },
-      7: { cellWidth: 16, halign: 'right' },
-      8: { cellWidth: 16, halign: 'right' },
+      6: { cellWidth: 18, halign: 'right' },
+      7: { cellWidth: 18, halign: 'right' },
+      8: { cellWidth: 18, halign: 'right' },
       9: { cellWidth: 18, halign: 'right' },
     },
     margin: { left: margin, right: margin },
-    didDrawPage: () => addLetterhead(), // draw letterhead on every new page
     willDrawCell: (data) => {
       if ([4,5,6,7,8,9].includes(data.column.index) && typeof data.cell.raw === 'number') {
         data.cell.text = [];
@@ -259,8 +305,8 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
   // ── Totals ──
   const colX = pageWidth - margin - 65;
   const rightEdge = pageWidth - margin - 6;
-  doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
   doc.setTextColor('#333');
   doc.text('Taxable Amount:', colX, y);
   drawCurrency(doc, totals.taxable, rightEdge, y, 10, 'right', '#333');
@@ -295,9 +341,9 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
   }
 
   // ── Amount in Words ──
+  doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
   doc.setTextColor('#333');
-  doc.setFont('helvetica', 'normal');
   const words = numberToWords(grandTotal);
   doc.text(`Amount in words: ${words}`, margin, y);
   y += 12;
@@ -319,9 +365,6 @@ export async function generateInvoicePDF(invoice, org, type = 'sales') {
     doc.text(line, margin, y);
     y += 4.5;
   });
-
-  // ── Footer ──
-  // No extra branding – the letterhead already contains organisation details.
 
   return doc;
 }

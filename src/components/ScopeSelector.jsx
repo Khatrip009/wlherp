@@ -1,83 +1,61 @@
 // src/components/ScopeSelector.jsx
-import { useScope } from "../context/ScopeContext";
-import { Building, Calendar } from "lucide-react";
+import { Select, Space, Typography } from "antd";
+import { useOrg } from "../context/OrganizationContext";
+
+const { Text } = Typography;
 
 export default function ScopeSelector() {
   const {
+    branches,
     branch,
     setBranch,
-    branches,
     financialYears,
     selectedFinancialYear,
     switchFinancialYear,
-  } = useScope();
+  } = useOrg();
 
+  // Only show when there's something to select
   if (branches.length <= 1 && financialYears.length === 0) return null;
 
   return (
-    <div className="space-y-3 text-white">
+    <Space size="middle" style={{ whiteSpace: "nowrap" }}>
       {branches.length > 1 && (
-        <div>
-          <label className="flex items-center gap-1.5 text-xs font-medium text-gray-300 mb-1">
-            <Building size={14} />
-            Branch
-          </label>
-          <select
-            value={branch?.id || ""}
-            onChange={(e) => {
-              const selected = branches.find((b) => b.id == e.target.value);
+        <Space size={4}>
+          <Text type="secondary" style={{ fontSize: 12 }}>Branch</Text>
+          <Select
+            value={branch?.id}
+            onChange={(id) => {
+              const selected = branches.find((b) => b.id === id);
               if (selected) setBranch(selected);
             }}
-            className="w-full rounded-lg border border-primary-dark bg-primary-light text-white px-3 py-1.5 text-sm focus:ring-2 focus:ring-white/30"
+            size="small"
+            style={{ minWidth: 130 }}
           >
             {branches.map((b) => (
-              <option key={b.id} value={b.id} className="bg-primary text-white">
+              <Select.Option key={b.id} value={b.id}>
                 {b.branch_name}
-              </option>
+              </Select.Option>
             ))}
-          </select>
-        </div>
+          </Select>
+        </Space>
       )}
-
       {financialYears.length > 0 && (
-        <div>
-          <label className="flex items-center gap-1.5 text-xs font-medium text-gray-300 mb-1">
-            <Calendar size={14} />
-            Financial Year
-          </label>
-          {selectedFinancialYear ? (
-            <select
-              value={selectedFinancialYear.id}
-              onChange={(e) => switchFinancialYear(Number(e.target.value))}
-              className="w-full rounded-lg border border-primary-dark bg-primary-light text-white px-3 py-1.5 text-sm focus:ring-2 focus:ring-white/30"
-            >
-              {financialYears.map((fy) => (
-                <option key={fy.id} value={fy.id} className="bg-primary text-white">
-                  {fy.name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <select
-              onChange={(e) => {
-                const id = Number(e.target.value);
-                if (id) switchFinancialYear(id);
-              }}
-              className="w-full rounded-lg border border-primary-dark bg-primary-light text-white px-3 py-1.5 text-sm focus:ring-2 focus:ring-white/30"
-              defaultValue=""
-            >
-              <option value="" disabled className="bg-primary text-white">
-                Select FY
-              </option>
-              {financialYears.map((fy) => (
-                <option key={fy.id} value={fy.id} className="bg-primary text-white">
-                  {fy.name}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
+        <Space size={4}>
+          <Text type="secondary" style={{ fontSize: 12 }}>FY</Text>
+          <Select
+            value={selectedFinancialYear?.id}
+            onChange={(id) => switchFinancialYear(Number(id))}
+            size="small"
+            style={{ minWidth: 110 }}
+          >
+            {financialYears.map((fy) => (
+              <Select.Option key={fy.id} value={fy.id}>
+                {fy.name}
+              </Select.Option>
+            ))}
+          </Select>
+        </Space>
       )}
-    </div>
+    </Space>
   );
 }

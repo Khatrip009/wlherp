@@ -1,7 +1,7 @@
-// src/context/OrganizationContext.jsx
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { supabase } from "../api/supabase";
 import { useAuth } from "./AuthContext";
+import toast from "react-hot-toast";
 
 const OrgContext = createContext();
 
@@ -13,7 +13,7 @@ export function OrganizationProvider({ children }) {
   const [branches, setBranches] = useState([]);
   const [financialYears, setFinancialYears] = useState([]);
   const [selectedFinancialYear, setSelectedFinancialYear] = useState(null);
-  const [mediums, setMediums] = useState([]);   // ← NEW
+  const [mediums, setMediums] = useState([]);
 
   // Apply theme CSS variables
   useEffect(() => {
@@ -68,13 +68,30 @@ export function OrganizationProvider({ children }) {
 
     // ── LOGIN ──
     async function loadOrganization() {
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("organization_id, selected_financial_year_id")
+        .select("organization_id, selected_financial_year_id, role, branch_id")
         .eq("id", user.id)
         .single();
 
-      if (!profile?.organization_id) return;
+      if (profileError) {
+        console.error("Error fetching profile:", profileError);
+        toast.error("Failed to load user profile.");
+        return;
+      }
+
+      if (!profile?.organization_id) {
+        toast.error("No organization assigned to this user.");
+        return;
+      }
+
+      // Enforce organization ID = 3 (already enforced in AuthContext, but double-check)
+      if (profile.organization_id !== 3) {
+        toast.error("Access denied: Only organization ID 3 is allowed.");
+        return;
+      }
+
+      const isAdmin = profile.role === "Admin"; // adjust role name if needed
 
       const [
         { data: orgData },
@@ -86,32 +103,52 @@ export function OrganizationProvider({ children }) {
         supabase.from("organization").select("*").eq("id", profile.organization_id).single(),
         supabase.from("themes").select("*").eq("org_id", profile.organization_id).maybeSingle(),
         supabase.from("branches").select("*").eq("organization_id", profile.organization_id),
-        supabase.from("financial_years")
+        supabase
+          .from("financial_years")
           .select("*")
           .eq("organization_id", profile.organization_id)
           .order("start_date", { ascending: false }),
         supabase
           .from("organization_mediums")
-          .select("medium_id, mediums(name)")   // assuming mediums table has "name"
+          .select("medium_id, mediums(name)")
           .eq("org_id", profile.organization_id),
       ]);
 
       setOrg(orgData);
       setTheme(themeData || null);
-      setBranches(branchList || []);
       setFinancialYears(fys || []);
 
-      // Extract mediums list from mapping
+      // Extract mediums list
       const mediumList = (mediumRows || []).map((row) => ({
         id: row.medium_id,
         name: row.mediums?.name || "",
       }));
       setMediums(mediumList);
 
-      if (branchList?.length) setBranch(branchList[0]);
+      // Filter branches based on role
+      let accessibleBranches = branchList || [];
+      if (!isAdmin) {
+        // Non-admin: only their assigned branch
+        accessibleBranches = accessibleBranches.filter(
+          (b) => b.id === profile.branch_id
+        );
+        if (accessibleBranches.length === 0) {
+          toast.error("No branch assigned to this user.");
+        }
+      }
 
+      setBranches(accessibleBranches);
+
+      // Set default branch to the first accessible branch
+      if (accessibleBranches.length) {
+        setBranch(accessibleBranches[0]);
+      } else {
+        setBranch(null);
+      }
+
+      // Set selected financial year
       if (fys && fys.length > 0) {
-        const current = fys.find(fy => fy.id === profile.selected_financial_year_id) || null;
+        const current = fys.find((fy) => fy.id === profile.selected_financial_year_id) || null;
         setSelectedFinancialYear(current);
       } else {
         setSelectedFinancialYear(null);
@@ -134,7 +171,6 @@ export function OrganizationProvider({ children }) {
     [financialYears, user]
   );
 
-  // ── Derived value: numeric ID for use in .eq("id", orgId) ──
   const organizationId = org?.id ?? null;
 
   return (
@@ -148,8 +184,8 @@ export function OrganizationProvider({ children }) {
         financialYears,
         selectedFinancialYear,
         switchFinancialYear,
-        mediums,            // now available everywhere
-        organizationId,     // just the number, safe to use in queries
+        mediums,
+        organizationId,
       }}
     >
       {children}

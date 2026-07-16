@@ -1,5 +1,5 @@
 // src/pages/StudentDocuments.jsx
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {
@@ -24,14 +24,10 @@ import {
   uploadStudentDocument,
   deleteStudentDocument,
 } from "../services/documentService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
-export default function StudentDocuments() {
+export default function StudentDocuments({ studentId: propStudentId = null, standalone = true }) {
   const queryClient = useQueryClient();
-  const [selectedStudentId, setSelectedStudentId] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef(null);
-  const [docType, setDocType] = useState("ID Proof");
 
   // ── Organization, Branch & Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();
@@ -39,7 +35,20 @@ export default function StudentDocuments() {
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
 
-  // Filters for students
+  // ── Use propStudentId if provided ──
+  const [selectedStudentId, setSelectedStudentId] = useState(propStudentId);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
+  const [docType, setDocType] = useState("ID Proof");
+
+  // Auto-select when prop changes
+  useEffect(() => {
+    if (propStudentId) {
+      setSelectedStudentId(propStudentId);
+    }
+  }, [propStudentId]);
+
+  // ── Filters for students (only used when no propStudentId) ──
   const [search, setSearch] = useState("");
   const [filterCourse, setFilterCourse] = useState("");
   const [filterBatch, setFilterBatch] = useState("");
@@ -48,7 +57,7 @@ export default function StudentDocuments() {
   const [filterStatus, setFilterStatus] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
-  // Fetch courses for filter – organisation‑wide (no scoping)
+  // Fetch courses for filter – organisation‑wide
   const { data: courses = [] } = useQuery({
     queryKey: ["courses-dropdown"],
     queryFn: async () => {
@@ -86,7 +95,7 @@ export default function StudentDocuments() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Fetch students with all filters – scoped
+  // Fetch students with filters – only needed when propStudentId is not provided
   const { data: students = [], isLoading: studentsLoading } = useQuery({
     queryKey: ["students-filtered", { search, course: filterCourse, batch: filterBatch, medium: filterMedium, standard: filterStandard, status: filterStatus }, branchId, financialYearId],
     queryFn: async () => {
@@ -95,24 +104,17 @@ export default function StudentDocuments() {
         .select("id, first_name, last_name, admission_no, standard, photo_url, status, medium_id")
         .order("first_name");
 
-      // Scope to branch and financial year
       if (branchId) query = query.eq("branch_id", branchId);
       if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
       if (search) {
         query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,admission_no.ilike.%${search}%`);
       }
-      if (filterStandard) {
-        query = query.eq("standard", filterStandard);
-      }
-      if (filterMedium) {
-        query = query.eq("medium_id", filterMedium);
-      }
-      if (filterStatus) {
-        query = query.eq("status", filterStatus);
-      }
+      if (filterStandard) query = query.eq("standard", filterStandard);
+      if (filterMedium) query = query.eq("medium_id", filterMedium);
+      if (filterStatus) query = query.eq("status", filterStatus);
 
-      // Course and batch filters require joining – scope those subqueries too
+      // Course and batch filters
       if (filterCourse || filterBatch) {
         let studentIds = new Set();
         if (filterCourse) {
@@ -148,18 +150,15 @@ export default function StudentDocuments() {
           batchStudents?.forEach((bs) => studentIds.add(bs.student_id));
         }
         const ids = Array.from(studentIds);
-        if (ids.length > 0) {
-          query = query.in("id", ids);
-        } else {
-          return []; // no students matching
-        }
+        if (ids.length > 0) query = query.in("id", ids);
+        else return [];
       }
 
       const { data, error } = await query.limit(200);
       if (error) throw error;
       return data || [];
     },
-    enabled: !!branchId && !!financialYearId,
+    enabled: !!branchId && !!financialYearId && !propStudentId, // only run when no propStudentId
     staleTime: 2 * 60 * 1000,
   });
 
@@ -174,10 +173,9 @@ export default function StudentDocuments() {
     staleTime: 2 * 60 * 1000,
   });
 
-  // Mutations – pass context or scoped IDs
+  // ── Mutations ──
   const uploadMutation = useMutation({
     mutationFn: async (file) => {
-      // Pass context as fourth argument to uploadStudentDocument
       await uploadStudentDocument(selectedStudentId, file, docType, ctx);
     },
     onSuccess: () => {
@@ -191,7 +189,7 @@ export default function StudentDocuments() {
   const deleteMutation = useMutation({
     mutationFn: async (doc) => {
       const url = new URL(doc.file_path);
-      const pathParts = url.pathname.split("/ShreeVidhya_Academy/"); // adjust for your bucket
+      const pathParts = url.pathname.split("/ShreeVidhya_Academy/");
       const filePath = pathParts[1] || doc.file_path;
       await deleteStudentDocument(doc.id, filePath, branchId, financialYearId);
     },
@@ -208,147 +206,157 @@ export default function StudentDocuments() {
     uploadMutation.mutate(file);
   }
 
-  // Preview selected student name
-  const selectedStudent = students.find((s) => s.id == selectedStudentId);
+  const selectedStudent = propStudentId
+    ? null // we don't have the full student object when standalone=false, but we don't need it
+    : students.find((s) => s.id == selectedStudentId);
 
-  return (
-    <AdminLayout>
-      <BackButton to="/admissions-hub" label="Admissions" />
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-        <div>
-          <h1 className="text-3xl font-righteous text-primary-dark">Student Documents</h1>
-          <p className="text-sm text-secondary-dark font-montserrat mt-1">
-            Upload and manage student files
-          </p>
-        </div>
-      </div>
-
-      {/* Search & Filters */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
-        <div className="relative flex-1">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
-          <input
-            type="text"
-            placeholder="Search by name or admission no..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-secondary-light rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
-          />
-        </div>
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
-        >
-          <Filter size={18} /> Filters
-          {showFilters && <X size={16} />}
-        </button>
-      </div>
-
-      {/* Advanced Filters Panel */}
-      {showFilters && (
-        <div className="bg-white rounded-xl p-4 shadow-sm mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 border border-secondary-light">
+  // ── Content ──
+  const content = (
+    <>
+      {/* Header – only show if standalone */}
+      {standalone && (
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">Course</label>
-            <select
-              value={filterCourse}
-              onChange={(e) => setFilterCourse(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
-            >
-              <option value="">All Courses</option>
-              {courses.map((c) => (
-                <option key={c.id} value={c.id}>{c.course_name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-montserrat text-secondary-dark">Batch</label>
-            <select
-              value={filterBatch}
-              onChange={(e) => setFilterBatch(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
-            >
-              <option value="">All Batches</option>
-              {batches.map((b) => (
-                <option key={b.id} value={b.id}>{b.batch_name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-montserrat text-secondary-dark">Medium</label>
-            <select
-              value={filterMedium}
-              onChange={(e) => setFilterMedium(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
-            >
-              <option value="">All Mediums</option>
-              {mediums.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-montserrat text-secondary-dark">Standard</label>
-            <input
-              type="text"
-              value={filterStandard}
-              onChange={(e) => setFilterStandard(e.target.value)}
-              placeholder="e.g., 10"
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-montserrat text-secondary-dark">Status</label>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
-            >
-              <option value="">All Statuses</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="graduated">Graduated</option>
-            </select>
-          </div>
-          <div className="flex items-end col-span-full lg:col-span-1">
-            <button
-              onClick={() => {
-                setSearch("");
-                setFilterCourse("");
-                setFilterBatch("");
-                setFilterMedium("");
-                setFilterStandard("");
-                setFilterStatus("");
-              }}
-              className="text-primary text-sm hover:underline"
-            >
-              Clear Filters
-            </button>
+            <h1 className="text-3xl font-righteous text-primary-dark">Student Documents</h1>
+            <p className="text-sm text-secondary-dark font-montserrat mt-1">
+              Upload and manage student files
+            </p>
           </div>
         </div>
       )}
 
-      {/* Student Picker */}
-      <div className="mb-6 max-w-2xl">
-        <label className="block text-sm font-montserrat text-secondary-dark mb-1">
-          <User size={14} className="inline mr-1" /> Select Student
-        </label>
-        <select
-          value={selectedStudentId || ""}
-          onChange={(e) => setSelectedStudentId(e.target.value || null)}
-          className="w-full border border-secondary-light rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
-        >
-          <option value="">Choose a student…</option>
-          {students.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.first_name} {s.last_name} ({s.admission_no}) - Std {s.standard} ({s.status})
-            </option>
-          ))}
-        </select>
-        {students.length === 0 && !studentsLoading && (
-          <p className="text-xs text-secondary-light mt-1">No students match the filters</p>
-        )}
-      </div>
+      {/* Search & Filters – only if standalone and no propStudentId */}
+      {standalone && !propStudentId && (
+        <>
+          <div className="flex flex-col sm:flex-row gap-3 mb-4">
+            <div className="relative flex-1">
+              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+              <input
+                type="text"
+                placeholder="Search by name or admission no..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full border border-secondary-light rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+              />
+            </div>
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+            >
+              <Filter size={18} /> Filters
+              {showFilters && <X size={16} />}
+            </button>
+          </div>
+
+          {/* Advanced Filters Panel */}
+          {showFilters && (
+            <div className="bg-white rounded-xl p-4 shadow-sm mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 border border-secondary-light">
+              {/* ... same as before ... */}
+              <div>
+                <label className="text-xs font-montserrat text-secondary-dark">Course</label>
+                <select
+                  value={filterCourse}
+                  onChange={(e) => setFilterCourse(e.target.value)}
+                  className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+                >
+                  <option value="">All Courses</option>
+                  {courses.map((c) => (
+                    <option key={c.id} value={c.id}>{c.course_name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-montserrat text-secondary-dark">Batch</label>
+                <select
+                  value={filterBatch}
+                  onChange={(e) => setFilterBatch(e.target.value)}
+                  className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+                >
+                  <option value="">All Batches</option>
+                  {batches.map((b) => (
+                    <option key={b.id} value={b.id}>{b.batch_name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-montserrat text-secondary-dark">Medium</label>
+                <select
+                  value={filterMedium}
+                  onChange={(e) => setFilterMedium(e.target.value)}
+                  className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+                >
+                  <option value="">All Mediums</option>
+                  {mediums.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-montserrat text-secondary-dark">Standard</label>
+                <input
+                  type="text"
+                  value={filterStandard}
+                  onChange={(e) => setFilterStandard(e.target.value)}
+                  placeholder="e.g., 10"
+                  className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-montserrat text-secondary-dark">Status</label>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+                >
+                  <option value="">All Statuses</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="graduated">Graduated</option>
+                </select>
+              </div>
+              <div className="flex items-end col-span-full lg:col-span-1">
+                <button
+                  onClick={() => {
+                    setSearch("");
+                    setFilterCourse("");
+                    setFilterBatch("");
+                    setFilterMedium("");
+                    setFilterStandard("");
+                    setFilterStatus("");
+                  }}
+                  className="text-primary text-sm hover:underline"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Student Picker – only when standalone and no propStudentId */}
+      {standalone && !propStudentId && (
+        <div className="mb-6 max-w-2xl">
+          <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <User size={14} className="inline mr-1" /> Select Student
+          </label>
+          <select
+            value={selectedStudentId || ""}
+            onChange={(e) => setSelectedStudentId(e.target.value || null)}
+            className="w-full border border-secondary-light rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+          >
+            <option value="">Choose a student…</option>
+            {students.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.first_name} {s.last_name} ({s.admission_no}) - Std {s.standard} ({s.status})
+              </option>
+            ))}
+          </select>
+          {students.length === 0 && !studentsLoading && (
+            <p className="text-xs text-secondary-light mt-1">No students match the filters</p>
+          )}
+        </div>
+      )}
 
       {selectedStudentId && (
         <>
@@ -397,7 +405,7 @@ export default function StudentDocuments() {
           {/* Documents List */}
           <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-secondary-light">
             <h2 className="text-lg font-semibold font-righteous text-primary-dark p-4 border-b border-secondary-light">
-              Documents for {selectedStudent?.first_name} {selectedStudent?.last_name}
+              Documents for {selectedStudent ? `${selectedStudent.first_name} ${selectedStudent.last_name}` : `Student ${selectedStudentId}`}
             </h2>
             {docsLoading ? (
               <p className="p-4 text-center text-secondary">Loading documents…</p>
@@ -455,6 +463,16 @@ export default function StudentDocuments() {
           </div>
         </>
       )}
-    </AdminLayout>
+    </>
+  );
+
+  if (!standalone) {
+    return <div>{content}</div>;
+  }
+
+  return (
+    
+      <BackButton to="/admissions-hub" label="Admissions" />
+     
   );
 }

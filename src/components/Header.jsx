@@ -14,7 +14,7 @@ import { useInstallPrompt } from "../hooks/useInstallPrompt";
 import toast from "react-hot-toast";
 
 export default function Header({ onMenuClick }) {
-  const { profile } = useAuth();
+  const { profile, signOut } = useAuth(); // ← destructure signOut
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const dropdownRef = useRef(null);
@@ -141,8 +141,9 @@ export default function Header({ onMenuClick }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // ── Use context signOut ──
   async function handleLogout() {
-    await supabase.auth.signOut();
+    await signOut(); // ← now clears context + signs out
     navigate("/login", { replace: true });
   }
 
@@ -162,12 +163,11 @@ export default function Header({ onMenuClick }) {
     }
   };
 
-  // ── Handler for branch selection: updates context and invalidates queries ──
+  // ── Handler for branch selection ──
   const handleBranchChange = (e) => {
     const selected = branches.find((b) => b.id == e.target.value);
     if (selected) {
       setBranch(selected);
-      // Invalidate all data queries so they refetch with the new branch
       queryClient.invalidateQueries();
     }
   };
@@ -177,7 +177,6 @@ export default function Header({ onMenuClick }) {
     const fyId = Number(e.target.value);
     if (fyId) {
       switchFinancialYear(fyId);
-      // Invalidate all data queries so they refetch with the new FY
       queryClient.invalidateQueries();
     }
   };
@@ -218,7 +217,6 @@ export default function Header({ onMenuClick }) {
 
             {settingsPanelOpen && (
               <div className="absolute top-full mt-2 left-0 bg-white rounded-xl shadow-xl border border-secondary-light z-50 p-4 w-56 space-y-3">
-                {/* Branch selector */}
                 {branches.length > 1 && (
                   <div>
                     <label className="text-xs font-medium text-secondary-dark mb-1 block">
@@ -238,7 +236,6 @@ export default function Header({ onMenuClick }) {
                   </div>
                 )}
 
-                {/* Financial Year selector */}
                 {financialYears.length > 0 && (
                   <div>
                     <label className="text-xs font-medium text-secondary-dark mb-1 block">
@@ -390,7 +387,7 @@ export default function Header({ onMenuClick }) {
           <span className="hidden sm:inline">Install</span>
         </button>
 
-        {/* Logout button */}
+        {/* Logout button – now uses signOut from context */}
         <button
           onClick={handleLogout}
           className="flex items-center gap-1 sm:gap-2 bg-accent hover:bg-accent-light text-white px-2 sm:px-4 py-2 rounded-lg transition font-montserrat text-sm"

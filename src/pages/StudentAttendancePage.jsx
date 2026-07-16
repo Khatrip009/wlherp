@@ -1,3 +1,4 @@
+// src/pages/StudentAttendancePage.jsx
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, CheckCircle, XCircle, BookOpen } from "lucide-react";
 import AdminLayout from "../layouts/AdminLayout";
@@ -5,26 +6,29 @@ import BackButton from "../components/BackButton";
 
 import { useStudentId } from "../hooks/useStudentId";
 import { supabase } from "../api/supabase";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
-export default function StudentAttendancePage() {
-  const { studentId, isLoading: idLoading } = useStudentId();
+export default function StudentAttendancePage({ studentId: propStudentId = null, standalone = true }) {
+  // ── Use provided studentId or resolve via hook ──
+  const { studentId: hookStudentId, isLoading: idLoadingHook } = useStudentId();
+  const effectiveStudentId = propStudentId || hookStudentId;
+  const idLoading = !propStudentId && idLoadingHook;
 
   // ── Branch & Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
   const { data: sessions = [], isLoading } = useQuery({
-    queryKey: ["student-attendance-detail", studentId, branchId, financialYearId],
+    queryKey: ["student-attendance-detail", effectiveStudentId, branchId, financialYearId],
     queryFn: async () => {
-      if (!studentId) return [];
+      if (!effectiveStudentId) return [];
 
       // Get active batch IDs for this student – scoped to branch & FY
       let batchQuery = supabase
         .from("student_batches")
         .select("batch_id")
-        .eq("student_id", studentId)
+        .eq("student_id", effectiveStudentId)
         .eq("status", "active");
 
       if (branchId) batchQuery = batchQuery.eq("branch_id", branchId);
@@ -51,7 +55,7 @@ export default function StudentAttendancePage() {
       let marksQuery = supabase
         .from("student_attendance")
         .select("session_id, status")
-        .eq("student_id", studentId)
+        .eq("student_id", effectiveStudentId)
         .in("session_id", sessionIds);
 
       if (branchId) marksQuery = marksQuery.eq("branch_id", branchId);
@@ -73,7 +77,7 @@ export default function StudentAttendancePage() {
         })) || []
       );
     },
-    enabled: !!studentId && !!branchId && !!financialYearId,
+    enabled: !!effectiveStudentId && !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
@@ -82,17 +86,22 @@ export default function StudentAttendancePage() {
   const total = sessions.length;
   const percentage = total > 0 ? ((presentCount / total) * 100).toFixed(1) : 0;
 
+  // ── Loading state ──
   if (idLoading || isLoading) {
+    if (!standalone) {
+      return <div className="p-8 text-center">Loading...</div>;
+    }
     return (
       <AdminLayout>
-      <BackButton to="/student" label="My Dashboard" />
+        <BackButton to="/student" label="My Dashboard" />
         <div className="p-8 text-center">Loading...</div>
       </AdminLayout>
     );
   }
 
-  return (
-    <AdminLayout>
+  // ── Content ──
+  const content = (
+    <>
       <h1 className="text-3xl font-righteous text-primary-dark mb-4">
         My Attendance
       </h1>
@@ -161,6 +170,16 @@ export default function StudentAttendancePage() {
           </table>
         </div>
       </div>
-    </AdminLayout>
+    </>
+  );
+
+  if (!standalone) {
+    return <div>{content}</div>;
+  }
+
+  return (
+    
+      <BackButton to="/student" label="My Dashboard" />
+      
   );
 }

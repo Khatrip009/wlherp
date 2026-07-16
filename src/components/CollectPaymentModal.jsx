@@ -1,55 +1,65 @@
 // src/components/CollectPaymentModal.jsx
 import { useState, useEffect } from "react";
-import toast from "react-hot-toast";
 import {
-  X, Calendar, IndianRupee, CreditCard, Hash, FileText, User,
-  ChevronDown, List, Receipt,
-} from "lucide-react";
+  Modal,
+  Form,
+  InputNumber,
+  Select,
+  DatePicker,
+  Input,
+  Button,
+  Space,
+  message,
+  Descriptions,
+  Divider,
+  Result,
+} from "antd";
+import { FileTextOutlined, FilePdfOutlined } from "@ant-design/icons";
+import dayjs from "dayjs";
+import { useQueryClient } from "@tanstack/react-query";
 import { collectPayment } from "../services/feeService";
 import { createInvoice } from "../services/invoiceService";
 import { supabase } from "../api/supabase";
-import { useOrgDarkLogo } from "../hooks/useOrgDarkLogo";
+import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
+import { generateReceiptPdf } from "../utils/receiptPdf";
+import { generateInvoicePDF } from "../utils/invoicePdf";
 
 export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
-  const darkLogo = useOrgDarkLogo();
-  const { branch, selectedFinancialYear } = useOrg();
+  const [form] = Form.useForm();
+  const queryClient = useQueryClient();
+  const { profile } = useAuth();
+  const { org, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
-  const [form, setForm] = useState({
-    payment_date: new Date().toISOString().split("T")[0],
-    amount: "",
-    payment_mode: "Cash",
-    transaction_no: "",
-    remarks: "",
-    installment_id: "",
-  });
   const [installments, setInstallments] = useState([]);
   const [loadingInstallments, setLoadingInstallments] = useState(true);
   const [taxInfo, setTaxInfo] = useState(null);
   const [creatingInvoice, setCreatingInvoice] = useState(false);
 
-  // Fetch installments and tax info – scoped
+  // Success state
+  const [step, setStep] = useState("form");
+  const [receiptData, setReceiptData] = useState(null);
+  const [invoiceId, setInvoiceId] = useState(null);
+  const [paymentAmount, setPaymentAmount] = useState(0);
+  const [studentName, setStudentName] = useState("");
+
+  // ── Fetch installments & tax info ──
   useEffect(() => {
     if (!branchId || !financialYearId) return;
     async function loadData() {
-      // 1. Fetch installments (scoped)
-      const { data: instData, error: instError } = await supabase
+      const { data: instData } = await supabase
         .from("fee_installments")
         .select("*")
         .eq("student_fee_id", fee.id)
         .eq("branch_id", branchId)
         .eq("financial_year_id", financialYearId)
         .order("installment_number");
-      if (instError) {
-        toast.error("Could not load installments");
-      } else {
-        setInstallments(instData || []);
-      }
+      setInstallments(instData || []);
       setLoadingInstallments(false);
 
-      // 2. Fetch tax info from fee structure
       if (fee.fee_structures?.tax_rate_id) {
         const taxRateId = fee.fee_structures.tax_rate_id;
         const taxInclusive = fee.fee_structures.tax_inclusive !== undefined
@@ -61,13 +71,9 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
           setTaxInfo({
             rate: Number(taxRate.rate),
             name: taxRate.name,
-            taxInclusive: taxInclusive,
-            baseAmount: Number(fee.base_amount || 0),
-            taxAmount: Number(fee.tax_amount || 0),
-            finalFee: Number(fee.final_fee),
+            taxInclusive,
           });
         } else {
-          // Fetch tax rate separately – scoped
           const { data: taxRateData } = await supabase
             .from("tax_rates")
             .select("rate, name")
@@ -79,10 +85,7 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
             setTaxInfo({
               rate: Number(taxRateData.rate),
               name: taxRateData.name,
-              taxInclusive: taxInclusive,
-              baseAmount: Number(fee.base_amount || 0),
-              taxAmount: Number(fee.tax_amount || 0),
-              finalFee: Number(fee.final_fee),
+              taxInclusive,
             });
           }
         }
@@ -91,347 +94,384 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
     loadData();
   }, [fee, branchId, financialYearId]);
 
-  // When an installment is selected, auto-fill the amount
-  const selectedInstallment = installments.find(
-    (inst) => inst.id === Number(form.installment_id)
-  );
-
+  // Auto‑fill amount when installment is selected
+  const watchedInstallment = Form.useWatch("installment_id", form);
   useEffect(() => {
-    if (selectedInstallment) {
-      setForm((prev) => ({ ...prev, amount: selectedInstallment.amount.toString() }));
+    if (watchedInstallment) {
+      const inst = installments.find((i) => i.id === Number(watchedInstallment));
+      if (inst) form.setFieldValue("amount", inst.amount);
     }
-  }, [selectedInstallment]);
+  }, [watchedInstallment, installments, form]);
 
-  function handleChange(e) {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  }
+  // Tax breakdown
+  const watchedAmount = Form.useWatch("amount", form);
+  const taxBreakdown = () => {
+    const amt = Number(watchedAmount) || 0;
+    if (!taxInfo || taxInfo.rate === 0 || amt <= 0) return null;
+    const rate = taxInfo.rate / 100;
+    let base, tax;
+    if (taxInfo.taxInclusive) {
+      base = amt / (1 + rate);
+      tax = amt - base;
+    } else {
+      base = amt;
+      tax = amt * rate;
+    }
+    return {
+      base: base.toFixed(2),
+      tax: tax.toFixed(2),
+      total: amt.toFixed(2),
+    };
+  };
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!form.amount || Number(form.amount) <= 0) {
-      toast.error("Enter a valid amount");
+  // ── Print handlers ──
+  const handlePrintReceipt = async () => {
+    if (!receiptData) {
+      message.error("Receipt data not available");
+      return;
+    }
+    try {
+      // Fetch full receipt with relations (receiptPdf expects them)
+      const { data: fullReceipt, error } = await supabase
+        .from("receipts")
+        .select(`
+          *,
+          students (*),
+          fee_payments (*)
+        `)
+        .eq("id", receiptData.id)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
+        .single();
+      if (error) throw error;
+      // generateReceiptPdf saves the PDF automatically
+      await generateReceiptPdf(fullReceipt);
+      message.success("Receipt PDF downloaded");
+    } catch (err) {
+      console.error(err);
+      message.error("Failed to generate receipt PDF");
+    }
+  };
+
+  const handlePrintInvoice = async () => {
+    if (!invoiceId) {
+      message.error("Invoice ID not available");
+      return;
+    }
+    try {
+      // Fetch full invoice data with items
+      const { data: invoice, error } = await supabase
+        .from("invoices")
+        .select("*, invoice_items(*)")
+        .eq("id", invoiceId)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
+        .single();
+      if (error) throw error;
+      
+      // generateInvoicePDF returns a jsPDF doc – we need to save it
+      const doc = await generateInvoicePDF(invoice, org, 'sales');
+      const pdfBlob = doc.output('blob');
+      const url = URL.createObjectURL(pdfBlob);
+      window.open(url, '_blank'); // Opens in new tab – user can print
+      message.success("Invoice PDF opened in new tab");
+    } catch (err) {
+      console.error(err);
+      message.error("Failed to generate invoice PDF");
+    }
+  };
+
+  // ── Submit payment ──
+  const onFinish = async (values) => {
+    const paymentAmountVal = Number(values.amount);
+    if (!paymentAmountVal || paymentAmountVal <= 0) {
+      message.error("Enter a valid amount");
       return;
     }
 
-    const paymentAmount = Number(form.amount);
-
-    // Calculate base_amount and tax_amount based on taxInfo
-    let baseAmount = paymentAmount;
+    let baseAmount = paymentAmountVal;
     let taxAmount = 0;
-
     if (taxInfo && taxInfo.rate > 0) {
       const rate = taxInfo.rate / 100;
       if (taxInfo.taxInclusive) {
-        baseAmount = paymentAmount / (1 + rate);
-        taxAmount = paymentAmount - baseAmount;
+        baseAmount = paymentAmountVal / (1 + rate);
+        taxAmount = paymentAmountVal - baseAmount;
       } else {
-        taxAmount = paymentAmount * rate;
+        taxAmount = paymentAmountVal * rate;
       }
       baseAmount = Math.round(baseAmount * 100) / 100;
       taxAmount = Math.round(taxAmount * 100) / 100;
     }
 
-    try {
-      const paymentPayload = {
-        student_fee_id: fee.id,
-        payment_date: form.payment_date,
-        amount: paymentAmount,
-        base_amount: baseAmount,
-        tax_amount: taxAmount,
-        payment_mode: form.payment_mode,
-        transaction_no: form.transaction_no,
-        remarks: form.remarks,
-        installment_id: form.installment_id || null,
-      };
-
-      const context = {
-        branchId: branchId,
-        financialYearId: financialYearId,
-      };
-
-      // 1. Collect the payment
-      await collectPayment(paymentPayload, fee.student_id, null, context);
-
-      // 2. Auto‑generate invoice for this payment
-     // 2. Auto‑generate invoice for this payment – with retry
-setCreatingInvoice(true);
-let invoiceCreated = false;
-let attempts = 0;
-const maxAttempts = 3;
-
-while (!invoiceCreated && attempts < maxAttempts) {
-  try {
-    const invoicePayload = {
-      student_id: fee.student_id,
-      invoice_date: form.payment_date,
-      due_date: null,
-      payment_terms: "Immediate",
-      gst_applicable: taxInfo && taxInfo.rate > 0,
-      place_of_supply: fee.students?.state_code || "",
-      reverse_charge: false,
-      items: [
-        {
-          item_type: "fee_payment",
-          description: `Fee Payment - ${fee.fee_structures?.courses?.course_name || "N/A"}`,
-          quantity: 1,
-          unit_price: baseAmount,
-          hsn_sac_code: "9992",
-          tax_rate_id: fee.fee_structures?.tax_rate_id || null,
-        },
-      ],
+    const paymentPayload = {
       student_fee_id: fee.id,
-      fee_installment_id: form.installment_id || null,
+      payment_date: values.payment_date
+        ? values.payment_date.format("YYYY-MM-DD")
+        : dayjs().format("YYYY-MM-DD"),
+      amount: paymentAmountVal,
+      base_amount: baseAmount,
+      tax_amount: taxAmount,
+      payment_mode: values.payment_mode,
+      transaction_no: values.transaction_no,
+      remarks: values.remarks,
+      installment_id: values.installment_id || null,
     };
-    await createInvoice(invoicePayload, context);
-    invoiceCreated = true;
-    toast.success("Payment collected and invoice generated");
-  } catch (err) {
-    attempts++;
-    console.error("Invoice generation error (attempt " + attempts + "):", err);
-    if (attempts >= maxAttempts) {
-      toast.error(err?.message || "Invoice generation failed. You can generate it manually from the fee list.");
-    }
-    // If duplicate key error, loop will try again with a new number automatically
-  }
-}
-setCreatingInvoice(false);
 
-      if (onSuccess) onSuccess();
-      onClose();
+    try {
+      // 1. Collect payment
+      const payment = await collectPayment(
+        paymentPayload,
+        fee.student_id,
+        profile?.id,
+        null,
+        ctx
+      );
+
+      // 2. Fetch the receipt that was automatically created
+      const { data: receipt, error: receiptError } = await supabase
+        .from("receipts")
+        .select("*")
+        .eq("payment_id", payment.id)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
+        .single();
+
+      if (!receiptError) {
+        setReceiptData(receipt);
+      } else {
+        console.warn("Could not fetch receipt", receiptError);
+      }
+
+      // 3. Generate invoice (or fetch existing)
+      setCreatingInvoice(true);
+      let createdInvoiceId = null;
+      try {
+        const invoicePayload = {
+          student_id: fee.student_id,
+          invoice_date: paymentPayload.payment_date,
+          due_date: null,
+          payment_terms: "Immediate",
+          gst_applicable: taxInfo && taxInfo.rate > 0,
+          place_of_supply: fee.students?.state_code || "",
+          reverse_charge: false,
+          items: [
+            {
+              item_type: "fee_payment",
+              description: `Fee Payment - ${fee.fee_structures?.courses?.course_name || "N/A"}`,
+              quantity: 1,
+              unit_price: baseAmount,
+              hsn_sac_code: "9992",
+              tax_rate_id: fee.fee_structures?.tax_rate_id || null,
+            },
+          ],
+          student_fee_id: fee.id,
+          fee_installment_id: values.installment_id || null,
+        };
+
+        const result = await createInvoice(invoicePayload, ctx);
+        createdInvoiceId = result.id;
+        message.success("Payment collected and invoice generated");
+      } catch (err) {
+        // If duplicate, try to fetch existing invoice
+        if (err?.code === '23505' || err?.message?.includes('duplicate key')) {
+          const { data: existing } = await supabase
+            .from("invoices")
+            .select("id")
+            .eq("student_fee_id", fee.id)
+            .eq("fee_installment_id", values.installment_id || null)
+            .eq("branch_id", branchId)
+            .eq("financial_year_id", financialYearId)
+            .maybeSingle();
+          if (existing) {
+            createdInvoiceId = existing.id;
+            message.success("Payment collected and existing invoice linked");
+          } else {
+            console.warn("Invoice already exists but could not be fetched");
+          }
+        } else {
+          throw err;
+        }
+      } finally {
+        setCreatingInvoice(false);
+      }
+
+      setInvoiceId(createdInvoiceId);
+      setPaymentAmount(paymentAmountVal);
+      setStudentName(`${fee.students?.first_name} ${fee.students?.last_name}`);
+
+      // 4. Switch to success view
+      setStep("success");
+
+      // 5. Invalidate queries and call onSuccess
+      queryClient.invalidateQueries({ queryKey: ["studentFees"] });
+      onSuccess?.();
     } catch (err) {
       console.error(err);
-      toast.error(err?.message || "Payment failed");
+      message.error(err?.message || "Payment failed");
     }
-  }
+  };
 
-  const hasTax = taxInfo && taxInfo.rate > 0;
+  // ── Reset and close ──
+  const handleClose = () => {
+    setStep("form");
+    onClose();
+  };
 
+  // ── Render ──
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-secondary-light px-6 py-4 flex items-center justify-between rounded-t-xl z-10">
-          <div className="flex items-center gap-3">
-            <img
-              src={darkLogo}
-              alt="ShreeVidhya Academy"
-              className="h-10 w-auto"
-            />
-            <h2 className="text-xl font-righteous text-primary-dark">
-              Collect Payment
-            </h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-secondary-bg rounded-lg transition"
+    <Modal
+      title={
+        step === "form"
+          ? `Collect Payment - ${fee.students?.first_name} ${fee.students?.last_name}`
+          : "Payment Successful"
+      }
+      open
+      onCancel={handleClose}
+      footer={null}
+      destroyOnHidden
+      width={step === "form" ? 560 : 480}
+    >
+      {step === "form" ? (
+        <>
+          <Descriptions bordered size="small" column={1}>
+            <Descriptions.Item label="Course">
+              {fee.fee_structures?.courses?.course_name || "N/A"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Total Fee">
+              ₹{Number(fee.final_fee).toLocaleString("en-IN")}
+            </Descriptions.Item>
+            {fee.total_paid > 0 && (
+              <Descriptions.Item label="Paid">
+                ₹{Number(fee.total_paid).toLocaleString("en-IN")}
+              </Descriptions.Item>
+            )}
+            <Descriptions.Item label="Balance">
+              ₹{Number(fee.pending).toLocaleString("en-IN")}
+            </Descriptions.Item>
+            {taxInfo && (
+              <Descriptions.Item label="Tax">
+                {taxInfo.name} ({taxInfo.rate}%) – {taxInfo.taxInclusive ? "Inclusive" : "Exclusive"}
+              </Descriptions.Item>
+            )}
+          </Descriptions>
+
+          <Divider />
+
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={onFinish}
+            initialValues={{
+              payment_date: dayjs(),
+              amount: fee.pending,
+              payment_mode: "Cash",
+            }}
           >
-            <X size={20} className="text-secondary-dark" />
-          </button>
-        </div>
+            {!loadingInstallments && installments.length > 0 && (
+              <Form.Item name="installment_id" label="Installment (optional)">
+                <Select
+                  placeholder="No specific installment"
+                  allowClear
+                  options={installments.map((inst) => ({
+                    label: `#${inst.installment_number} – ₹${inst.amount} ${inst.due_date ? `(Due ${inst.due_date})` : ""} ${inst.status === "Paid" ? "✓ Paid" : ""}`,
+                    value: inst.id,
+                  }))}
+                />
+              </Form.Item>
+            )}
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {/* Student Info */}
-          <div className="bg-primary-bg rounded-lg p-4 flex items-start gap-3">
-            <User size={20} className="text-primary mt-0.5" />
-            <div>
-              <p className="font-semibold text-primary-dark">
-                {fee.students?.first_name} {fee.students?.last_name}
-              </p>
-              <p className="text-sm text-secondary-dark mt-1">
-                Final Fee:{" "}
-                <span className="font-bold text-primary">
-                  ₹{Number(fee.final_fee).toLocaleString("en-IN")}
-                </span>
-              </p>
-              {fee.total_paid > 0 && (
-                <p className="text-sm text-green-700">
-                  Already paid: ₹{Number(fee.total_paid).toLocaleString("en-IN")}
-                </p>
-              )}
-              {hasTax && (
-                <p className="text-xs text-secondary mt-1">
-                  Tax rate: {taxInfo.name} ({taxInfo.rate}%) – {taxInfo.taxInclusive ? "Inclusive" : "Exclusive"}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Installments Section */}
-          {loadingInstallments ? (
-            <p className="text-sm text-secondary">Loading installments...</p>
-          ) : installments.length > 0 ? (
-            <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
-                <List size={14} className="inline mr-1" />
-                Installments (optional)
-              </label>
-              <select
-                name="installment_id"
-                value={form.installment_id}
-                onChange={handleChange}
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
-              >
-                <option value="">No specific installment (lump sum)</option>
-                {installments.map((inst) => (
-                  <option key={inst.id} value={inst.id}>
-                    #{inst.installment_number} – ₹{Number(inst.amount).toLocaleString("en-IN")}
-                    {inst.due_date ? ` (Due ${inst.due_date})` : ""}
-                    {inst.status === "Paid" ? " ✓ Paid" : ""}
-                  </option>
-                ))}
-              </select>
-              {selectedInstallment && (
-                <p className="text-xs text-secondary mt-1">
-                  Amount auto‑filled with installment amount. You can still change it.
-                </p>
-              )}
-            </div>
-          ) : null}
-
-          {/* Date */}
-          <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
-              <Calendar size={14} className="inline mr-1" />
-              Date *
-            </label>
-            <input
-              type="date"
+            <Form.Item
               name="payment_date"
-              value={form.payment_date}
-              onChange={handleChange}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
-              required
-            />
-          </div>
+              label="Payment Date"
+              rules={[{ required: true }]}
+            >
+              <DatePicker style={{ width: "100%" }} />
+            </Form.Item>
 
-          {/* Amount */}
-          <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
-              <IndianRupee size={14} className="inline mr-1" />
-              Amount *
-            </label>
-            <input
-              type="number"
+            <Form.Item
               name="amount"
-              value={form.amount}
-              onChange={handleChange}
-              placeholder="Enter amount"
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
-              required
-              step="0.01"
-            />
-            {hasTax && form.amount && Number(form.amount) > 0 && (
-              <div className="mt-2 bg-gray-50 rounded p-2 text-xs text-gray-600 space-y-0.5">
-                <p className="flex justify-between">
-                  <span>Base Amount:</span>
-                  <span className="font-medium">
-                    ₹{(() => {
-                      const amt = Number(form.amount);
-                      const rate = taxInfo.rate / 100;
-                      if (taxInfo.taxInclusive) {
-                        const base = amt / (1 + rate);
-                        return base.toFixed(2);
-                      } else {
-                        return amt.toFixed(2);
-                      }
-                    })()}
-                  </span>
-                </p>
-                <p className="flex justify-between">
-                  <span>Tax ({taxInfo.rate}%):</span>
-                  <span className="font-medium text-primary">
-                    ₹{(() => {
-                      const amt = Number(form.amount);
-                      const rate = taxInfo.rate / 100;
-                      if (taxInfo.taxInclusive) {
-                        const base = amt / (1 + rate);
-                        return (amt - base).toFixed(2);
-                      } else {
-                        return (amt * rate).toFixed(2);
-                      }
-                    })()}
-                  </span>
-                </p>
-                <p className="flex justify-between border-t border-gray-200 pt-0.5 font-medium">
-                  <span>Total:</span>
-                  <span>₹{Number(form.amount).toFixed(2)}</span>
-                </p>
+              label="Amount"
+              rules={[{ required: true, message: "Please enter amount" }]}
+            >
+              <InputNumber
+                min={0}
+                max={fee.pending}
+                style={{ width: "100%" }}
+                placeholder={`Max: ₹${fee.pending}`}
+              />
+            </Form.Item>
+
+            {taxBreakdown() && (
+              <div
+                style={{
+                  background: "#fafafa",
+                  borderRadius: 6,
+                  padding: 12,
+                  marginBottom: 16,
+                }}
+              >
+                <div>Base: ₹{taxBreakdown().base}</div>
+                <div>Tax ({taxInfo.rate}%): ₹{taxBreakdown().tax}</div>
+                <div style={{ fontWeight: 600 }}>Total: ₹{taxBreakdown().total}</div>
               </div>
             )}
-          </div>
 
-          {/* Payment Mode */}
-          <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
-              <CreditCard size={14} className="inline mr-1" />
-              Payment Mode
-            </label>
-            <select
-              name="payment_mode"
-              value={form.payment_mode}
-              onChange={handleChange}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+            <Form.Item name="payment_mode" label="Payment Mode">
+              <Select>
+                <Select.Option value="Cash">Cash</Select.Option>
+                <Select.Option value="Card">Card</Select.Option>
+                <Select.Option value="UPI">UPI</Select.Option>
+                <Select.Option value="Bank Transfer">Bank Transfer</Select.Option>
+              </Select>
+            </Form.Item>
+
+            <Form.Item name="transaction_no" label="Transaction No / Reference">
+              <Input placeholder="e.g., UTR or Cheque No" />
+            </Form.Item>
+
+            <Form.Item name="remarks" label="Remarks">
+              <Input.TextArea rows={2} placeholder="Any additional note" />
+            </Form.Item>
+
+            <Form.Item style={{ marginBottom: 0 }}>
+              <Space style={{ float: "right" }}>
+                <Button onClick={handleClose}>Cancel</Button>
+                <Button type="primary" htmlType="submit" loading={creatingInvoice}>
+                  Collect Payment
+                </Button>
+              </Space>
+            </Form.Item>
+          </Form>
+        </>
+      ) : (
+        <div style={{ textAlign: "center" }}>
+          <Result
+            status="success"
+            title={`₹${paymentAmount.toLocaleString("en-IN")} collected successfully`}
+            subTitle={`For ${studentName}`}
+          />
+          <div style={{ marginTop: 24, display: "flex", justifyContent: "center", gap: 12 }}>
+            <Button
+              type="primary"
+              icon={<FileTextOutlined />}
+              onClick={handlePrintReceipt}
+              disabled={!receiptData}
             >
-              <option>Cash</option>
-              <option>UPI</option>
-              <option>Bank Transfer</option>
-              <option>Cheque</option>
-            </select>
+              Print Receipt
+            </Button>
+            {invoiceId && (
+              <Button
+                type="primary"
+                icon={<FilePdfOutlined />}
+                onClick={handlePrintInvoice}
+              >
+                Print Invoice
+              </Button>
+            )}
+            <Button onClick={handleClose}>Close</Button>
           </div>
-
-          {/* Transaction No */}
-          <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
-              <Hash size={14} className="inline mr-1" />
-              Transaction No / Reference
-            </label>
-            <input
-              type="text"
-              name="transaction_no"
-              value={form.transaction_no}
-              onChange={handleChange}
-              placeholder="e.g., UTR or Cheque No"
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
-            />
-          </div>
-
-          {/* Remarks */}
-          <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
-              <FileText size={14} className="inline mr-1" />
-              Remarks
-            </label>
-            <input
-              type="text"
-              name="remarks"
-              value={form.remarks}
-              onChange={handleChange}
-              placeholder="Any additional note"
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
-            />
-          </div>
-
-          {/* Buttons */}
-          <div className="flex flex-col sm:flex-row-reverse gap-3 pt-2">
-            <button
-              type="submit"
-              disabled={creatingInvoice}
-              className="w-full sm:w-auto bg-accent hover:bg-accent-light text-white px-6 py-2.5 rounded-lg font-montserrat transition flex items-center justify-center gap-2"
-            >
-              <IndianRupee size={16} />
-              {creatingInvoice ? "Processing..." : "Collect Payment"}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full sm:w-auto border border-secondary-light text-secondary-dark hover:bg-secondary-bg px-6 py-2.5 rounded-lg font-montserrat transition"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        </div>
+      )}
+    </Modal>
   );
 }

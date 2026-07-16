@@ -3,9 +3,17 @@ import { supabase } from "../api/supabase";
 
 // ─── HELPERS ───────────────────────────────────────────────
 async function generateInvoiceNumber() {
-  const { data, error } = await supabase.rpc("generate_invoice_number");
-  if (error) throw error;
-  return data;
+  try {
+    const { data, error } = await supabase.rpc("generate_invoice_number");
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.warn("RPC generate_invoice_number failed, using fallback.", err);
+    // Fallback: timestamp + random to avoid duplicates
+    const now = Date.now();
+    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+    return `INV-${now}-${random}`;
+  }
 }
 
 // Get the current user's organization ID using the database function

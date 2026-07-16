@@ -1,7 +1,7 @@
 // src/services/inquiryService.js
 import { supabase } from "../api/supabase";
 
-// Paginated fetch with filters – now scoped by branch & FY
+// Paginated fetch with filters – scoped by branch & FY
 export async function getInquiries({ pageParam = 0, filters = {}, branchId, financialYearId } = {}) {
   const limit = 10;
   const from = pageParam * limit;
@@ -13,11 +13,9 @@ export async function getInquiries({ pageParam = 0, filters = {}, branchId, fina
     .order("created_at", { ascending: false })
     .range(from, to);
 
-  // Scope by branch and financial year
   if (branchId) query = query.eq("branch_id", branchId);
   if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
-  // Filters
   if (filters.search) {
     query = query.or(
       `student_name.ilike.%${filters.search}%,parent_name.ilike.%${filters.search}%,mobile.ilike.%${filters.search}%,inquiry_no.ilike.%${filters.search}%`
@@ -33,7 +31,6 @@ export async function getInquiries({ pageParam = 0, filters = {}, branchId, fina
   const { data, error, count } = await query;
   if (error) throw error;
 
-  // Flatten medium name
   const enriched = (data || []).map((inq) => ({
     ...inq,
     medium_name: inq.mediums?.name || "",
@@ -49,7 +46,6 @@ export async function getAllInquiriesForExport(filters = {}, branchId, financial
     .select("*, mediums(name)")
     .order("created_at", { ascending: false });
 
-  // Scope
   if (branchId) query = query.eq("branch_id", branchId);
   if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
@@ -78,17 +74,20 @@ export async function createInquiry(payload, context) {
   const { branchId, financialYearId } = context;
   const { data, error } = await supabase
     .from("inquiries")
-    .insert([{ ...payload, branch_id: branchId, financial_year_id: financialYearId }])
+    .insert([{
+      ...payload,
+      status: "Interested",   // default status
+      branch_id: branchId,
+      financial_year_id: financialYearId,
+    }])
     .select()
     .single();
   if (error) throw error;
   return data;
 }
 
-// Update – scoped to prevent cross-branch changes
 export async function updateInquiry(id, payload, context) {
   const { branchId, financialYearId } = context;
-
   let query = supabase
     .from("inquiries")
     .update({ ...payload, branch_id: branchId, financial_year_id: financialYearId })
@@ -105,14 +104,9 @@ export async function updateInquiry(id, payload, context) {
 // Soft delete – scoped
 export async function deleteInquiry(id, context) {
   const { branchId, financialYearId } = context;
-
   let query = supabase
     .from("inquiries")
-    .update({
-      deleted_at: new Date().toISOString(),
-      branch_id: branchId,
-      financial_year_id: financialYearId,
-    })
+    .update({ deleted_at: new Date().toISOString() })
     .eq("id", id);
 
   if (branchId) query = query.eq("branch_id", branchId);
@@ -120,6 +114,48 @@ export async function deleteInquiry(id, context) {
 
   const { error } = await query;
   if (error) throw error;
+}
+
+// Schedule Demo – set demo_scheduled_at and status
+export async function scheduleDemo(inquiryId, demoDateTime, context) {
+  const { branchId, financialYearId } = context;
+  let query = supabase
+    .from("inquiries")
+    .update({
+      demo_scheduled_at: demoDateTime,
+      status: "Demo Scheduled",
+      branch_id: branchId,
+      financial_year_id: financialYearId,
+    })
+    .eq("id", inquiryId);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query.select().single();
+  if (error) throw error;
+  return data;
+}
+
+// Reject Inquiry – set status and rejection_reason
+export async function rejectInquiry(inquiryId, reason, context) {
+  const { branchId, financialYearId } = context;
+  let query = supabase
+    .from("inquiries")
+    .update({
+      status: "Rejected",
+      rejection_reason: reason,
+      branch_id: branchId,
+      financial_year_id: financialYearId,
+    })
+    .eq("id", inquiryId);
+
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+  const { data, error } = await query.select().single();
+  if (error) throw error;
+  return data;
 }
 
 // Dropdown options for filters/form – organisation‑wide
@@ -132,7 +168,6 @@ export async function getCourseOptions() {
   return data || [];
 }
 
-// Mediums – organisation‑wide
 export async function getMediumOptions() {
   const { data, error } = await supabase
     .from("mediums")

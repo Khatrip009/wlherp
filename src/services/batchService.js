@@ -27,7 +27,7 @@ export async function getBatches({
     .range(from, to);
 
   // Apply branch and FY scope (conditional)
-  if (branchId) query = query.eq("branch_id", branchId);
+    if (branchId) query = query.eq("branch_id", branchId);
   if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
   // Filters

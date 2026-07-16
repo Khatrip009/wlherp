@@ -131,7 +131,7 @@ function FilterDropdown({ field, filters, onChange, branchId, financialYearId })
 /* ------------------------------------------------------------------ */
 export default function ReportPage({ reportId }) {
   const { profile } = useAuth();
-  const { org, branch, selectedFinancialYear } = useOrg();
+  const { org, branch, selectedFinancialYear, theme } = useOrg(); // ✅ added theme
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -191,10 +191,11 @@ export default function ReportPage({ reportId }) {
 
   const resetFilters = () => setFilters(initialFilters);
 
+  // ✅ FIXED: Pass rows, filters, org, theme
   const handleDownloadPdf = async () => {
     if (!rows.length) return;
     try {
-      const doc = await generateReportPdf(config, filters, org);
+      const doc = await generateReportPdf(config, rows, filters, org, theme);
       doc.save(`${reportId}_${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch (err) {
       console.error(err);
@@ -205,7 +206,7 @@ export default function ReportPage({ reportId }) {
   const handlePrintPreview = async () => {
     if (!rows.length) return;
     try {
-      const doc = await generateReportPdf(config, filters, org);
+      const doc = await generateReportPdf(config, rows, filters, org, theme);
       const blob = doc.output('blob');
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');

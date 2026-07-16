@@ -1,8 +1,13 @@
+// src/App.jsx
 import { Routes, Route, useParams } from "react-router-dom";
 import ErrorBoundary from "./components/ErrorBoundary";
 import NotFound from "./pages/NotFound";
-import Dashboard from "./pages/Dashboard";
+import AdminLayout from "./layouts/AdminLayout";
+import AIChat from "./components/AIChat/AIChat";
+import ProtectedRoute from "./components/ProtectedRoute";
 
+// ── Page imports ──
+import Dashboard from "./pages/Dashboard";
 import Students from "./pages/Students";
 import StudentProfile from "./pages/StudentProfile";
 import Inquiries from "./pages/Inquiries";
@@ -40,14 +45,14 @@ import AdminTimetable from "./pages/AdminTimetable";
 import ProfitLoss from "./pages/ProfitLoss";
 import LearningResources from "./pages/LearningResources";
 import Mediums from "./pages/Mediums";
-import TaxSettings from './pages/TaxSettings';
-import TaxReport from './pages/TaxReport';
+import TaxSettings from "./pages/TaxSettings";
+import TaxReport from "./pages/TaxReport";
 
 // Reports engine
-import Reports from './pages/Reports';
-import ReportPage from './components/ReportPage';
-import DocumentReportPage from './components/DocumentReportPage';
-import { getReportConfig } from './utils/reportConfig';
+import Reports from "./pages/Reports";
+import ReportPage from "./components/ReportPage";
+import DocumentReportPage from "./components/DocumentReportPage";
+import { getReportConfig } from "./utils/reportConfig";
 
 // Student pages
 import StudentFeesPage from "./pages/StudentFeesPage";
@@ -68,18 +73,14 @@ import MyLeaves from "./pages/MyLeaves";
 import SalaryPayments from "./pages/SalaryPayments";
 import LeaveManagement from "./pages/LeaveManagement";
 import TeacherTimetable from "./pages/TeacherTimetable";
-import ProtectedRoute from "./routes/ProtectedRoute";
 import StudentLearningResources from "./pages/StudentLearningResources";
 import TeacherLearningResources from "./pages/TeacherLearningResources";
-
-// AI Chat
-import AIChat from "./components/AIChat/AIChat";
 
 // Online Classes
 import OnlineClassList from "./pages/OnlineClassList";
 import CreateOnlineClass from "./components/CreateOnlineClass";
 import JoinOnlineClass from "./components/JoinOnlineClass";
-import AdminLayout from "./layouts/AdminLayout";
+
 // Accounting Routes
 import ChartOfAccounts from "./pages/ChartOfAccounts";
 import JournalEntry from "./pages/JournalEntry";
@@ -110,67 +111,80 @@ import PurchaseOrders from "./pages/PurchaseOrders";
 import POForm from "./pages/POForm";
 import PODetail from "./pages/PODetail";
 
+// Hubs
 import AdmissionsHub from "./pages/AdmissionsHub";
 import AcademicsHub from "./pages/AcademicsHub";
 import HRHub from "./pages/HRHub";
 import CommunicationHub from "./pages/CommunicationHub";
 import SettingsHub from "./pages/SettingsHub";
 
-import TeacherSalarySettings from './pages/TeacherSalarySettings';
-import GenerateSalaries from './pages/GenerateSalaries';
+// HR & Salary
+import TeacherSalarySettings from "./pages/TeacherSalarySettings";
+import GenerateSalaries from "./pages/GenerateSalaries";
 import SalarySetup from "./pages/SalarySetup";
 import TeacherAttendance from "./pages/TeacherAttendance";
 import SalaryReport from "./pages/SalaryReport";
 
+// GST & Invoicing
 import GSTSettings from "./pages/GSTSettings";
 import Vendors from "./pages/Vendors";
 import Invoices from "./pages/Invoices";
 import InvoiceForm from "./pages/InvoiceForm";
 import InvoiceView from "./pages/InvoiceView";
-
 import GSTR3BSummary from "./pages/GSTR3BSummary";
 import CreditNotes from "./pages/CreditNotes";
 import DebitNotes from "./pages/DebitNotes";
 import PurchaseRegister from "./pages/PurchaseRegister";
-
 import PurchaseInvoices from "./pages/PurchaseInvoices";
 import PurchaseInvoiceForm from "./pages/PurchaseInvoiceForm";
 import PurchaseInvoiceView from "./pages/PurchaseInvoiceView";
+
+// Teacher Reports
 import TeacherAttendanceReport from "./pages/TeacherAttendanceReport";
 import TeacherDailyAttendanceReport from "./pages/TeacherDailyAttendanceReport";
 import TeacherLectureReport from "./pages/TeacherLectureReport";
 import TeacherLectureCountReport from "./pages/TeacherLectureCountReport";
+import StudentManagement from "./pages/StudentManagement";
+
+// Misc
 import Signup from "./pages/Signup";
 import OnboardingWizard from "./pages/OnboardingWizard";
-
-// Theme Settings
 import ThemeSettings from "./pages/ThemeSettings";
 import ActivityLogs from "./pages/ActivityLogs";
 import Branches from "./pages/Branches";
 
+import MasterData from "./pages/MasterData";
 
-
+// ── Report Wrapper (unchanged logic) ──
 function ReportPageWrapper() {
   const { reportId } = useParams();
   const config = getReportConfig(reportId);
   if (!config) return <NotFound />;
-  if (config.reportType === 'document') {
+  if (config.reportType === "document") {
     return <DocumentReportPage reportId={reportId} />;
   }
   return <ReportPage reportId={reportId} />;
 }
 
+// ── App Component ──
 function App() {
   return (
     <ErrorBoundary>
       <Routes>
-        {/* Public routes – no OrganizationProvider needed */}
+        {/* Public routes – no authentication required */}
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
 
-        {/* All authenticated routes are inside AuthenticatedApp */}
-      
-          <Route path="/" element={<Dashboard />} />
+        {/* All authenticated pages are wrapped with ProtectedRoute */}
+        <Route
+          element={
+            <ProtectedRoute>
+              <AdminLayout />
+            </ProtectedRoute>
+          }
+        >
+          {/* Dashboard (index route for "/") */}
+          <Route index element={<Dashboard />} />
           <Route path="/organization-settings" element={<OrganizationSettings />} />
 
           {/* Student routes */}
@@ -192,11 +206,11 @@ function App() {
           <Route path="/teacher/salary" element={<MySalary />} />
           <Route path="/teacher/leaves" element={<MyLeaves />} />
           <Route path="/teacher/profile" element={<TeacherProfile />} />
-          <Route path="/teacher/calendar" element={<TeacherWeeklyTimetable />}/>
+          <Route path="/teacher/calendar" element={<TeacherWeeklyTimetable />} />
           <Route path="/teacher/timetable" element={<TeacherTimetable />} />
           <Route path="/teacher/resources" element={<TeacherLearningResources />} />
 
-          {/* Admin/Teacher shared routes */}
+          {/* Admin / Teacher shared routes */}
           <Route path="/students" element={<Students />} />
           <Route path="/students/:id" element={<StudentProfile />} />
           <Route path="/inquiries" element={<Inquiries />} />
@@ -272,7 +286,7 @@ function App() {
           <Route path="/communication-hub" element={<CommunicationHub />} />
           <Route path="/settings-hub" element={<SettingsHub />} />
 
-          {/* HR & Salary Routes */}
+          {/* HR & Salary */}
           <Route path="/teachers/:id/salary" element={<TeacherSalarySettings />} />
           <Route path="/generate-salaries" element={<GenerateSalaries />} />
           <Route path="/salary-payments" element={<SalaryPayments />} />
@@ -280,7 +294,7 @@ function App() {
           <Route path="/teacher-attendance" element={<TeacherAttendance />} />
           <Route path="/salary-report" element={<SalaryReport />} />
 
-          {/* GST & Invoicing Routes */}
+          {/* GST & Invoicing */}
           <Route path="/gst-settings" element={<GSTSettings />} />
           <Route path="/vendors" element={<Vendors />} />
           <Route path="/invoices" element={<Invoices />} />
@@ -296,41 +310,38 @@ function App() {
           <Route path="/purchase-invoices/:id" element={<PurchaseInvoiceView />} />
           <Route path="/purchase-invoices/:id/edit" element={<PurchaseInvoiceForm />} />
 
+          {/* Teacher Reports */}
           <Route path="/teacher-attendance-report" element={<TeacherAttendanceReport />} />
           <Route path="/teacher-daily-attendance-report" element={<TeacherDailyAttendanceReport />} />
           <Route path="/teacher-lecture-report" element={<TeacherLectureReport />} />
           <Route path="/teacher-lecture-count" element={<TeacherLectureCountReport />} />
 
+          {/* Other */}
           <Route path="/activity-logs" element={<ActivityLogs />} />
           <Route path="/branches" element={<Branches />} />
           <Route path="/onboarding" element={<OnboardingWizard />} />
-
-          {/* Theme Settings */}
           <Route path="/theme-settings" element={<ThemeSettings />} />
 
-          {/* ── Report Engine ── */}
+          {/* Report Engine */}
           <Route path="/reports" element={<Reports />} />
-          <Route
-            path="/reports/:reportId"
-            element={
-              <AdminLayout>
-                <ReportPageWrapper />
-              </AdminLayout>
-            }
-          />
+          <Route path="/reports/:reportId" element={<ReportPageWrapper />} />
 
           {/* Admin Master Timetable */}
           <Route path="/timetable" element={<AdminTimetable />} />
 
-          {/* Admin-only HR routes */}
+          {/* Leave Management (admin) */}
           <Route path="/leave-management" element={<LeaveManagement />} />
 
           {/* Online Classes */}
           <Route path="/online-classes" element={<OnlineClassList />} />
           <Route path="/online-classes/create" element={<CreateOnlineClass />} />
           <Route path="/online-classes/join/:classId" element={<JoinOnlineClass />} />
-        
+          <Route path="/student-management" element={<StudentManagement />} />
 
+          <Route path="/master-data" element={<MasterData />} />
+        </Route>
+
+        {/* Catch-all */}
         <Route path="*" element={<NotFound />} />
       </Routes>
       <AIChat />

@@ -14,19 +14,17 @@ export async function fetchReportData(reportId, filters = {}, branchId, financia
   const config = getReportConfig(reportId);
   if (!config) throw new Error(`Unknown report: ${reportId}`);
 
-  // queryBuilder expects (filters, branchId, financialYearId)
   const queryPromise = config.queryBuilder(filters, branchId, financialYearId);
-
-  if (typeof queryPromise?.then !== 'function') {
-    throw new Error('queryBuilder must return a Promise');
-  }
-
   const result = await queryPromise;
+  
+  // ── DEBUG ──
+  console.log('Raw Supabase result:', result);
 
-  // Supabase queries resolve to { data, error }, other promises may resolve directly
   if (result?.error) throw result.error;
   const rawData = result?.data !== undefined ? result.data : result;
+  console.log('Raw data (before transform):', rawData);
 
-  // Apply client‑side transformation if defined in the config
-  return config.transform ? config.transform(rawData) : rawData;
+  const transformed = config.transform ? config.transform(rawData) : rawData;
+  console.log('Transformed data:', transformed);
+  return transformed;
 }

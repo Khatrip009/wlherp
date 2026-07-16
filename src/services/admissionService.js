@@ -55,10 +55,10 @@ export async function convertInquiryToStudent(inquiry, branchId, financialYearId
 
     if (mappingError) throw mappingError;
 
-    // 4. Update Inquiry status
+    // 4. Update Inquiry status → 'Admitted'
     const { error: inquiryError } = await supabase
       .from("inquiries")
-      .update({ status: "Joined" })
+      .update({ status: "Admitted" })
       .eq("id", inquiry.id);
 
     if (inquiryError) throw inquiryError;

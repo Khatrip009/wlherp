@@ -34,7 +34,6 @@ import {
   Legend,
 } from "recharts";
 import { Link, useNavigate } from "react-router-dom";
-import AdminLayout from "../layouts/AdminLayout";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../api/supabase";
 
@@ -115,7 +114,6 @@ const COLORS = ["#0D47A1", "#FF1070", "#00C49F", "#FFBB28", "#0088FE", "#FF8042"
 export default function Dashboard() {
   const { profile } = useAuth();
   const navigate = useNavigate();
-  const role = (profile?.role || "").toLowerCase().replace(/\s+/g, "_");
 
   // Call the parameterless RPC – it now filters by the user's org internally
   const { data: rawStats, isLoading, isError } = useQuery({
@@ -164,22 +162,18 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <AdminLayout>
-        <div className="p-8 text-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent" />
-          <p className="mt-4 text-secondary font-montserrat">Loading dashboard…</p>
-        </div>
-      </AdminLayout>
+      <div className="p-8 text-center">
+        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent" />
+        <p className="mt-4 text-secondary font-montserrat">Loading dashboard…</p>
+      </div>
     );
   }
 
   if (isError) {
     return (
-      <AdminLayout>
-        <div className="p-8 text-center text-red-600">
-          Failed to load dashboard data. Please try again later.
-        </div>
-      </AdminLayout>
+      <div className="p-8 text-center text-red-600">
+        Failed to load dashboard data. Please try again later.
+      </div>
     );
   }
 
@@ -190,7 +184,7 @@ export default function Dashboard() {
   ];
 
   return (
-    <AdminLayout>
+    <div>
       {/* Welcome & Quick Actions */}
       <div className="mb-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -435,6 +429,6 @@ export default function Dashboard() {
           emptyMessage="No upcoming exams"
         />
       </div>
-    </AdminLayout>
+    </div>
   );
 }

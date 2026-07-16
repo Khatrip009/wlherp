@@ -1209,58 +1209,67 @@ export const reportTypes = {
   /* =============================================================
    * 26. ADMISSION PIPELINE
    * ============================================================= */
-  admission_pipeline: {
-    id: 'admission_pipeline',
-    title: 'Admission Pipeline',
-    description: 'Lead pipeline with follow-up dates, source, status and interested course',
-    useLetterhead: true,
-    fields: ['status', 'source', 'start_date', 'end_date'],
-    defaultFilters: () => ({
-      start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
-      end_date: new Date().toISOString().slice(0, 10),
-    }),
-    queryBuilder: (filters, branchId, financialYearId) => {
-      let q = supabase
-        .from('inquiries')
-        .select(`
-          inquiry_no, student_name, parent_name, mobile, source, status,
-          followup_date, created_at,
-          courses(course_name)
-        `)
-        .gte('created_at', filters.start_date)
-        .lte('created_at', filters.end_date)
-        .order('followup_date', { ascending: true });
+admission_pipeline: {
+  id: 'admission_pipeline',
+  title: 'Admission Pipeline',
+  description: 'Lead pipeline with follow-up dates, source, status and interested course',
+  useLetterhead: true,
+  fields: ['status', 'source', 'start_date', 'end_date'],
+  defaultFilters: () => ({
+    start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
+    end_date: new Date().toISOString().slice(0, 10),
+  }),
+  queryBuilder: (filters, branchId, financialYearId) => {
+    console.log('Pipeline Query - branchId:', branchId, 'FY:', financialYearId, 'filters:', filters);
+    
+    let q = supabase
+      .from('inquiries')
+      .select(`
+        inquiry_no, student_name, parent_name, mobile, source, status,
+        followup_date, created_at,
+        courses(course_name)
+      `)
+      .is('deleted_at', null) // ✅ exclude deleted
+      .order('followup_date', { ascending: true });
 
-      if (branchId) q = q.eq('branch_id', branchId);
-      if (financialYearId) q = q.eq('financial_year_id', financialYearId);
-      if (filters.status) q = q.eq('status', filters.status);
-      if (filters.source) q = q.eq('source', filters.source);
+    // ✅ Date filters with time range
+    if (filters.start_date) {
+      q = q.gte('created_at', filters.start_date + 'T00:00:00');
+    }
+    if (filters.end_date) {
+      q = q.lte('created_at', filters.end_date + 'T23:59:59');
+    }
 
-      return q;
-    },
-    transform: (data) => data.map((r) => ({
-      inquiry_no: r.inquiry_no,
-      created: r.created_at?.slice(0, 10) || '',
-      student: r.student_name,
-      parent: r.parent_name,
-      mobile: r.mobile,
-      course: r.courses?.course_name || '',
-      source: r.source,
-      status: r.status,
-      followup: r.followup_date,
-    })),
-    columns: [
-      { header: 'Inquiry No', accessor: 'inquiry_no' },
-      { header: 'Created', accessor: 'created' },
-      { header: 'Student', accessor: 'student' },
-      { header: 'Parent', accessor: 'parent' },
-      { header: 'Mobile', accessor: 'mobile' },
-      { header: 'Course', accessor: 'course' },
-      { header: 'Source', accessor: 'source' },
-      { header: 'Status', accessor: 'status' },
-      { header: 'Follow-up', accessor: 'followup' },
-    ],
+    if (branchId) q = q.eq('branch_id', branchId);
+    if (financialYearId) q = q.eq('financial_year_id', financialYearId);
+    if (filters.status) q = q.eq('status', filters.status);
+    if (filters.source) q = q.eq('source', filters.source);
+
+    console.log('Final query URL:', q.url.toString());
+    return q;
   },
+  columns: [
+    { header: 'Inquiry No', accessor: 'inquiry_no' },
+    { header: 'Created', accessor: 'created' },
+    { header: 'Student', accessor: 'student' },
+    { header: 'Parent', accessor: 'parent' },
+    { header: 'Mobile', accessor: 'mobile' },
+    { header: 'Course', accessor: 'course' },
+    { header: 'Source', accessor: 'source' },
+    { header: 'Status', accessor: 'status' },
+    { header: 'Follow-up', accessor: 'followup' },
+  ],
+  pdfConfig: {
+    orientation: 'landscape',
+    includeLetterhead: false,
+    showHeader: true,
+    showFooter: true,
+    pageSize: 'a4',
+    fontSize: 8,
+    headerFontSize: 14,
+    footerFontSize: 8,
+  },
+},
 
   /* =============================================================
    * 27. FEE AGING ANALYSIS

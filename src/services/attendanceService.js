@@ -24,11 +24,19 @@ export async function getAttendanceSessions({
     .order("attendance_date", { ascending: false })
     .range(from, to);
 
-  // Apply branch/financial year scope (safe guards)
-  if (branchId) query = query.eq("attendance_sessions.branch_id", branchId);
-  if (financialYearId) query = query.eq("attendance_sessions.financial_year_id", financialYearId);
+  // ✅ FIXED: no table alias
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
-  if (filters.batchId) query = query.eq("batch_id", filters.batchId);
+  // Handle batch_id filter (array or single)
+  if (filters.batchId) {
+    if (Array.isArray(filters.batchId) && filters.batchId.length > 0) {
+      query = query.in("batch_id", filters.batchId);
+    } else if (!Array.isArray(filters.batchId)) {
+      query = query.eq("batch_id", filters.batchId);
+    }
+  }
+
   if (filters.search) {
     query = query.or(
       `topic_covered.ilike.%${filters.search}%,attendance_date::text.ilike.%${filters.search}%`
@@ -38,7 +46,6 @@ export async function getAttendanceSessions({
   if (filters.endDate) query = query.lte("attendance_date", filters.endDate);
 
   if (filters.medium_id) {
-    // Scope the batch lookup by branch & FY
     let mediumQuery = supabase
       .from("batches")
       .select("id")
@@ -92,10 +99,17 @@ export async function getAllAttendanceSessionsForExport({
     .select(`id, batch_id, attendance_date, topic_covered, batches(batch_name, medium_id, mediums(name))`)
     .order("attendance_date", { ascending: false });
 
-  if (branchId) query = query.eq("attendance_sessions.branch_id", branchId);
-  if (financialYearId) query = query.eq("attendance_sessions.financial_year_id", financialYearId);
+  // ✅ FIXED: no table alias
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
-  if (filters.batchId) query = query.eq("batch_id", filters.batchId);
+  if (filters.batchId) {
+    if (Array.isArray(filters.batchId) && filters.batchId.length > 0) {
+      query = query.in("batch_id", filters.batchId);
+    } else if (!Array.isArray(filters.batchId)) {
+      query = query.eq("batch_id", filters.batchId);
+    }
+  }
   if (filters.search) {
     query = query.or(
       `topic_covered.ilike.%${filters.search}%,attendance_date::text.ilike.%${filters.search}%`
@@ -209,8 +223,9 @@ export async function getStudentsByBatch(batchId, branchId, financialYearId) {
     .eq("batch_id", batchId)
     .eq("status", "active");
 
-  if (branchId) query = query.eq("student_batches.branch_id", branchId);
-  if (financialYearId) query = query.eq("student_batches.financial_year_id", financialYearId);
+  // ✅ FIXED: no table alias
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
   const { data, error } = await query;
   if (error) throw error;

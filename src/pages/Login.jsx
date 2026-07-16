@@ -1,4 +1,3 @@
-// src/pages/Login.jsx
 import { useState } from "react";
 import { Navigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -6,135 +5,164 @@ import { Mail, Lock, LogIn } from "lucide-react";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useOrgDarkLogo } from "../hooks/useOrgDarkLogo";
-import { useOrg } from "../context/OrganizationContext";   // ← new import
+import { useOrg } from "../context/OrganizationContext";
+import { Card, Input, Button, Typography, Form, Space } from "antd";
+
+const { Title, Text } = Typography;
 
 export default function Login() {
   const darkLogo = useOrgDarkLogo();
-  const { org } = useOrg();                                   // ← get organisation
-  const orgName = org?.company_name || "Academy";            // fallback while loading
-  const { user, profile, loading: authLoading } = useAuth();
+  const { org } = useOrg();
+  const orgName = org?.company_name || "Academy";
+  const { user, profile, loading: authLoading, orgAccessDenied } = useAuth();
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Redirect once auth is fully loaded
   if (user && profile) {
     return <Navigate to="/" replace />;
+  }
+
+  if (user && orgAccessDenied) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-secondary-bg px-4">
+        <Card className="w-full max-w-md text-center shadow-xl">
+          <Title level={2} className="text-red-600">Access Denied</Title>
+          <Text className="text-secondary block mb-4">
+            You are not authorized to access this system.
+          </Text>
+          <Button
+            type="primary"
+            danger
+            onClick={() => supabase.auth.signOut()}
+          >
+            Sign Out
+          </Button>
+        </Card>
+      </div>
+    );
   }
 
   if (authLoading || (user && !profile)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-secondary-bg">
-        <p className="text-secondary font-montserrat">Loading your account…</p>
+        <Text className="text-secondary font-montserrat">Loading your account…</Text>
       </div>
     );
   }
 
-  // Password login
-  async function handlePasswordLogin(e) {
-    e.preventDefault();
+  const onFinish = async (values) => {
     setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+        email: values.email,
+        password: values.password,
       });
       if (error) {
         toast.error(error.message);
         setLoading(false);
         return;
       }
+      // AuthContext will fetch profile and enforce org=3
     } catch (err) {
       console.error(err);
       toast.error("Login failed");
       setLoading(false);
     }
-  }
+  };
 
-  // Forgot password
-  async function handleForgotPassword() {
+  const handleForgotPassword = (email) => {
     if (!email) {
       toast.error("Enter your email first");
       return;
     }
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin + "/#/login",
-      });
-      if (error) throw error;
-      toast.success("Password reset link sent");
-    } catch (err) {
-      toast.error(err.message || "Failed to send reset link");
-    }
-  }
+    supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + "/#/login",
+    })
+      .then(() => toast.success("Password reset link sent"))
+      .catch((err) => toast.error(err.message));
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-secondary-bg px-4">
-      <div className="bg-white shadow-xl rounded-2xl p-8 w-full max-w-md border border-secondary-light">
-        {/* Logo */}
-        <div className="flex justify-center mb-6">
-          <img src={darkLogo} alt={orgName} className="h-20 w-auto" />
-        </div>
-
-        {/* Title – now dynamic */}
-        <h1 className="text-2xl font-righteous text-primary-dark text-center mb-1">
-          {orgName}
-        </h1>
-        <p className="text-sm text-secondary text-center font-montserrat mb-8">
-          Sign in to your account
-        </p>
-
-        {/* Password login form */}
-        <form onSubmit={handlePasswordLogin} className="space-y-5">
-          <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
-              <Mail size={14} className="inline mr-1" /> Email
-            </label>
-            <input
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full border border-secondary-light rounded-lg p-3 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
-              required
-            />
+      <Card className="w-full max-w-md shadow-xl" bordered={false}>
+        <Space direction="vertical" size="large" className="w-full">
+          <div className="flex justify-center">
+            <img src={darkLogo} alt={orgName} className="h-20 w-auto" />
           </div>
-          <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
-              <Lock size={14} className="inline mr-1" /> Password
-            </label>
-            <input
-              type="password"
-              placeholder="Your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-secondary-light rounded-lg p-3 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
-              required
-            />
-            <button
-              type="button"
-              onClick={handleForgotPassword}
-              className="text-xs text-secondary hover:text-primary font-montserrat mt-1"
-            >
-              Forgot password?
-            </button>
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-primary hover:bg-primary-light text-white rounded-lg p-3 font-montserrat transition disabled:opacity-50 flex items-center justify-center gap-2"
+
+          <Title level={1} className="text-center font-righteous text-primary-dark" style={{ fontSize: '1.8rem' }}>
+            {orgName}
+          </Title>
+          <Text className="text-center text-secondary block font-montserrat">
+            Sign in to your account
+          </Text>
+
+          <Form
+            name="login"
+            onFinish={onFinish}
+            layout="vertical"
+            requiredMark={false}
+            className="mt-4"
           >
-            <LogIn size={18} />
-            {loading ? "Signing In..." : "Sign In"}
-          </button>
-        </form>
+            <Form.Item
+              name="email"
+              label="Email"
+              rules={[{ required: true, message: 'Please enter your email' }]}
+            >
+              <Input
+                prefix={<Mail size={16} className="text-secondary-light" />}
+                placeholder="you@example.com"
+                size="large"
+                className="rounded-lg"
+              />
+            </Form.Item>
 
-        {/* Copyright – now uses org name */}
-        <p className="text-xs text-secondary-light text-center mt-8 font-montserrat">
-          © {new Date().getFullYear()} {orgName}. All rights reserved.
-        </p>
-      </div>
+            <Form.Item
+              name="password"
+              label="Password"
+              rules={[{ required: true, message: 'Please enter your password' }]}
+            >
+              <Input.Password
+                prefix={<Lock size={16} className="text-secondary-light" />}
+                placeholder="Your password"
+                size="large"
+                className="rounded-lg"
+              />
+            </Form.Item>
+
+            <div className="flex justify-end mb-2">
+              <Button
+                type="link"
+                className="text-xs p-0 h-auto"
+                onClick={() => {
+                  const email = document.querySelector('input[name="email"]')?.value;
+                  handleForgotPassword(email);
+                }}
+              >
+                Forgot password?
+              </Button>
+            </div>
+
+            <Form.Item>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={loading}
+                block
+                size="large"
+                icon={<LogIn size={18} />}
+                className="font-montserrat"
+              >
+                {loading ? "Signing In..." : "Sign In"}
+              </Button>
+            </Form.Item>
+          </Form>
+
+          <Text className="text-xs text-secondary-light text-center block font-montserrat">
+            © {new Date().getFullYear()} {orgName}. All rights reserved.
+          </Text>
+        </Space>
+      </Card>
     </div>
   );
 }

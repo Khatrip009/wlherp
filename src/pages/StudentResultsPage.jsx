@@ -1,75 +1,107 @@
 // src/pages/StudentResultsPage.jsx
 import { useQuery } from "@tanstack/react-query";
-import { Award } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
-import BackButton from "../components/BackButton";
-
-import { useStudentId } from "../hooks/useStudentId";
 import { supabase } from "../api/supabase";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
+import { Award, Calendar, Layers, BookOpen } from "lucide-react";
 
-export default function StudentResultsPage() {
-  const { studentId, isLoading: idLoading } = useStudentId();
-
-  // ── Branch & Financial Year context ──
+export default function StudentResultsPage({ studentId: propStudentId = null, standalone = true }) {
   const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  const { data: results = [], isLoading } = useQuery({
-    queryKey: ["student-results-list", studentId, branchId, financialYearId],
-    queryFn: async () => {
-      if (!studentId || !branchId || !financialYearId) return [];
+  const effectiveStudentId = propStudentId;
 
+  const { data: results = [], isLoading } = useQuery({
+    queryKey: ["student-results", effectiveStudentId, branchId, financialYearId],
+    queryFn: async () => {
+      if (!effectiveStudentId || !branchId || !financialYearId) return [];
       let query = supabase
         .from("student_results")
-        .select(`marks_obtained, remarks, exams(exam_name, total_marks, exam_date, subjects(subject_name))`)
-        .eq("student_id", studentId)
-        .order("exam_id", { ascending: false });
-
-      // Scope the results themselves
+        .select(`
+          marks_obtained,
+          remarks,
+          grade,
+          exams (
+            exam_name,
+            exam_date,
+            total_marks,
+            batches (
+              batch_name,
+              courses ( course_name ),
+              mediums ( name )
+            )
+          )
+        `)
+        .eq("student_id", effectiveStudentId);
       if (branchId) query = query.eq("branch_id", branchId);
       if (financialYearId) query = query.eq("financial_year_id", financialYearId);
-
-      // Also scope the nested exams table (via foreign table filter)
-      if (branchId) query = query.eq("exams.branch_id", branchId);
-      if (financialYearId) query = query.eq("exams.financial_year_id", financialYearId);
-
-      const { data } = await query;
+      const { data } = await query.order("exam_id", { ascending: false });
       return data || [];
     },
-    enabled: !!studentId && !!branchId && !!financialYearId,
+    enabled: !!effectiveStudentId && !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
-  if (idLoading || isLoading) {
-    return <AdminLayout>
-      <BackButton to="/student" label="My Dashboard" /><div className="p-8 text-center">Loading...</div></AdminLayout>;
-  }
-
-  return (
-    <AdminLayout>
-      <h1 className="text-3xl font-righteous text-primary-dark mb-6">My Results</h1>
-      {results.length === 0 ? (
-        <p className="text-secondary">No exam results yet.</p>
+  const content = (
+    <div>
+      {isLoading ? (
+        <div className="p-4 text-center text-secondary">Loading results…</div>
+      ) : results.length === 0 ? (
+        <div className="bg-white rounded-xl p-8 shadow-sm border border-secondary-light text-center">
+          <Award size={32} className="text-secondary-light mx-auto mb-2" />
+          <p className="text-secondary">No exam results found for this student.</p>
+        </div>
       ) : (
-        <div className="space-y-4">
-          {results.map((r, idx) => (
-            <div key={idx} className="bg-white rounded-xl p-4 shadow-sm border border-secondary-light">
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="font-semibold">{r.exams?.exam_name}</p>
-                  <p className="text-sm text-secondary">{r.exams?.subjects?.subject_name} – {r.exams?.exam_date}</p>
+        <div className="space-y-3">
+          {results.map((res, idx) => {
+            const exam = res.exams;
+            return (
+              <div
+                key={idx}
+                className="bg-white rounded-xl p-4 shadow-sm border border-secondary-light"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Award size={18} className="text-primary" />
+                  <h3 className="font-bold text-primary-dark">{exam?.exam_name}</h3>
                 </div>
-                <div className="text-right">
-                  <p className="text-lg font-bold">{r.marks_obtained}/{r.exams?.total_marks}</p>
-                  <p className="text-xs text-secondary">{r.remarks || ""}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm text-secondary-dark">
+                  <div className="flex items-center gap-1">
+                    <Layers size={16} /> {exam?.batches?.batch_name}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <BookOpen size={16} /> {exam?.batches?.courses?.course_name}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Calendar size={16} /> {exam?.exam_date}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-4 mt-2 text-sm">
+                  <span>
+                    Marks: <strong>{res.marks_obtained}</strong>
+                    {exam?.total_marks && ` / ${exam.total_marks}`}
+                  </span>
+                  {res.grade && (
+                    <span className="bg-primary-bg text-primary px-2 py-0.5 rounded-full text-xs">
+                      Grade: {res.grade}
+                    </span>
+                  )}
+                  {res.remarks && (
+                    <span className="text-secondary text-xs">Remarks: {res.remarks}</span>
+                  )}
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
-    </AdminLayout>
+    </div>
+  );
+
+  if (!standalone) return <div>{content}</div>;
+  return (
+    <div className="p-6">
+      <h1 className="text-3xl font-righteous text-primary-dark mb-4">My Results</h1>
+      {content}
+    </div>
   );
 }
