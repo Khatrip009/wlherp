@@ -90,7 +90,7 @@ export default function Login() {
             <img src={darkLogo} alt={orgName} className="h-20 w-auto" />
           </div>
 
-          <Title level={1} className="text-center font-righteous text-primary-dark" style={{ fontSize: '1.8rem' }}>
+          <Title level={1} className="text-center font-righteous text-primary-dark" style={{ fontSize: '1rem' }}>
             {orgName}
           </Title>
           <Text className="text-center text-secondary block font-montserrat">
