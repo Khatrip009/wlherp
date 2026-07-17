@@ -1,12 +1,9 @@
-// src/pages/OnlineClassList.jsx
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
-
 import BackButton from "../components/BackButton";
-
 import toast from "react-hot-toast";
 import {
   Search,
@@ -15,6 +12,8 @@ import {
   Trash2,
   Edit,
   Play,
+  RefreshCw,
+  Trash,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import OnlineClassModal from "../components/CreateOnlineClassModal";
@@ -34,12 +33,21 @@ export default function OnlineClassList() {
   const financialYearId = selectedFinancialYear?.id;
 
   const userRole = profile?.role?.toLowerCase() || "student";
-  const isAdmin = userRole === "admin" || userRole === "super_admin";
+
+  // ─── ✅ Expanded admin role check ──────────────────────
+  const adminRoles = [
+    "admin",
+    "super_admin",
+    "organization_admin",
+    "org_admin",
+    "branch_admin",
+  ];
+  const isAdmin = adminRoles.includes(userRole);
   const isTeacher = userRole === "teacher";
   const isStudent = userRole === "student";
 
   // ---------- Fetch classes (scoped) ----------
-  const { data: classes = [], isLoading, error } = useQuery({
+  const { data: classes = [], isLoading, error, refetch } = useQuery({
     queryKey: ["online-classes", filterStatus, search, branchId, financialYearId],
     queryFn: async () => {
       let query = supabase
@@ -115,7 +123,7 @@ export default function OnlineClassList() {
     enabled: !!profile?.id && !!branchId && !!financialYearId,
   });
 
-  // ---------- Delete mutation (scoped) ----------
+  // ---------- Delete single class mutation (scoped) ----------
   const deleteMutation = useMutation({
     mutationFn: async (classId) => {
       let query = supabase
@@ -134,7 +142,35 @@ export default function OnlineClassList() {
     onError: (err) => toast.error(err.message),
   });
 
-  // ---------- Start mutation – already includes branch & FY ----------
+  // ---------- Bulk delete old ended classes ----------
+  const cleanupMutation = useMutation({
+    mutationFn: async () => {
+      // Calculate the cutoff time (e.g., 7 days ago)
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 7);
+      const cutoffISO = cutoff.toISOString();
+
+      let query = supabase
+        .from("online_classes")
+        .delete()
+        .eq("status", "ended")
+        .lt("start_time", cutoffISO); // Classes that ended more than 7 days ago
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { error, count } = await query;
+      if (error) throw error;
+      return count || 0;
+    },
+    onSuccess: (deletedCount) => {
+      toast.success(`Deleted ${deletedCount} old ended classes`);
+      queryClient.invalidateQueries({ queryKey: ["online-classes"] });
+    },
+    onError: (err) => toast.error(err.message || "Cleanup failed"),
+  });
+
+  // ---------- Start class mutation (unchanged) ----------
   const startClassMutation = useMutation({
     mutationFn: async (classId) => {
       const { error } = await supabase
@@ -178,9 +214,19 @@ export default function OnlineClassList() {
     queryClient.invalidateQueries({ queryKey: ["online-classes"] });
   };
 
+  const handleCleanup = () => {
+    if (
+      window.confirm(
+        "This will permanently delete all ended classes older than 7 days. Continue?"
+      )
+    ) {
+      cleanupMutation.mutate();
+    }
+  };
+
   // ---------- Render ----------
   return (
-    <AdminLayout>
+    <>
       <BackButton to="/communication-hub" label="Communication" />
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
@@ -189,14 +235,37 @@ export default function OnlineClassList() {
             Schedule and join live virtual sessions
           </p>
         </div>
-        {(isAdmin || isTeacher) && (
+        <div className="flex flex-wrap gap-2">
+          {(isAdmin || isTeacher) && (
+            <>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+              >
+                <Plus size={18} /> Create Class
+              </button>
+              {isAdmin && (
+                <button
+                  onClick={handleCleanup}
+                  disabled={cleanupMutation.isPending}
+                  className="border border-red-300 text-red-600 hover:bg-red-50 px-4 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2 disabled:opacity-50"
+                  title="Delete ended classes older than 7 days"
+                >
+                  <Trash size={16} />
+                  {cleanupMutation.isPending ? "Cleaning..." : "Clean Up Ended"}
+                </button>
+              )}
+            </>
+          )}
           <button
-            onClick={() => setShowCreateModal(true)}
-            className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+            onClick={() => refetch()}
+            disabled={isLoading}
+            className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2 disabled:opacity-50"
           >
-            <Plus size={18} /> Create Class
+            <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
+            Refresh
           </button>
-        )}
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
@@ -349,6 +418,6 @@ export default function OnlineClassList() {
         onClose={handleModalClose}
         onSuccess={handleModalSuccess}
       />
-    </AdminLayout>
+    </>
   );
 }

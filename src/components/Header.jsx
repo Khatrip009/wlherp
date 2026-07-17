@@ -1,8 +1,6 @@
-// src/components/Header.jsx
 import { useState, useRef, useEffect } from "react";
 import {
   Bell, LogOut, UserCircle2, Check, Menu, Download,
-  Sliders,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -14,7 +12,7 @@ import { useInstallPrompt } from "../hooks/useInstallPrompt";
 import toast from "react-hot-toast";
 
 export default function Header({ onMenuClick }) {
-  const { profile, signOut } = useAuth(); // ← destructure signOut
+  const { profile, signOut } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const dropdownRef = useRef(null);
@@ -31,14 +29,16 @@ export default function Header({ onMenuClick }) {
     switchFinancialYear,
   } = useOrg();
 
-  const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
-  const settingsPanelRef = useRef(null);
+  // ─── DEBUG: log context values ──────────────────────────
+  console.log("🧪 Header: branches =", branches);
+  console.log("🧪 Header: branch =", branch);
+  console.log("🧪 Header: role =", profile?.role);
+  console.log("🧪 Header: isStudent =", isStudent);
 
   const { isInstallable, promptInstall } = useInstallPrompt();
 
   const role = (profile?.role || "").toLowerCase().replace(/\s+/g, "_");
   const isStudent = role === "student";
-  const showBranchFY = !isStudent && (branches.length > 1 || financialYears.length > 0);
 
   // Fetch student photo (if student)
   const { data: student } = useQuery({
@@ -127,23 +127,9 @@ export default function Header({ onMenuClick }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Close settings panel on outside click
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (
-        settingsPanelRef.current &&
-        !settingsPanelRef.current.contains(event.target)
-      ) {
-        setSettingsPanelOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
   // ── Use context signOut ──
   async function handleLogout() {
-    await signOut(); // ← now clears context + signs out
+    await signOut();
     navigate("/login", { replace: true });
   }
 
@@ -163,7 +149,7 @@ export default function Header({ onMenuClick }) {
     }
   };
 
-  // ── Handler for branch selection ──
+  // ── Branch / FY change handlers ──
   const handleBranchChange = (e) => {
     const selected = branches.find((b) => b.id == e.target.value);
     if (selected) {
@@ -172,7 +158,6 @@ export default function Header({ onMenuClick }) {
     }
   };
 
-  // ── Handler for financial year selection ──
   const handleFinancialYearChange = (e) => {
     const fyId = Number(e.target.value);
     if (fyId) {
@@ -184,7 +169,7 @@ export default function Header({ onMenuClick }) {
   return (
     <header className="bg-white border-b border-secondary-light px-4 lg:px-6 py-3 lg:py-4 flex items-center justify-between">
       {/* ── Left section ── */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <button
           onClick={onMenuClick}
           className="lg:hidden p-2 -ml-2 rounded-lg hover:bg-secondary-bg"
@@ -204,82 +189,51 @@ export default function Header({ onMenuClick }) {
           </p>
         </div>
 
-        {/* ── Branch / FY selector button ── */}
-        {showBranchFY && (
-          <div className="relative" ref={settingsPanelRef}>
-            <button
-              onClick={() => setSettingsPanelOpen(!settingsPanelOpen)}
-              className="p-2 rounded-lg hover:bg-secondary-bg transition"
-              title="Branch & Financial Year"
-            >
-              <Sliders size={18} className="text-secondary-dark" />
-            </button>
-
-            {settingsPanelOpen && (
-              <div className="absolute top-full mt-2 left-0 bg-white rounded-xl shadow-xl border border-secondary-light z-50 p-4 w-56 space-y-3">
-                {branches.length > 1 && (
-                  <div>
-                    <label className="text-xs font-medium text-secondary-dark mb-1 block">
-                      Branch
-                    </label>
-                    <select
-                      value={branch?.id || ""}
-                      onChange={handleBranchChange}
-                      className="w-full border border-secondary-light rounded p-1.5 text-sm focus:ring-1 focus:ring-primary"
-                    >
-                      {branches.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.branch_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {financialYears.length > 0 && (
-                  <div>
-                    <label className="text-xs font-medium text-secondary-dark mb-1 block">
-                      Financial Year
-                    </label>
-                    {selectedFinancialYear ? (
-                      <select
-                        value={selectedFinancialYear.id}
-                        onChange={handleFinancialYearChange}
-                        className="w-full border border-secondary-light rounded p-1.5 text-sm focus:ring-1 focus:ring-primary"
-                      >
-                        {financialYears.map((fy) => (
-                          <option key={fy.id} value={fy.id}>
-                            {fy.name}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <select
-                        onChange={(e) => {
-                          const id = Number(e.target.value);
-                          if (id) {
-                            switchFinancialYear(id);
-                            queryClient.invalidateQueries();
-                          }
-                        }}
-                        className="w-full border border-secondary-light rounded p-1.5 text-sm focus:ring-1 focus:ring-primary"
-                        defaultValue=""
-                      >
-                        <option value="" disabled>
-                          Select FY
-                        </option>
-                        {financialYears.map((fy) => (
-                          <option key={fy.id} value={fy.id}>
-                            {fy.name}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                )}
-              </div>
+        {/* ─── Branch selector ─────────────────────────────── */}
+        {!isStudent && (
+          <select
+            value={branch?.id || ""}
+            onChange={handleBranchChange}
+            className="border border-secondary-light rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none bg-white"
+          >
+            {branches.length === 0 ? (
+              <option value="" disabled>Loading branches...</option>
+            ) : (
+              branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.branch_name}
+                </option>
+              ))
             )}
-          </div>
+          </select>
+        )}
+
+        {/* ─── Financial Year selector ────────────────────── */}
+        {!isStudent && (
+          <select
+            value={selectedFinancialYear?.id || ""}
+            onChange={handleFinancialYearChange}
+            className="border border-secondary-light rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none bg-white"
+          >
+            {financialYears.length === 0 ? (
+              <option value="" disabled>Loading FY...</option>
+            ) : selectedFinancialYear ? (
+              financialYears.map((fy) => (
+                <option key={fy.id} value={fy.id}>
+                  {fy.name}
+                </option>
+              ))
+            ) : (
+              <>
+                <option value="" disabled>Select FY</option>
+                {financialYears.map((fy) => (
+                  <option key={fy.id} value={fy.id}>
+                    {fy.name}
+                  </option>
+                ))}
+              </>
+            )}
+          </select>
         )}
       </div>
 
@@ -387,7 +341,7 @@ export default function Header({ onMenuClick }) {
           <span className="hidden sm:inline">Install</span>
         </button>
 
-        {/* Logout button – now uses signOut from context */}
+        {/* Logout button */}
         <button
           onClick={handleLogout}
           className="flex items-center gap-1 sm:gap-2 bg-accent hover:bg-accent-light text-white px-2 sm:px-4 py-2 rounded-lg transition font-montserrat text-sm"

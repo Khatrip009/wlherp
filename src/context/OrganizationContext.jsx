@@ -8,14 +8,12 @@ const OrgContext = createContext();
 export function OrganizationProvider({ children }) {
   const { user } = useAuth();
   const [org, setOrg] = useState(null);
-  const [theme, setTheme] = useState(null);          // still available for useOrg()
+  const [theme, setTheme] = useState(null);
   const [branch, setBranch] = useState(null);
   const [branches, setBranches] = useState([]);
   const [financialYears, setFinancialYears] = useState([]);
   const [selectedFinancialYear, setSelectedFinancialYear] = useState(null);
   const [mediums, setMediums] = useState([]);
-
-  // *** REMOVED CSS variable useEffect – ThemeProvider handles it now ***
 
   useEffect(() => {
     // ── LOGOUT ──
@@ -73,13 +71,15 @@ export function OrganizationProvider({ children }) {
         return;
       }
 
-      // Enforce organization ID = 3 (already enforced in AuthContext, but double-check)
+      // Enforce organization ID = 3 (optional – keep if needed)
       if (profile.organization_id !== 3) {
         toast.error("Access denied: Only organization ID 3 is allowed.");
         return;
       }
 
-      const isAdmin = profile.role === "Admin"; // adjust role name if needed
+      // ─── ✅ FIX: case‑insensitive admin check ───
+      const adminRoles = ["admin", "super_admin", "organization_admin", "org_admin", "Admin"];
+      const isAdmin = adminRoles.includes(profile.role?.toLowerCase());
 
       const [
         { data: orgData },
@@ -106,17 +106,16 @@ export function OrganizationProvider({ children }) {
       setTheme(themeData || null);
       setFinancialYears(fys || []);
 
-      // Extract mediums list
       const mediumList = (mediumRows || []).map((row) => ({
         id: row.medium_id,
         name: row.mediums?.name || "",
       }));
       setMediums(mediumList);
 
-      // Filter branches based on role
+      // ─── Branch access ────────────────────────────────────
       let accessibleBranches = branchList || [];
       if (!isAdmin) {
-        // Non-admin: only their assigned branch
+        // Non‑admin: only their assigned branch
         accessibleBranches = accessibleBranches.filter(
           (b) => b.id === profile.branch_id
         );
@@ -124,17 +123,18 @@ export function OrganizationProvider({ children }) {
           toast.error("No branch assigned to this user.");
         }
       }
+      // Admin sees all branches – no filtering.
 
       setBranches(accessibleBranches);
 
-      // Set default branch to the first accessible branch
+      // Default to the first accessible branch
       if (accessibleBranches.length) {
         setBranch(accessibleBranches[0]);
       } else {
         setBranch(null);
       }
 
-      // Set selected financial year
+      // Financial year
       if (fys && fys.length > 0) {
         const current = fys.find((fy) => fy.id === profile.selected_financial_year_id) || null;
         setSelectedFinancialYear(current);

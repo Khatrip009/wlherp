@@ -10,6 +10,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
 import { OrganizationProvider } from "./context/OrganizationContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { ScopeProvider } from "./context/ScopeContext";  
 import AntThemeWrapper from "./components/AntThemeWrapper";
 
 // ── Page imports ──
@@ -179,6 +180,7 @@ function App() {
     <ErrorBoundary>
       <AuthProvider>
         <OrganizationProvider>
+          <ScopeProvider>
           <ThemeProvider>
             <AntThemeWrapper>
               <Routes>
@@ -357,6 +359,7 @@ function App() {
               </Routes>
             </AntThemeWrapper>
           </ThemeProvider>
+          </ScopeProvider>
         </OrganizationProvider>
       </AuthProvider>
       <AIChat />

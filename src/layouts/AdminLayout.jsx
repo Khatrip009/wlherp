@@ -14,10 +14,10 @@ import {
   PhoneOutlined,
   FormOutlined,
   TeamOutlined,
+  BarChartOutlined,   // <-- added for Reports
 } from "@ant-design/icons";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
-import ScopeSelector from "../components/ScopeSelector";
 import GlobalSearch from "../components/GlobalSearch";
 import NotificationBell from "../components/NotificationBell";
 import UserMenu from "../components/UserMenu";
@@ -34,28 +34,23 @@ const breadcrumbNameMap = {
   "/accounting/vouchers": "Vouchers",
   "/accounting/ledger": "Ledger",
   "/accounting/trial-balance": "Trial Balance",
-  // Add more as needed
+  "/reports": "Reports Hub",        // <-- added
 };
 
 // ── Sidebar menu items ──
 function getMenuItems(role) {
-  // Student menu
   if (role === "student") {
     return [
       { key: "/student", icon: <DashboardOutlined />, label: <Link to="/student">Dashboard</Link> },
       { key: "/student/fees", icon: <DollarOutlined />, label: <Link to="/student/fees">Fees</Link> },
     ];
   }
-
-  // Teacher menu
   if (role === "teacher") {
     return [
       { key: "/teacher", icon: <DashboardOutlined />, label: <Link to="/teacher">Dashboard</Link> },
       { key: "/teacher/salary", icon: <DollarOutlined />, label: <Link to="/teacher/salary">My Salary</Link> },
     ];
   }
-
-  // Admin / Super Admin menu (full access)
   return [
     { key: "/", icon: <DashboardOutlined />, label: <Link to="/">Dashboard</Link> },
     { key: "/master-data", icon: <SettingOutlined />, label: <Link to="/master-data">Master Data</Link> },
@@ -65,8 +60,9 @@ function getMenuItems(role) {
     { key: "/academics-hub", icon: <BookOutlined />, label: <Link to="/academics-hub">Academics</Link> },
     { key: "/hr-hub", icon: <TeamOutlined />, label: <Link to="/hr-hub">HR Hub</Link> },
     { key: "/fees", icon: <DollarOutlined />, label: <Link to="/fees">Student Fees</Link> },
-    // ─── Replaced old Finance link with the new Accounting Hub ───
     { key: "/accounting", icon: <DollarOutlined />, label: <Link to="/accounting">Accounting</Link> },
+    // ─── NEW: Reports link ────────────────
+    { key: "/reports", icon: <BarChartOutlined />, label: <Link to="/reports">Reports</Link> },
     { key: "/settings-hub", icon: <SettingOutlined />, label: <Link to="/settings-hub">Settings</Link> },
   ];
 }
@@ -75,10 +71,11 @@ export default function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
   const { profile } = useAuth();
-  const { org } = useOrg();
+  const { org, branch, setBranch, branches, financialYears, selectedFinancialYear, switchFinancialYear } = useOrg();
   const { token } = theme.useToken();
 
   const role = (profile?.role || "").toLowerCase().replace(/\s+/g, "_");
+  const isStudent = role === "student";
   const menuItems = getMenuItems(role);
 
   // ── Breadcrumb generation ──
@@ -92,8 +89,22 @@ export default function AdminLayout() {
     }),
   ];
 
-  // Active menu key (first path segment)
   const selectedKey = "/" + (pathSnippets[0] || "");
+
+  // ── Branch / FY change handlers ──
+  const handleBranchChange = (e) => {
+    const selected = branches.find((b) => b.id == e.target.value);
+    if (selected) {
+      setBranch(selected);
+    }
+  };
+
+  const handleFinancialYearChange = (e) => {
+    const fyId = Number(e.target.value);
+    if (fyId) {
+      switchFinancialYear(fyId);
+    }
+  };
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
@@ -115,7 +126,6 @@ export default function AdminLayout() {
           zIndex: 10,
         }}
       >
-        {/* Logo – clickable to dashboard */}
         <Link
           to="/"
           style={{
@@ -136,7 +146,6 @@ export default function AdminLayout() {
           />
         </Link>
 
-        {/* Navigation Menu */}
         <Menu
           theme="dark"
           mode="inline"
@@ -169,8 +178,54 @@ export default function AdminLayout() {
             <GlobalSearch />
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <ScopeSelector />
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {/* ─── Branch selector ──────────────────────────── */}
+            {!isStudent && (
+              <select
+                value={branch?.id || ""}
+                onChange={handleBranchChange}
+                className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
+              >
+                {branches.length === 0 ? (
+                  <option value="" disabled>Loading branches...</option>
+                ) : (
+                  branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.branch_name}
+                    </option>
+                  ))
+                )}
+              </select>
+            )}
+
+            {/* ─── Financial Year selector ──────────────────── */}
+            {!isStudent && (
+              <select
+                value={selectedFinancialYear?.id || ""}
+                onChange={handleFinancialYearChange}
+                className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
+              >
+                {financialYears.length === 0 ? (
+                  <option value="" disabled>Loading FY...</option>
+                ) : selectedFinancialYear ? (
+                  financialYears.map((fy) => (
+                    <option key={fy.id} value={fy.id}>
+                      {fy.name}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="" disabled>Select FY</option>
+                    {financialYears.map((fy) => (
+                      <option key={fy.id} value={fy.id}>
+                        {fy.name}
+                      </option>
+                    ))}
+                  </>
+                )}
+              </select>
+            )}
+
             <NotificationBell />
             <UserMenu />
           </div>
