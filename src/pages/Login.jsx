@@ -13,7 +13,7 @@ const { Title, Text } = Typography;
 export default function Login() {
   const darkLogo = useOrgDarkLogo();
   const { org } = useOrg();
-  const orgName = org?.company_name || "Academy";
+  const orgName = org?.company_name || "Ahead in Learning, Ahead in Life";
   const { user, profile, loading: authLoading, orgAccessDenied } = useAuth();
 
   const [loading, setLoading] = useState(false);
