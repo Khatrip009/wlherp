@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { FileText, Download } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import BackButton from "../components/BackButton";
 
 import { useStudentId } from "../hooks/useStudentId";
@@ -52,12 +52,12 @@ export default function StudentCertificatesPage() {
   }
 
   if (idLoading || isLoading) {
-    return <AdminLayout>
-      <BackButton to="/student" label="My Dashboard" /><div className="p-8 text-center">Loading...</div></AdminLayout>;
+    return <>
+      <BackButton to="/student" label="My Dashboard" /><div className="p-8 text-center">Loading...</div></>;
   }
 
   return (
-    <AdminLayout>
+    <>
       <h1 className="text-3xl font-righteous text-primary-dark mb-6">My Certificates</h1>
       {certificates.length === 0 ? (
         <p className="text-secondary">No certificates issued yet.</p>
@@ -80,6 +80,6 @@ export default function StudentCertificatesPage() {
           ))}
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

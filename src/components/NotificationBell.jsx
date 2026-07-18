@@ -119,7 +119,7 @@ export default function NotificationBell() {
   const markReadMutation = useMutation({
     mutationFn: async (id) => {
       if (!user?.id || !branchId || !financialYearId) return;
-      const query = supabase
+      let query = supabase
         .from("notifications")
         .update({ is_read: true })
         .eq("id", id);

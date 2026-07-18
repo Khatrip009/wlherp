@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Outlet, useLocation, Link } from "react-router-dom";
-import { Layout, Menu, Breadcrumb, Button, theme } from "antd";
+import { Layout, Menu, Breadcrumb, Button, Modal, theme } from "antd";
 import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -10,28 +10,20 @@ import {
   DollarOutlined,
   SettingOutlined,
   CalendarOutlined,
-  BellOutlined,
   PhoneOutlined,
   FormOutlined,
   TeamOutlined,
   BarChartOutlined,
-  AppstoreOutlined,
-  SlidersOutlined,
   BankOutlined,
-  FileTextOutlined,
-  ShoppingCartOutlined,
-  WalletOutlined,
-  PieChartOutlined,
-  AccountBookOutlined,
-  AuditOutlined,
   MessageOutlined,
-  VideoCameraOutlined,  
+  VideoCameraOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
 import GlobalSearch from "../components/GlobalSearch";
 import NotificationBell from "../components/NotificationBell";
 import UserMenu from "../components/UserMenu";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 
 const { Header, Sider, Content } = Layout;
 
@@ -48,6 +40,7 @@ const breadcrumbNameMap = {
   "/reports": "Reports Hub",
   "/communication-hub": "Communication Hub",
 };
+
 // ── Sidebar menu items ──
 function getMenuItems(role) {
   if (role === "student") {
@@ -56,28 +49,22 @@ function getMenuItems(role) {
       { key: "/student/fees", icon: <DollarOutlined />, label: <Link to="/student/fees">Fees</Link> },
     ];
   }
-   if (role === "teacher") {
+  if (role === "teacher") {
     return [
       { key: "/teacher", icon: <DashboardOutlined />, label: <Link to="/teacher">Dashboard</Link> },
       { key: "/teacher/salary", icon: <DollarOutlined />, label: <Link to="/teacher/salary">My Salary</Link> },
       { key: "/teacher/leaves", icon: <CalendarOutlined />, label: <Link to="/teacher/leaves">My Leaves</Link> },
       { key: "/teacher/timetable", icon: <CalendarOutlined />, label: <Link to="/teacher/timetable">My Timetable</Link> },
-      
-      // ─── NEW: Attendance, Exams, Results ───────────────────
       { key: "/teacher-attendance", icon: <CalendarOutlined />, label: <Link to="/teacher-attendance">Attendance</Link> },
       { key: "/exams", icon: <FormOutlined />, label: <Link to="/exams">Exams</Link> },
       { key: "/communication-hub", icon: <MessageOutlined />, label: <Link to="/communication-hub">Communication Hub</Link> },
       { key: "/online-classes", icon: <VideoCameraOutlined />, label: <Link to="/online-classes">Online Classes</Link> },
       { key: "/learning-resources", icon: <BookOutlined />, label: <Link to="/learning-resources">Learning Resources</Link> },
       { key: "/results", icon: <BarChartOutlined />, label: <Link to="/results">Results</Link> },
-
-   
-
-      // ─── Communication ────────────────────────────────────
-      
       { key: "/teacher/profile", icon: <UserOutlined />, label: <Link to="/teacher/profile">My Profile</Link> },
     ];
   }
+
   // ── Admin / Super Admin / Organization Admin full menu ──
   return [
     {
@@ -93,11 +80,9 @@ function getMenuItems(role) {
         { key: "/courses", label: <Link to="/courses">Courses</Link> },
         { key: "/batches", label: <Link to="/batches">Batches</Link> },
         { key: "/subjects", label: <Link to="/subjects">Subjects</Link> },
-        { key: "/teachers", label: <Link to="/teachers">Teachers</Link> },
         { key: "/parents", label: <Link to="/parents">Parents</Link> },
         { key: "/mediums", label: <Link to="/mediums">Mediums</Link> },
         { key: "/tax-settings", label: <Link to="/tax-settings">Tax Rates</Link> },
-        { key: "/inventory-items", label: <Link to="/inventory-items">Inventory Items</Link> },
       ],
     },
     {
@@ -132,7 +117,6 @@ function getMenuItems(role) {
         { key: "/progress", label: <Link to="/progress">Progress Evaluation</Link> },
       ],
     },
-    // ─── NEW: Communication group ──────────────────────────
     {
       key: "communication",
       icon: <MessageOutlined />,
@@ -140,7 +124,6 @@ function getMenuItems(role) {
       children: [
         { key: "/communication-hub", label: <Link to="/communication-hub">Communication Hub</Link> },
         { key: "/notifications", label: <Link to="/notifications">Notifications</Link> },
-        { key: "/online-classes", label: <Link to="/online-classes">Online Classes</Link> },
         { key: "/learning-resources", label: <Link to="/learning-resources">Learning Resources</Link> },
       ],
     },
@@ -215,6 +198,8 @@ function getMenuItems(role) {
 
 export default function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);   // NEW
+
   const location = useLocation();
   const { profile } = useAuth();
   const { org, branch, setBranch, branches, financialYears, selectedFinancialYear, switchFinancialYear } = useOrg();
@@ -222,7 +207,52 @@ export default function AdminLayout() {
 
   const role = (profile?.role || "").toLowerCase().replace(/\s+/g, "_");
   const isStudent = role === "student";
+  const isTeacher = role === "teacher";
+  const isAdmin = !isStudent && !isTeacher;
   const menuItems = getMenuItems(role);
+
+  // ── Keyboard Shortcuts ──────────────────────────────────
+  const adminShortcuts = [
+    { key: "h", ctrl: true, shift: true, path: "/", description: "Dashboard" },
+    { key: "s", ctrl: true, shift: true, path: "/students", description: "Students" },
+    { key: "i", ctrl: true, shift: true, path: "/inquiries", description: "Inquiries" },
+    { key: "c", ctrl: true, shift: true, path: "/courses", description: "Courses" },
+    { key: "b", ctrl: true, shift: true, path: "/batches", description: "Batches" },
+    { key: "a", ctrl: true, shift: true, path: "/attendance", description: "Attendance" },
+    { key: "f", ctrl: true, shift: true, path: "/fees", description: "Fees" },
+    { key: "e", ctrl: true, shift: true, path: "/exams", description: "Exams" },
+    { key: "r", ctrl: true, shift: true, path: "/results", description: "Results" },
+    { key: "m", ctrl: true, shift: true, path: "/communication-hub", description: "Communication" },
+    { key: "t", ctrl: true, shift: true, path: "/teachers", description: "Teachers" },
+    { key: "l", ctrl: true, shift: true, path: "/learning-resources", description: "Learning Resources" },
+    { key: "p", ctrl: true, shift: true, path: "/parents", description: "Parents" },
+    { key: "g", ctrl: true, shift: true, path: "/accounting", description: "Accounting" },
+    // Help shortcut
+    { key: "?", ctrl: true, shift: true, description: "Show Help", handler: () => setShowHelp(true) },
+  ];
+
+  const teacherShortcuts = [
+    { key: "h", ctrl: true, shift: true, path: "/teacher", description: "Dashboard" },
+    { key: "s", ctrl: true, shift: true, path: "/teacher/salary", description: "Salary" },
+    { key: "l", ctrl: true, shift: true, path: "/teacher/leaves", description: "Leaves" },
+    { key: "t", ctrl: true, shift: true, path: "/teacher/timetable", description: "Timetable" },
+    { key: "a", ctrl: true, shift: true, path: "/teacher-attendance", description: "Attendance" },
+    { key: "e", ctrl: true, shift: true, path: "/exams", description: "Exams" },
+    { key: "r", ctrl: true, shift: true, path: "/results", description: "Results" },
+    { key: "c", ctrl: true, shift: true, path: "/communication-hub", description: "Communication" },
+    { key: "o", ctrl: true, shift: true, path: "/online-classes", description: "Online Classes" },
+    { key: "p", ctrl: true, shift: true, path: "/teacher/profile", description: "Profile" },
+    { key: "?", ctrl: true, shift: true, description: "Show Help", handler: () => setShowHelp(true) },
+  ];
+
+  const studentShortcuts = [
+    { key: "h", ctrl: true, shift: true, path: "/student", description: "Dashboard" },
+    { key: "f", ctrl: true, shift: true, path: "/student/fees", description: "Fees" },
+    { key: "?", ctrl: true, shift: true, description: "Show Help", handler: () => setShowHelp(true) },
+  ];
+
+  const shortcuts = isAdmin ? adminShortcuts : isTeacher ? teacherShortcuts : studentShortcuts;
+  useKeyboardShortcuts(shortcuts);
 
   // ── Breadcrumb generation ──
   const pathSnippets = location.pathname.split("/").filter((i) => i);
@@ -416,6 +446,36 @@ export default function AdminLayout() {
           <Outlet />
         </Content>
       </Layout>
+
+      {/* ── Help Modal (Keyboard Shortcuts) ── */}
+      <Modal
+        title="Keyboard Shortcuts"
+        open={showHelp}
+        onCancel={() => setShowHelp(false)}
+        footer={null}
+        width={400}
+      >
+        <ul style={{ paddingLeft: 20, margin: 0 }}>
+          {shortcuts.map((s, idx) => (
+            <li key={idx} style={{ marginBottom: 8, fontSize: 14 }}>
+              <kbd style={{
+                background: "#f0f0f0",
+                border: "1px solid #d9d9d9",
+                borderRadius: 4,
+                padding: "2px 6px",
+                fontFamily: "monospace",
+                marginRight: 8,
+              }}>
+                Ctrl + Shift + {s.key === "/" ? "/" : s.key.toUpperCase()}
+              </kbd>
+              {s.description}
+            </li>
+          ))}
+        </ul>
+        <p style={{ marginTop: 16, color: "#888", fontSize: 12 }}>
+          Press <kbd>Ctrl + Shift + ?</kbd> to open this dialog.
+        </p>
+      </Modal>
     </Layout>
   );
 }

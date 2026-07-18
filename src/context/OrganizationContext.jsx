@@ -26,15 +26,19 @@ export function OrganizationProvider({ children }) {
       setSelectedFinancialYear(null);
       setMediums([]);
 
+      // Even when logged out, we still need to load the organisation
+      // for the login page (logo, branding, etc.). Because the entire
+      // app is built for organisation ID 3, we simply load that directly.
       const hostname = window.location.hostname;
       if (hostname !== "app.shreevidhyaerp.online" && hostname !== "localhost") {
         (async () => {
           try {
             const { data: orgData } = await supabase
               .from("organization")
-              .select("*, organization_domains!inner(domain)")
-              .eq("organization_domains.domain", hostname)
+              .select("*")
+              .eq("id", 3)          // hardcoded – the only organisation used
               .single();
+
             if (orgData) {
               setOrg(orgData);
               const { data: branchList } = await supabase
@@ -45,7 +49,7 @@ export function OrganizationProvider({ children }) {
               if (branchList?.length) setBranch(branchList[0]);
             }
           } catch {
-            // ignore
+            // ignore – organisation may not be accessible yet
           }
         })();
       }
@@ -71,13 +75,13 @@ export function OrganizationProvider({ children }) {
         return;
       }
 
-      // Enforce organization ID = 3 (optional – keep if needed)
+      // The entire application is built for organisation ID 3 – enforce it
       if (profile.organization_id !== 3) {
-        toast.error("Access denied: Only organization ID 3 is allowed.");
+        toast.error("Access denied: this app only supports organisation ID 3.");
         return;
       }
 
-      // ─── ✅ FIX: case‑insensitive admin check ───
+      // case‑insensitive admin check
       const adminRoles = ["admin", "super_admin", "organization_admin", "org_admin", "Admin"];
       const isAdmin = adminRoles.includes(profile.role?.toLowerCase());
 
@@ -112,10 +116,9 @@ export function OrganizationProvider({ children }) {
       }));
       setMediums(mediumList);
 
-      // ─── Branch access ────────────────────────────────────
+      // Branch access
       let accessibleBranches = branchList || [];
       if (!isAdmin) {
-        // Non‑admin: only their assigned branch
         accessibleBranches = accessibleBranches.filter(
           (b) => b.id === profile.branch_id
         );
@@ -123,16 +126,9 @@ export function OrganizationProvider({ children }) {
           toast.error("No branch assigned to this user.");
         }
       }
-      // Admin sees all branches – no filtering.
 
       setBranches(accessibleBranches);
-
-      // Default to the first accessible branch
-      if (accessibleBranches.length) {
-        setBranch(accessibleBranches[0]);
-      } else {
-        setBranch(null);
-      }
+      setBranch(accessibleBranches.length ? accessibleBranches[0] : null);
 
       // Financial year
       if (fys && fys.length > 0) {

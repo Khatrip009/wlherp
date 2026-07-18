@@ -15,7 +15,7 @@ import {
   Download,
   Eye,
 } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import BackButton from "../components/BackButton";
 
 import { supabase } from "../api/supabase";

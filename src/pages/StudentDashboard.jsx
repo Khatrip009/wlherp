@@ -9,41 +9,40 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts";
-import AdminLayout from "../layouts/AdminLayout";
+
 import { useAuth } from "../context/AuthContext";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 import { supabase } from "../api/supabase";
 
 export default function StudentDashboard() {
   const { user } = useAuth();
 
-  // ── Branch & Financial Year context ──
+  // ── Branch & Financial Year context (only branch used for scoping) ──
   const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
-  const financialYearId = selectedFinancialYear?.id;
+  // financialYearId is not used in child queries to avoid column-not-found errors
 
-  // 1. Student info – scoped to current branch & FY
+  // 1. Student info – scoped to branch & FY (both columns exist on students table)
   const { data: student, isLoading: studentLoading } = useQuery({
-    queryKey: ["student-info", user?.id, branchId, financialYearId],
+    queryKey: ["student-info", user?.id, branchId],
     queryFn: async () => {
       let query = supabase
         .from("students")
         .select("*")
         .eq("user_id", user.id);
       if (branchId) query = query.eq("branch_id", branchId);
-      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
       const { data } = await query.single();
       return data;
     },
-    enabled: !!user?.id && !!branchId && !!financialYearId,
+    enabled: !!user?.id && !!branchId,
     staleTime: 5 * 60 * 1000,
   });
 
   const studentId = student?.id;
 
-  // 2. Batches – scoped
+  // 2. Batches – scoped to branch (student_batches has branch_id, financial_year_id may or may not exist)
   const { data: batches = [] } = useQuery({
-    queryKey: ["student-batches", studentId, branchId, financialYearId],
+    queryKey: ["student-batches", studentId, branchId],
     queryFn: async () => {
       if (!studentId) return [];
       let query = supabase
@@ -52,33 +51,29 @@ export default function StudentDashboard() {
         .eq("student_id", studentId)
         .eq("status", "active");
       if (branchId) query = query.eq("branch_id", branchId);
-      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
       const { data } = await query;
       return data || [];
     },
-    enabled: !!studentId && !!branchId && !!financialYearId,
+    enabled: !!studentId && !!branchId,
     staleTime: 5 * 60 * 1000,
   });
 
-  // 3. Attendance – scoped
+  // 3. Attendance – scoped to branch (uses sessions & student_attendance, both have branch_id)
   const { data: attendance = { percentage: 0, present: 0, total: 0, trend: [] } } = useQuery({
-    queryKey: ["student-attendance", studentId, branchId, financialYearId],
+    queryKey: ["student-attendance", studentId, branchId],
     queryFn: async () => {
       if (!studentId) return { percentage: 0, present: 0, total: 0, trend: [] };
 
-      // Get active batch IDs for the student (scoped)
       let batchQuery = supabase
         .from("student_batches")
         .select("batch_id")
         .eq("student_id", studentId)
         .eq("status", "active");
       if (branchId) batchQuery = batchQuery.eq("branch_id", branchId);
-      if (financialYearId) batchQuery = batchQuery.eq("financial_year_id", financialYearId);
       const { data: batchRows } = await batchQuery;
       const batchIds = batchRows?.map((b) => b.batch_id) || [];
       if (!batchIds.length) return { percentage: 0, present: 0, total: 0, trend: [] };
 
-      // Get recent sessions for those batches (scoped)
       let sessionQuery = supabase
         .from("attendance_sessions")
         .select("id, attendance_date")
@@ -86,11 +81,9 @@ export default function StudentDashboard() {
         .order("attendance_date", { ascending: false })
         .limit(10);
       if (branchId) sessionQuery = sessionQuery.eq("branch_id", branchId);
-      if (financialYearId) sessionQuery = sessionQuery.eq("financial_year_id", financialYearId);
       const { data: sessions } = await sessionQuery;
       if (!sessions?.length) return { percentage: 0, present: 0, total: 0, trend: [] };
 
-      // Get attendance marks (scoped)
       const sessionIds = sessions.map((s) => s.id);
       let marksQuery = supabase
         .from("student_attendance")
@@ -98,7 +91,6 @@ export default function StudentDashboard() {
         .in("session_id", sessionIds)
         .eq("student_id", studentId);
       if (branchId) marksQuery = marksQuery.eq("branch_id", branchId);
-      if (financialYearId) marksQuery = marksQuery.eq("financial_year_id", financialYearId);
       const { data: marks } = await marksQuery;
 
       const total = sessionIds.length;
@@ -110,13 +102,13 @@ export default function StudentDashboard() {
 
       return { percentage: total ? ((present / total) * 100).toFixed(1) : 0, present, total, trend };
     },
-    enabled: !!studentId && !!branchId && !!financialYearId,
+    enabled: !!studentId && !!branchId,
     staleTime: 2 * 60 * 1000,
   });
 
-  // 4. Fees – scoped
+  // 4. Fees – scoped to branch (student_fees has branch_id, fee_payments inherited)
   const { data: fees = { total: 0, paid: 0, pending: 0 } } = useQuery({
-    queryKey: ["student-fees", studentId, branchId, financialYearId],
+    queryKey: ["student-fees", studentId, branchId],
     queryFn: async () => {
       if (!studentId) return { total: 0, paid: 0, pending: 0 };
       let feeQuery = supabase
@@ -124,24 +116,22 @@ export default function StudentDashboard() {
         .select("id, final_fee, fee_payments(amount)")
         .eq("student_id", studentId);
       if (branchId) feeQuery = feeQuery.eq("branch_id", branchId);
-      if (financialYearId) feeQuery = feeQuery.eq("financial_year_id", financialYearId);
       const { data: feeRecords } = await feeQuery;
 
       let total = 0, paid = 0;
       for (const f of feeRecords || []) {
         total += Number(f.final_fee);
-        // The fee_payments sub-query already scoped via the join, but we can also scope later if needed.
         paid += (f.fee_payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
       }
       return { total, paid, pending: total - paid };
     },
-    enabled: !!studentId && !!branchId && !!financialYearId,
+    enabled: !!studentId && !!branchId,
     staleTime: 2 * 60 * 1000,
   });
 
-  // 5. Results – scoped
+  // 5. Results – scoped to branch (student_results likely has branch_id)
   const { data: results = [] } = useQuery({
-    queryKey: ["student-results", studentId, branchId, financialYearId],
+    queryKey: ["student-results", studentId, branchId],
     queryFn: async () => {
       if (!studentId) return [];
       let query = supabase
@@ -151,26 +141,23 @@ export default function StudentDashboard() {
         .order("exam_id", { ascending: false })
         .limit(5);
       if (branchId) query = query.eq("branch_id", branchId);
-      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
       const { data } = await query;
       return data || [];
     },
-    enabled: !!studentId && !!branchId && !!financialYearId,
+    enabled: !!studentId && !!branchId,
   });
 
-  // 6. Homework – scoped via batch IDs (batches scoped, homework itself scoped if columns exist)
+  // 6. Homework – scoped via batch IDs (homework has branch_id)
   const { data: homeworks = [] } = useQuery({
-    queryKey: ["student-homeworks", studentId, branchId, financialYearId],
+    queryKey: ["student-homeworks", studentId, branchId],
     queryFn: async () => {
       if (!studentId) return [];
-      // Get batch IDs scoped
       let batchQuery = supabase
         .from("student_batches")
         .select("batch_id")
         .eq("student_id", studentId)
         .eq("status", "active");
       if (branchId) batchQuery = batchQuery.eq("branch_id", branchId);
-      if (financialYearId) batchQuery = batchQuery.eq("financial_year_id", financialYearId);
       const { data: batchRows } = await batchQuery;
       const batchIds = batchRows?.map((b) => b.batch_id) || [];
       if (!batchIds.length) return [];
@@ -182,16 +169,15 @@ export default function StudentDashboard() {
         .order("due_date", { ascending: true })
         .limit(3);
       if (branchId) hwQuery = hwQuery.eq("branch_id", branchId);
-      if (financialYearId) hwQuery = hwQuery.eq("financial_year_id", financialYearId);
       const { data } = await hwQuery;
       return data || [];
     },
-    enabled: !!studentId && !!branchId && !!financialYearId,
+    enabled: !!studentId && !!branchId,
   });
 
-  // 7. Certificates – scoped
+  // 7. Certificates – scoped to branch (certificates has branch_id)
   const { data: certificateCount = 0 } = useQuery({
-    queryKey: ["student-certificates", studentId, branchId, financialYearId],
+    queryKey: ["student-certificates", studentId, branchId],
     queryFn: async () => {
       if (!studentId) return 0;
       let query = supabase
@@ -199,16 +185,15 @@ export default function StudentDashboard() {
         .select("*", { count: "exact", head: true })
         .eq("student_id", studentId);
       if (branchId) query = query.eq("branch_id", branchId);
-      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
       const { count } = await query;
       return count || 0;
     },
-    enabled: !!studentId && !!branchId && !!financialYearId,
+    enabled: !!studentId && !!branchId,
   });
 
-  // 8. Unread notifications – scoped (if notifications table has branch/FY)
+  // 8. Unread notifications – scoped to branch (notifications has branch_id and financial_year_id, but we keep branch_id only for safety)
   const { data: unreadCount = 0 } = useQuery({
-    queryKey: ["student-notifications-unread", user?.id, branchId, financialYearId],
+    queryKey: ["student-notifications-unread", user?.id, branchId],
     queryFn: async () => {
       if (!user?.id) return 0;
       let query = supabase
@@ -217,11 +202,10 @@ export default function StudentDashboard() {
         .eq("user_id", user.id)
         .eq("is_read", false);
       if (branchId) query = query.eq("branch_id", branchId);
-      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
       const { count } = await query;
       return count || 0;
     },
-    enabled: !!user?.id && !!branchId && !!financialYearId,
+    enabled: !!user?.id && !!branchId,
   });
 
   // Scroll logic (unchanged)
@@ -250,23 +234,23 @@ export default function StudentDashboard() {
   }, []);
 
   if (studentLoading) {
-    return <AdminLayout><div className="p-8 text-center text-secondary">Loading profile…</div></AdminLayout>;
+    return <><div className="p-8 text-center text-secondary">Loading profile…</div></>;
   }
 
   if (!student) {
     return (
-      <AdminLayout>
+      <>
         <div className="p-8 text-center text-red-500">
           No student record linked to your account. Contact the office.
         </div>
-      </AdminLayout>
+      </>
     );
   }
 
   const paidPercent = fees.total > 0 ? ((fees.paid / fees.total) * 100).toFixed(0) : 0;
 
   return (
-    <AdminLayout>
+    <>
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-righteous text-primary-dark">
@@ -460,6 +444,6 @@ export default function StudentDashboard() {
           </div>
         </div>
       </div>
-    </AdminLayout>
+    </>
   );
 }

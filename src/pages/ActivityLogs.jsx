@@ -8,7 +8,7 @@ import { useOrg } from "../context/OrganizationContext";
 export default function ActivityLogs() {
   const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
-  const financialYearId = selectedFinancialYear?.id;
+  const financialYearId = selectedFinancialYear?.id;   // kept for query key only
 
   const [search, setSearch] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -18,26 +18,26 @@ export default function ActivityLogs() {
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ["activity-logs", search, startDate, endDate, actionFilter, branchId, financialYearId],
     queryFn: async () => {
-      let query = supabase
-        .from("activity_logs")
-        .select("id, user_id, organization_id, branch_id, action, entity_type, entity_id, details, ip_address, user_agent, created_at")
-        .eq("branch_id", branchId)
-        .eq("financial_year_id", financialYearId)
-        .order("created_at", { ascending: false })
-        .limit(500);
+  let query = supabase
+    .from("activity_logs")
+    .select("id, user_id, organization_id, branch_id, action, entity_type, entity_id, details, ip_address, user_agent, created_at")
+    .eq("organization_id", 3)                             // restrict to org 3
+    .or(`branch_id.eq.${branchId},branch_id.is.null`)    // include both branch‑specific and global logs
+    .order("created_at", { ascending: false })
+    .limit(500);
 
-      if (search) {
-        query = query.or(`action.ilike.%${search}%,entity_type.ilike.%${search}%`);
-      }
-      if (startDate) query = query.gte("created_at", startDate);
-      if (endDate) query = query.lte("created_at", endDate);
-      if (actionFilter) query = query.eq("action", actionFilter);
+  if (search) {
+    query = query.or(`action.ilike.%${search}%,entity_type.ilike.%${search}%`);
+  }
+  if (startDate) query = query.gte("created_at", startDate);
+  if (endDate) query = query.lte("created_at", endDate);
+  if (actionFilter) query = query.eq("action", actionFilter);
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!branchId && !!financialYearId,
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+},
+    enabled: !!branchId,   // financialYearId no longer required for the query itself
     staleTime: 30 * 1000,
   });
 

@@ -5,7 +5,7 @@ import {
   IndianRupee, FileText, ChevronDown, ChevronUp, Calendar,
   CheckCircle, AlertCircle, CreditCard, Send, List,
 } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import BackButton from "../components/BackButton";
 
 import { useStudentId } from "../hooks/useStudentId";
@@ -145,15 +145,15 @@ export default function StudentFeesPage() {
 
   if (idLoading || isLoading) {
     return (
-      <AdminLayout>
+      <>
       <BackButton to="/student" label="My Dashboard" />
         <div className="p-8 text-center text-secondary">Loading your fees…</div>
-      </AdminLayout>
+      </>
     );
   }
 
   return (
-    <AdminLayout>
+    <>
       <h1 className="text-3xl font-righteous text-primary-dark mb-6">My Fees</h1>
 
       {fees.length === 0 ? (
@@ -446,6 +446,6 @@ export default function StudentFeesPage() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

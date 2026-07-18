@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import {
   Layers, BookOpen, Clock, Calendar, User, Hash, AlertCircle,
 } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import BackButton from "../components/BackButton";
 
 import { useOrg } from "../context/OrganizationContext";   // NEW
@@ -87,40 +87,40 @@ export default function StudentBatchPage() {
 
   if (isLoading) {
     return (
-      <AdminLayout>
+      <>
       <BackButton to="/student" label="My Dashboard" />
         <div className="p-8 text-center text-secondary">Loading your batch…</div>
-      </AdminLayout>
+      </>
     );
   }
 
   if (error) {
     return (
-      <AdminLayout>
+      <>
         <div className="p-8 text-center text-red-600">
           <AlertCircle size={32} className="mx-auto mb-2" />
           <p>Failed to load batch data:</p>
           <p className="text-sm mt-1">{error.message}</p>
         </div>
-      </AdminLayout>
+      </>
     );
   }
 
   if (!data || !data.batch) {
     return (
-      <AdminLayout>
+      <>
         <div className="p-8 text-center text-secondary">
           <BookOpen size={32} className="mx-auto mb-2 text-secondary-light" />
           <p>You are not enrolled in any active batch.</p>
         </div>
-      </AdminLayout>
+      </>
     );
   }
 
   const { batch, subjects, teachers } = data;
 
   return (
-    <AdminLayout>
+    <>
       <div className="mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">My Batch</h1>
         <p className="text-sm text-secondary-dark font-montserrat mt-1">
@@ -201,6 +201,6 @@ export default function StudentBatchPage() {
           <p className="text-sm text-secondary">No teacher assignments yet.</p>
         )}
       </div>
-    </AdminLayout>
+    </>
   );
 }

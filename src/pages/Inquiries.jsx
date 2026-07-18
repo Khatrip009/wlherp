@@ -39,8 +39,6 @@ import {
 } from "../services/inquiryService";
 import { useOrg } from "../context/OrganizationContext";
 
-
-
 // ── Reject Modal ──
 function RejectModal({ inquiry, onConfirm, onClose }) {
   const [reason, setReason] = useState("");
@@ -598,8 +596,8 @@ export default function Inquiries() {
                   </td>
                 </tr>
               ) : (
-                inquiries.map((inquiry) => (
-                  <tr key={inquiry.id} className="border-b border-secondary-light hover:bg-primary-bg transition">
+                inquiries.map((inquiry, idx) => (
+                  <tr key={`${inquiry.id}-${idx}`} className="border-b border-secondary-light hover:bg-primary-bg transition">
                     <td className="p-3 text-sm font-medium">{inquiry.inquiry_no}</td>
                     <td className="text-sm">{inquiry.student_name}</td>
                     <td className="text-sm">{inquiry.parent_name || "-"}</td>
