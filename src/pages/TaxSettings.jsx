@@ -1,8 +1,8 @@
-// src/pages/TaxSettings.jsx
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
-
+import { useAuth } from "../context/AuthContext";
+import { useOrg } from "../context/OrganizationContext";
 import toast from "react-hot-toast";
 import {
   Plus,
@@ -14,9 +14,9 @@ import {
   Globe,
   Star,
 } from "lucide-react";
-import { useOrg } from "../context/OrganizationContext";   // NEW
 
 export default function TaxSettings() {
+  const { profile } = useAuth();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -28,12 +28,15 @@ export default function TaxSettings() {
     is_active: true,
   });
 
+  // ── Check if user is branch admin ──
+  const isBranchAdmin = profile?.role?.toLowerCase() === "branch_admin";
+
   // ── Branch & Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  // Fetch tax rates – scoped to branch & FY (include inactive as well)
+  // Fetch tax rates – scoped to branch & FY
   const { data: taxRates = [], isLoading } = useQuery({
     queryKey: ["tax-rates", branchId, financialYearId],
     queryFn: async () => {
@@ -53,11 +56,10 @@ export default function TaxSettings() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Create mutation – adds branch & FY to payload
+  // Create mutation – scoped
   const createMutation = useMutation({
     mutationFn: async (payload) => {
       if (payload.is_default) {
-        // Unset other defaults (scoped)
         let unsetQuery = supabase
           .from("tax_rates")
           .update({ is_default: false })
@@ -125,7 +127,7 @@ export default function TaxSettings() {
     onError: (err) => toast.error(err.message),
   });
 
-  // Delete mutation – scoped to prevent cross‑branch deletion
+  // Delete mutation – scoped
   const deleteMutation = useMutation({
     mutationFn: async (id) => {
       let query = supabase
@@ -155,12 +157,14 @@ export default function TaxSettings() {
   };
 
   const openCreate = () => {
+    if (isBranchAdmin) return;
     resetForm();
     setEditing(null);
     setShowForm(true);
   };
 
   const openEdit = (item) => {
+    if (isBranchAdmin) return;
     setForm({
       name: item.name,
       rate: item.rate,
@@ -174,6 +178,7 @@ export default function TaxSettings() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (isBranchAdmin) return;
     if (!form.name || !form.rate) {
       toast.error("Name and rate are required");
       return;
@@ -199,13 +204,24 @@ export default function TaxSettings() {
             Manage tax rates applicable to fees and income
           </p>
         </div>
-        <button
-          onClick={openCreate}
-          className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
-        >
-          <Plus size={18} /> Add Tax Rate
-        </button>
+        {!isBranchAdmin && (
+          <button
+            onClick={openCreate}
+            className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+          >
+            <Plus size={18} /> Add Tax Rate
+          </button>
+        )}
       </div>
+
+      {isBranchAdmin && (
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded">
+          <p className="text-yellow-700 text-sm font-medium">Read‑only mode</p>
+          <p className="text-yellow-600 text-sm">
+            As a branch admin, you can view but cannot edit tax settings.
+          </p>
+        </div>
+      )}
 
       {/* Tax Rates Table */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
@@ -266,25 +282,29 @@ export default function TaxSettings() {
                       </span>
                     </td>
                     <td className="p-3 text-sm">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => openEdit(rate)}
-                          className="text-blue-600 hover:underline"
-                          title="Edit"
-                        >
-                          <Edit3 size={15} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (!window.confirm("Delete this tax rate?")) return;
-                            deleteMutation.mutate(rate.id);
-                          }}
-                          className="text-red-600 hover:underline"
-                          title="Delete"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
+                      {!isBranchAdmin ? (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => openEdit(rate)}
+                            className="text-blue-600 hover:underline"
+                            title="Edit"
+                          >
+                            <Edit3 size={15} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (!window.confirm("Delete this tax rate?")) return;
+                              deleteMutation.mutate(rate.id);
+                            }}
+                            className="text-red-600 hover:underline"
+                            title="Delete"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">Read‑only</span>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -294,8 +314,8 @@ export default function TaxSettings() {
         </div>
       </div>
 
-      {/* Modal */}
-      {showForm && (
+      {/* Modal – hidden for branch admin */}
+      {!isBranchAdmin && showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
             <div className="sticky top-0 bg-white border-b border-secondary-light px-6 py-4 flex items-center justify-between rounded-t-xl">

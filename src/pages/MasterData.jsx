@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Layout, Menu, Typography, message } from "antd";
+import { Layout, Menu, Typography, message, Tabs } from "antd";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   BookOutlined,
@@ -10,6 +10,7 @@ import {
   TeamOutlined,
   ApartmentOutlined,
   PercentageOutlined,
+  AppstoreOutlined,
 } from "@ant-design/icons";
 
 // ── Import services ──
@@ -21,8 +22,6 @@ import * as teacherService from "../services/teacherService";
 import * as parentService from "../services/parentService";
 import * as mediumService from "../services/mediumService";
 import * as inventoryService from "../services/inventoryService";
-
-
 
 // ── Import form components ──
 import CourseForm from "../components/CourseForm";
@@ -40,9 +39,7 @@ import MasterTable from "../components/MasterTable";
 import MasterFormModal from "../components/MasterFormModal";
 import { useOrg } from "../context/OrganizationContext";
 
-import { AppstoreOutlined } from "@ant-design/icons";
-
-const { Sider, Content } = Layout;
+const { Content } = Layout;
 const { Title } = Typography;
 
 // ── Adapter for FeeStructureForm ──
@@ -206,7 +203,6 @@ const tabs = [
     updateService: feeService.updateTaxRate,
     deleteService: feeService.deleteTaxRate,
   },
-
   {
     key: "inventoryItems",
     label: "Inventory Items",
@@ -320,32 +316,58 @@ export default function MasterData() {
   }
 
   return (
-    <Layout style={{ minHeight: "100vh", background: "#fff" }}>
-      <Sider width={220} theme="light" style={{ borderRight: "1px solid #f0f0f0" }}>
-        <div style={{ padding: "16px 0" }}>
-          <Title level={5} style={{ paddingLeft: 24, marginBottom: 8 }}>
-            Master Data
-          </Title>
+    <div className="flex flex-col lg:flex-row gap-4 h-full">
+      {/* ── Desktop sidebar ── */}
+      <div className="hidden lg:block lg:w-[220px] lg:flex-shrink-0">
+        <div className="sticky top-0 bg-white border-r border-gray-200 h-full">
+          <div style={{ padding: "16px 0" }}>
+            <Title level={5} style={{ paddingLeft: 24, marginBottom: 8 }}>
+              Master Data
+            </Title>
+          </div>
+          <Menu
+            mode="inline"
+            selectedKeys={[activeTab]}
+            onClick={({ key }) => setActiveTab(key)}
+            items={tabs.map((t) => ({
+              key: t.key,
+              icon: t.icon,
+              label: t.label,
+            }))}
+          />
         </div>
-        <Menu
-          mode="inline"
-          selectedKeys={[activeTab]}
-          onClick={({ key }) => setActiveTab(key)}
+      </div>
+
+      {/* ── Mobile tabs ── */}
+      <div className="lg:hidden">
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
           items={tabs.map((t) => ({
             key: t.key,
-            icon: t.icon,
-            label: t.label,
+            label: (
+              <span className="flex items-center gap-1 text-sm">
+                {t.icon}
+                {t.label}
+              </span>
+            ),
           }))}
+          tabBarStyle={{ marginBottom: 12 }}
+          size="small"
         />
-      </Sider>
+      </div>
 
-      <Content style={{ padding: 24, background: "#fff" }}>
-        <div style={{ marginBottom: 16 }}>
-          <Title level={4}>{currentTab?.label}</Title>
+      {/* ── Content ── */}
+      <div className="flex-1 bg-white p-4 sm:p-6 rounded-xl shadow-sm min-h-[400px]">
+        <div className="mb-4">
+          <Title level={4} className="text-lg sm:text-xl">
+            {currentTab?.label}
+          </Title>
         </div>
         {renderContent()}
-      </Content>
+      </div>
 
+      {/* ── Modal ── */}
       <MasterFormModal
         open={modalOpen}
         onClose={() => {
@@ -357,6 +379,6 @@ export default function MasterData() {
         initialData={editingItem || {}}
         onSubmit={submitHandler}
       />
-    </Layout>
+    </div>
   );
 }

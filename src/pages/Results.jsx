@@ -56,7 +56,7 @@ export default function Results() {
 
   return (
     < >
-      <BackButton to="/academics-hub" label="Academics Hub" />
+      
       <div className="mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">Results</h1>
         <p className="text-sm text-secondary-dark font-montserrat mt-1">

@@ -1,25 +1,25 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { Plus, Calendar, FileText, X } from "lucide-react";
+import { Plus, Calendar, FileText, X, Download } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../api/supabase";
 import BackButton from "../components/BackButton";
 import { useOrg } from "../context/OrganizationContext";
+import { generateLeaveApplicationPdf } from "../utils/leaveApplicationPdf";
 
 export default function MyLeaves() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ start_date: "", end_date: "", reason: "" });
-
-  // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();
+  const { org, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ start_date: "", end_date: "", reason: "" });
+  const [downloading, setDownloading] = useState(null);
 
-  // Teacher ID for the current user – scoped to branch & FY
+  // ── Teacher ID ──────────────────────────────────────────────
   const { data: teacherId } = useQuery({
     queryKey: ["teacher-id", user?.id, branchId, financialYearId],
     queryFn: async () => {
@@ -38,37 +38,40 @@ export default function MyLeaves() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // My leaves – scoped to branch & FY
+  // ── My leaves with teacher details ──────────────────────
   const { data: leaves = [], isLoading } = useQuery({
     queryKey: ["my-leaves", teacherId, branchId, financialYearId],
     queryFn: async () => {
       if (!teacherId) return [];
 
-      // Try teacher_leaves first, then leaves, both scoped
-      let query1 = supabase
-        .from("teacher_leaves")
-        .select("*")
-        .eq("teacher_id", teacherId)
-        .order("created_at", { ascending: false });
-      if (branchId) query1 = query1.eq("branch_id", branchId);
-      if (financialYearId) query1 = query1.eq("financial_year_id", financialYearId);
-      const { data: d1, error: e1 } = await query1;
-      if (!e1) return d1 || [];
-
-      let query2 = supabase
+      let query = supabase
         .from("leaves")
-        .select("*")
+        .select(`
+          *,
+          teachers!inner (
+            id,
+            first_name,
+            last_name,
+            employee_code,
+            mobile,
+            email
+          )
+        `)
         .eq("teacher_id", teacherId)
         .order("created_at", { ascending: false });
-      if (branchId) query2 = query2.eq("branch_id", branchId);
-      if (financialYearId) query2 = query2.eq("financial_year_id", financialYearId);
-      const { data: d2 } = await query2;
-      return d2 || [];
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
     },
     enabled: !!teacherId && !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
+  // ── Create leave mutation ────────────────────────────────
   const createMutation = useMutation({
     mutationFn: async (payload) => {
       const enriched = {
@@ -78,15 +81,10 @@ export default function MyLeaves() {
         branch_id: branchId,
         financial_year_id: financialYearId,
       };
-      // Try teacher_leaves first, fall back to leaves
-      const { error: e1 } = await supabase
-        .from("teacher_leaves")
-        .insert(enriched);
-      if (!e1) return;
-      const { error: e2 } = await supabase
+      const { error } = await supabase
         .from("leaves")
         .insert(enriched);
-      if (e2) throw e2;
+      if (error) throw error;
     },
     onSuccess: () => {
       toast.success("Leave request submitted");
@@ -97,14 +95,36 @@ export default function MyLeaves() {
     onError: () => toast.error("Failed to submit leave request"),
   });
 
+  // ── PDF download handler ──────────────────────────────────
+  const handleDownloadPDF = async (leave) => {
+    setDownloading(leave.id);
+    try {
+      const teacher = leave.teachers;
+      const doc = await generateLeaveApplicationPdf(
+        leave,
+        teacher,
+        org,
+        { autoPrint: false }
+      );
+      doc.save(`Leave_Application_${leave.id}.pdf`);
+      toast.success("PDF downloaded");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to generate PDF");
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  // ── Helpers ──────────────────────────────────────────────
+  const pending = leaves.filter((l) => l.status === "Pending").length;
+  const approved = leaves.filter((l) => l.status === "Approved").length;
+
   function handleSubmit(e) {
     e.preventDefault();
     if (!form.start_date || !form.end_date) return;
     createMutation.mutate(form);
   }
-
-  const pending = leaves.filter((l) => l.status === "Pending").length;
-  const approved = leaves.filter((l) => l.status === "Approved").length;
 
   return (
     <>
@@ -155,11 +175,21 @@ export default function MyLeaves() {
                   <Calendar size={16} className="text-primary" />
                   <span className="text-sm font-medium">{l.start_date} → {l.end_date}</span>
                 </div>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                  l.status === "Approved" ? "bg-green-100 text-green-700" :
-                  l.status === "Rejected" ? "bg-red-100 text-red-700" :
-                  "bg-yellow-100 text-yellow-700"
-                }`}>{l.status}</span>
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                    l.status === "Approved" ? "bg-green-100 text-green-700" :
+                    l.status === "Rejected" ? "bg-red-100 text-red-700" :
+                    "bg-yellow-100 text-yellow-700"
+                  }`}>{l.status}</span>
+                  <button
+                    onClick={() => handleDownloadPDF(l)}
+                    disabled={downloading === l.id}
+                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition disabled:opacity-50"
+                    title="Download PDF"
+                  >
+                    <Download size={16} />
+                  </button>
+                </div>
               </div>
               {l.reason && <p className="text-sm text-secondary mt-2">{l.reason}</p>}
               {l.admin_remarks && <p className="text-xs text-red-500 mt-1">Admin: {l.admin_remarks}</p>}
@@ -168,6 +198,7 @@ export default function MyLeaves() {
         </div>
       )}
 
+      {/* ── Leave Request Modal ── */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-md shadow-xl">

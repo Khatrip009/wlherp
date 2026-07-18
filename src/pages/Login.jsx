@@ -25,7 +25,7 @@ export default function Login() {
   if (user && orgAccessDenied) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-secondary-bg px-4">
-        <Card className="w-full max-w-md text-center shadow-xl">
+        <Card className="w-full max-w-md text-center shadow-xl" variant="borderless">
           <Title level={2} className="text-red-600">Access Denied</Title>
           <Text className="text-secondary block mb-4">
             You are not authorized to access this system.
@@ -84,8 +84,8 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-secondary-bg px-4">
-      <Card className="w-full max-w-md shadow-xl" bordered={false}>
-        <Space direction="vertical" size="large" className="w-full">
+      <Card className="w-full max-w-md shadow-xl" variant="borderless">
+        <Space orientation="vertical" size="large" className="w-full">
           <div className="flex justify-center">
             <img src={darkLogo} alt={orgName} className="h-20 w-auto" />
           </div>

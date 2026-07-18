@@ -1,4 +1,3 @@
-// src/services/homeworkService.js
 import { supabase } from "../api/supabase";
 
 // Paginated fetch with filters – now scoped to branch & FY
@@ -24,9 +23,9 @@ export async function getHomeworks({
     .order("assigned_date", { ascending: false })
     .range(from, to);
 
-  // Scope to current branch & FY
-  if (branchId) query = query.eq("homework.branch_id", branchId);
-  if (financialYearId) query = query.eq("homework.financial_year_id", financialYearId);
+  // Scope to current branch & FY – WITHOUT table prefix
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
   // Apply filters
   if (filters.batchId) query = query.eq("batch_id", filters.batchId);
@@ -92,8 +91,9 @@ export async function getAllHomeworksForExport({
     )
     .order("assigned_date", { ascending: false });
 
-  if (branchId) query = query.eq("homework.branch_id", branchId);
-  if (financialYearId) query = query.eq("homework.financial_year_id", financialYearId);
+  // Scope to current branch & FY – WITHOUT table prefix
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
   if (filters.batchId) query = query.eq("batch_id", filters.batchId);
   if (filters.subjectId) query = query.eq("subject_id", filters.subjectId);

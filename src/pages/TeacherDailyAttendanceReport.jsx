@@ -6,12 +6,14 @@ import { generateDailyTeacherAttendancePDF } from "../utils/teacherDailyAttendan
 import toast from "react-hot-toast";
 import { Calendar, Download } from "lucide-react";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // NEW
 
 export default function TeacherDailyAttendanceReport() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
 
   const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const { theme } = useTheme();                                // NEW
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -19,7 +21,7 @@ export default function TeacherDailyAttendanceReport() {
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
 
-  // Fetch teacher ID if user is a teacher – scoped
+  // Fetch teacher ID if user is a teacher – scoped (unchanged)
   const { data: ownTeacherId } = useQuery({
     queryKey: ["my-teacher-id", profile?.id, branchId, financialYearId],
     queryFn: async () => {
@@ -36,7 +38,7 @@ export default function TeacherDailyAttendanceReport() {
     enabled: !!profile?.id && !isAdmin && !!branchId && !!financialYearId,
   });
 
-  // Fetch teachers (admin sees all, teacher sees only self) – scoped
+  // Fetch teachers (admin sees all, teacher sees only self) – scoped (unchanged)
   const { data: teachers = [] } = useQuery({
     queryKey: ["active-teachers-list", isAdmin, ownTeacherId, branchId, financialYearId],
     queryFn: async () => {
@@ -57,7 +59,7 @@ export default function TeacherDailyAttendanceReport() {
     enabled: (isAdmin || !!ownTeacherId) && !!branchId && !!financialYearId,
   });
 
-  // Fetch attendance records for the selected date range – scoped
+  // Fetch attendance records for the selected date range – scoped (unchanged)
   const { data: attendance = [], isLoading } = useQuery({
     queryKey: ["teacher-attendance-range", startDate, endDate, isAdmin, ownTeacherId, branchId, financialYearId],
     queryFn: async () => {
@@ -79,7 +81,7 @@ export default function TeacherDailyAttendanceReport() {
     enabled: !!startDate && !!endDate && (isAdmin || !!ownTeacherId) && !!branchId && !!financialYearId,
   });
 
-  // Merge attendance with teacher details
+  // Merge attendance with teacher details (unchanged)
   const reportData = useMemo(() => {
     const teacherMap = {};
     teachers.forEach((t) => {
@@ -94,22 +96,27 @@ export default function TeacherDailyAttendanceReport() {
     }));
   }, [attendance, teachers]);
 
+  // ── PDF Export – context driven ──
   const handleExportPDF = async () => {
     if (reportData.length === 0) {
       toast.error("No data to export");
       return;
     }
-    const { data: org } = await supabase
-      .from("organization")
-      .select("*")
-      .eq("id", currentOrg?.id)
-      .single();
-
-    const doc = await generateDailyTeacherAttendancePDF(reportData, startDate, endDate, org || {});
-    doc.save(`Teacher_Daily_Attendance_${startDate}_to_${endDate}.pdf`);
-    toast.success("PDF downloaded");
+    try {
+      // Pass org, branch, theme directly – no extra Supabase call
+      await generateDailyTeacherAttendancePDF(reportData, startDate, endDate, {
+        org: currentOrg,
+        branch,
+        theme,
+      });
+      toast.success("PDF downloaded");
+    } catch (err) {
+      toast.error("Failed to generate PDF");
+      console.error(err);
+    }
   };
 
+  // ── Render (unchanged) ──
   return (
     <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">

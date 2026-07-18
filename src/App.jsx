@@ -1,4 +1,3 @@
-// src/App.jsx
 import { Routes, Route, useParams } from "react-router-dom";
 import ErrorBoundary from "./components/ErrorBoundary";
 import NotFound from "./pages/NotFound";
@@ -163,6 +162,21 @@ import Branches from "./pages/Branches";
 import MasterData from "./pages/MasterData";
 import FinanceHub from "./pages/FinanceHub";
 
+// ── Role‑based dashboard component ──
+import { useAuth } from "./context/AuthContext";
+
+function RoleBasedDashboard() {
+  const { profile } = useAuth();
+  const role = (profile?.role || "").toLowerCase();
+  if (role === "teacher") {
+    return <TeacherDashboard />;
+  }
+  if (role === "student") {
+    return <StudentDashboard />;
+  }
+  return <Dashboard />;
+}
+
 // ── Report Wrapper (unchanged logic) ──
 function ReportPageWrapper() {
   const { reportId } = useParams();
@@ -196,7 +210,8 @@ function App() {
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<Dashboard />} />
+                  {/* ── Root route now shows role‑specific dashboard ── */}
+                  <Route index element={<RoleBasedDashboard />} />
                   <Route path="/organization-settings" element={<OrganizationSettings />} />
 
                   {/* Student routes */}

@@ -214,7 +214,7 @@ export default function Exams() {
 
   return (
     <div className="space-y-6 px-4 sm:px-6 lg:px-0">
-      <BackButton to="/academics-hub" label="Academics Hub" />
+      
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>

@@ -1,7 +1,7 @@
 // src/pages/TeacherTimetable.jsx
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
-import AdminLayout from "../layouts/AdminLayout";
+
 import BackButton from "../components/BackButton";
 
 import { useAuth } from "../context/AuthContext";
@@ -115,15 +115,15 @@ export default function TeacherTimetable() {
 
   if (idLoading || idsLoading || batchesLoading) {
     return (
-      <AdminLayout>
+      <>
       <BackButton to="/teacher" label="My Dashboard" />
         <div className="p-8 text-center">Loading your timetable…</div>
-      </AdminLayout>
+      </>
     );
   }
 
   return (
-    <AdminLayout>
+    <>
       <div className="mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">My Timetable</h1>
         <p className="text-sm text-secondary-dark font-montserrat mt-1">
@@ -193,6 +193,6 @@ export default function TeacherTimetable() {
           })}
         </div>
       </div>
-    </AdminLayout>
+    </>
   );
 }

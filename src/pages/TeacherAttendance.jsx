@@ -4,7 +4,9 @@ import { supabase } from "../api/supabase";
 import toast from "react-hot-toast";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
-import { Calendar, CheckCircle, XCircle, Clock, X } from "lucide-react";
+import { useTheme } from "../context/ThemeContext";                       // NEW
+import { generateDailyTeacherAttendancePDF } from "../utils/teacherDailyAttendancePdf";  // NEW
+import { Calendar, CheckCircle, XCircle, Clock, X, Download } from "lucide-react";      // added Download
 
 export default function TeacherAttendance() {
   const qc = useQueryClient();
@@ -12,8 +14,9 @@ export default function TeacherAttendance() {
   const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
 
-  // ── Branch & Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();
+  // ── Contexts ──
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const { theme } = useTheme();                                        // NEW
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -159,6 +162,68 @@ export default function TeacherAttendance() {
     });
   };
 
+  // ── Monthly attendance PDF export ────────────────────────
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportMonthlyPDF = async () => {
+    setExporting(true);
+    try {
+      // Determine month range from the selected date
+      const chosenDate = new Date(date);
+      const y = chosenDate.getFullYear();
+      const m = chosenDate.getMonth(); // 0-indexed
+      const start = `${y}-${String(m + 1).padStart(2, "0")}-01`;
+      const end = new Date(y, m + 1, 0).toISOString().split("T")[0];
+
+      // Build a query to get attendance records for that month (scoped)
+      let query = supabase
+        .from("teacher_attendance")
+        .select("attendance_date, teacher_id, status, teachers(first_name, last_name, employee_code)")
+        .gte("attendance_date", start)
+        .lte("attendance_date", end)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
+        .order("attendance_date");
+
+      // If teacher, fetch only their own records
+      if (!isAdmin && ownTeacherId) {
+        query = query.eq("teacher_id", ownTeacherId);
+      }
+
+      const { data: monthlyData, error } = await query;
+      if (error) throw error;
+
+      if (!monthlyData || monthlyData.length === 0) {
+        toast.error("No attendance records for this month.");
+        return;
+      }
+
+      // Transform to the format expected by generateDailyTeacherAttendancePDF
+      const transformed = monthlyData.map((row) => ({
+        date: row.attendance_date,
+        teacher_name: row.teachers
+          ? `${row.teachers.first_name} ${row.teachers.last_name}`
+          : "Unknown",
+        employee_code: row.teachers?.employee_code || "—",
+        status: row.status,
+      }));
+
+      // Generate PDF using context values
+      await generateDailyTeacherAttendancePDF(transformed, start, end, {
+        org: currentOrg,
+        branch,
+        theme,
+      });
+
+      toast.success("Monthly attendance PDF downloaded");
+    } catch (err) {
+      toast.error("Failed to generate PDF");
+      console.error(err);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
@@ -175,10 +240,20 @@ export default function TeacherAttendance() {
               className="pl-9 pr-4 py-2 border rounded-lg text-sm focus:ring-1 focus:ring-primary"
             />
           </div>
+
+          {/* NEW: Monthly Export Button */}
+          <button
+            onClick={handleExportMonthlyPDF}
+            disabled={exporting}
+            className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 hover:bg-primary-light disabled:opacity-50"
+          >
+            <Download size={16} />
+            {exporting ? "Exporting…" : "Monthly Report"}
+          </button>
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Cards (unchanged) */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
         <div className="bg-white rounded-lg shadow-sm p-3 border">
           <p className="text-xs text-secondary-light">Total Teachers</p>
@@ -202,7 +277,7 @@ export default function TeacherAttendance() {
         </div>
       </div>
 
-      {/* Bulk Actions – only for admin */}
+      {/* Bulk Actions (unchanged) */}
       {isAdmin && (
         <div className="flex flex-wrap gap-2 mb-4">
           <button
@@ -234,7 +309,7 @@ export default function TeacherAttendance() {
         </div>
       )}
 
-      {/* Table */}
+      {/* Table (unchanged) */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -307,4 +382,4 @@ export default function TeacherAttendance() {
       </div>
     </>
   );
-}
+} 

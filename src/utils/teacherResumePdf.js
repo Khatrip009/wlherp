@@ -14,7 +14,18 @@ async function loadImageAsBase64(url) {
   });
 }
 
-export async function generateTeacherResumePdf(teacherId) {
+export async function generateTeacherResumePdf(teacherId, options = {}) {
+  const { org, branch, theme } = options;
+
+  // ── Use context values (with fallbacks) ──
+  const primaryColor = theme?.primary_color || "#0D47A1";
+  const fontBody = theme?.font_body || "helvetica";
+  const companyName = org?.company_name || "ShreeVidhya Academy";
+  const letterheadUrl = org?.letterhead_url || null;
+  const orgAddress = org?.address || "";
+  const orgPhone = org?.phone || "";
+  const orgEmail = org?.email || "";
+
   // 1. Teacher base record
   const { data: teacher, error: teacherError } = await supabase
     .from("teachers")
@@ -45,20 +56,7 @@ export async function generateTeacherResumePdf(teacherId) {
     .eq("teacher_id", teacherId);
   const subjects = subjectLinks?.map(l => l.subjects?.subject_name).filter(Boolean) || [];
 
-  // 5. Organisation (including letterhead)
-  const { data: org } = await supabase
-    .from("organization")
-    .select("company_name, letterhead_url, address, phone, email")
-    .eq("id", 1)
-    .single();
-
-  const academyName = org?.company_name || "ShreeVidhya Academy";
-  const letterheadUrl = org?.letterhead_url || null;
-  const orgAddress = org?.address || "";
-  const orgPhone = org?.phone || "";
-  const orgEmail = org?.email || "";
-
-  // Load letterhead as base64
+  // Load letterhead as base64 (from context)
   let letterheadBase64 = null;
   if (letterheadUrl) {
     try {
@@ -68,7 +66,7 @@ export async function generateTeacherResumePdf(teacherId) {
     }
   }
 
-  // 6. Batches (active assignments)
+  // 5. Batches (active assignments)
   const { data: batchAssignments } = await supabase
     .from("batch_teachers")
     .select(`
@@ -112,14 +110,14 @@ export async function generateTeacherResumePdf(teacherId) {
     doc.addImage(letterheadBase64, "PNG", 0, 0, pageWidth, pageHeight);
   }
 
-  // ── LEFT SIDEBAR (solid dark blue, hides letterhead in that area) ──────────
-  doc.setFillColor("#0D47A1");
+  // ── LEFT SIDEBAR (solid primary color, hides letterhead in that area) ────
+  doc.setFillColor(primaryColor);
   doc.rect(0, 0, leftColWidth, pageHeight, "F");
 
   let yLeft = 20;
 
-  // Teacher Name (still in sidebar, no logo)
-  doc.setFont("times", "bold");
+  // Teacher Name (in sidebar)
+  doc.setFont(fontBody, "bold");
   doc.setFontSize(14);
   doc.setTextColor("#FFFFFF");
   const fullName = `${teacher.first_name} ${teacher.last_name}`;
@@ -128,7 +126,7 @@ export async function generateTeacherResumePdf(teacherId) {
   yLeft += nameLines.length * 7 + 4;
 
   // Title
-  doc.setFont("helvetica", "normal");
+  doc.setFont(fontBody, "normal");
   doc.setFontSize(9);
   doc.setTextColor("#B3D4FF");
   doc.text("TEACHER", marginLeft + 2, yLeft);
@@ -142,7 +140,7 @@ export async function generateTeacherResumePdf(teacherId) {
 
   // Contact details
   const addLeftItem = (icon, text, yStart) => {
-    doc.setFont("helvetica", "normal");
+    doc.setFont(fontBody, "normal");
     doc.setFontSize(8);
     doc.setTextColor("#E3F2FD");
     const lines = doc.splitTextToSize(text, leftColWidth - 12);
@@ -156,12 +154,12 @@ export async function generateTeacherResumePdf(teacherId) {
   yLeft += 4;
 
   // Mediums section
-  doc.setFont("helvetica", "bold");
+  doc.setFont(fontBody, "bold");
   doc.setFontSize(9);
   doc.setTextColor("#FFFFFF");
   doc.text("MEDIUMS", marginLeft + 2, yLeft);
   yLeft += 5;
-  doc.setFont("helvetica", "normal");
+  doc.setFont(fontBody, "normal");
   doc.setFontSize(8);
   doc.setTextColor("#E3F2FD");
   if (mediums.length) {
@@ -176,12 +174,12 @@ export async function generateTeacherResumePdf(teacherId) {
   yLeft += 4;
 
   // Courses section
-  doc.setFont("helvetica", "bold");
+  doc.setFont(fontBody, "bold");
   doc.setFontSize(9);
   doc.setTextColor("#FFFFFF");
   doc.text("COURSES", marginLeft + 2, yLeft);
   yLeft += 5;
-  doc.setFont("helvetica", "normal");
+  doc.setFont(fontBody, "normal");
   doc.setFontSize(8);
   doc.setTextColor("#E3F2FD");
   if (courses.length) {
@@ -196,12 +194,12 @@ export async function generateTeacherResumePdf(teacherId) {
   yLeft += 4;
 
   // Subjects section
-  doc.setFont("helvetica", "bold");
+  doc.setFont(fontBody, "bold");
   doc.setFontSize(9);
   doc.setTextColor("#FFFFFF");
   doc.text("SUBJECTS", marginLeft + 2, yLeft);
   yLeft += 5;
-  doc.setFont("helvetica", "normal");
+  doc.setFont(fontBody, "normal");
   doc.setFontSize(8);
   doc.setTextColor("#E3F2FD");
   if (subjects.length) {
@@ -218,52 +216,52 @@ export async function generateTeacherResumePdf(teacherId) {
   let yMain = topMargin + 10;  // 95mm
 
   // Professional Summary
-  doc.setFont("times", "bold");
+  doc.setFont(fontBody, "bold");
   doc.setFontSize(16);
-  doc.setTextColor("#0D47A1");
+  doc.setTextColor(primaryColor);
   doc.text("PROFESSIONAL SUMMARY", mainLeft, yMain);
   yMain += 8;
 
-  doc.setDrawColor("#0D47A1");
+  doc.setDrawColor(primaryColor);
   doc.setLineWidth(0.5);
   doc.line(mainLeft, yMain, mainLeft + mainWidth - 2, yMain);
   yMain += 6;
 
-  const summaryText = `Dedicated educator with ${batchList.length ? "experience teaching " + batchList.map(b => b.name).join(", ") : "a passion for teaching"} at ${academyName}. ${teacher.qualification ? "Holds " + teacher.qualification + ". " : ""}Skilled in classroom management, student engagement, and curriculum delivery.`;
+  const summaryText = `Dedicated educator with ${batchList.length ? "experience teaching " + batchList.map(b => b.name).join(", ") : "a passion for teaching"} at ${companyName}. ${teacher.qualification ? "Holds " + teacher.qualification + ". " : ""}Skilled in classroom management, student engagement, and curriculum delivery.`;
   const summaryLines = doc.splitTextToSize(summaryText, mainWidth - 4);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(fontBody, "normal");
   doc.setFontSize(10);
   doc.setTextColor("#333");
   doc.text(summaryLines, mainLeft, yMain);
   yMain += summaryLines.length * 5 + 8;
 
   // Teaching Experience
-  doc.setFont("times", "bold");
+  doc.setFont(fontBody, "bold");
   doc.setFontSize(16);
-  doc.setTextColor("#0D47A1");
+  doc.setTextColor(primaryColor);
   doc.text("TEACHING EXPERIENCE", mainLeft, yMain);
   yMain += 8;
 
-  doc.setDrawColor("#0D47A1");
+  doc.setDrawColor(primaryColor);
   doc.setLineWidth(0.5);
   doc.line(mainLeft, yMain, mainLeft + mainWidth - 2, yMain);
   yMain += 6;
 
   if (batchList.length === 0) {
-    doc.setFont("helvetica", "normal");
+    doc.setFont(fontBody, "normal");
     doc.setFontSize(10);
     doc.setTextColor("#333");
     doc.text("No active batches assigned.", mainLeft, yMain);
     yMain += 8;
   } else {
     batchList.forEach(batch => {
-      doc.setFont("helvetica", "bold");
+      doc.setFont(fontBody, "bold");
       doc.setFontSize(11);
-      doc.setTextColor("#0D47A1");
+      doc.setTextColor(primaryColor);
       doc.text(`${batch.name}  (${batch.course})`, mainLeft, yMain);
       yMain += 6;
 
-      doc.setFont("helvetica", "normal");
+      doc.setFont(fontBody, "normal");
       doc.setFontSize(9);
       doc.setTextColor("#666");
       doc.text(`Schedule: ${batch.schedule}`, mainLeft + 6, yMain);
@@ -279,13 +277,13 @@ export async function generateTeacherResumePdf(teacherId) {
 
   // Additional Details
   yMain += 6;
-  doc.setFont("times", "bold");
+  doc.setFont(fontBody, "bold");
   doc.setFontSize(16);
-  doc.setTextColor("#0D47A1");
+  doc.setTextColor(primaryColor);
   doc.text("ADDITIONAL DETAILS", mainLeft, yMain);
   yMain += 8;
 
-  doc.setDrawColor("#0D47A1");
+  doc.setDrawColor(primaryColor);
   doc.setLineWidth(0.5);
   doc.line(mainLeft, yMain, mainLeft + mainWidth - 2, yMain);
   yMain += 6;
@@ -299,11 +297,11 @@ export async function generateTeacherResumePdf(teacherId) {
   ];
 
   details.forEach(([label, value]) => {
-    doc.setFont("helvetica", "bold");
+    doc.setFont(fontBody, "bold");
     doc.setFontSize(9);
     doc.setTextColor("#333");
     doc.text(`${label}:`, mainLeft, yMain);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(fontBody, "normal");
     doc.text(value, mainLeft + 38, yMain);
     yMain += 6;
   });
@@ -312,7 +310,7 @@ export async function generateTeacherResumePdf(teacherId) {
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(fontBody, "normal");
     doc.setFontSize(7);
     doc.setTextColor("#aaa");
     doc.text(`Page ${i} of ${totalPages}`, pageWidth - 10, pageHeight - 8, { align: "right" });

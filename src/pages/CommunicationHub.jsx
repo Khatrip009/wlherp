@@ -1,16 +1,9 @@
-import AdminLayout from "../layouts/AdminLayout";
 import HubCard from "../components/HubCard";
 import {
-  Bell, Video, BookOpen, MessageSquare,
+  Video, BookOpen,
 } from "lucide-react";
 
 const groups = [
-  {
-    label: "Notifications",
-    items: [
-      { to: "/notifications", icon: Bell, label: "Send Notifications", desc: "Broadcast messages to students and teachers" },
-    ],
-  },
   {
     label: "Online Classes",
     items: [
@@ -29,10 +22,10 @@ const groups = [
 
 export default function CommunicationHub() {
   return (
-    <AdminLayout>
+    <>
       <div className="mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">Communication Hub</h1>
-        <p className="text-sm text-secondary-dark mt-1">Notifications, online classes and learning resources</p>
+        <p className="text-sm text-secondary-dark mt-1">Online classes and learning resources</p>
       </div>
       <div className="space-y-8">
         {groups.map((g) => (
@@ -44,6 +37,6 @@ export default function CommunicationHub() {
           </div>
         ))}
       </div>
-    </AdminLayout>
+    </>
   );
 }

@@ -1,16 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
-import { IndianRupee, Calendar, CreditCard, FileText } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+import { IndianRupee, Download } from "lucide-react";
+
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../api/supabase";
 import BackButton from "../components/BackButton";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";                     // NEW
+import { generateSalarySlipPDF } from "../utils/salarySlipPdf";
 
 export default function MySalary() {
   const { user } = useAuth();
 
-  // ── Branch & Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  // ── Context: org, branch, financial year, theme ──
+  const { branch, selectedFinancialYear, org } = useOrg();
+  const { theme } = useTheme();                                       // NEW
+
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -30,6 +34,22 @@ export default function MySalary() {
       return data?.id || null;
     },
     enabled: !!user?.id && !!branchId && !!financialYearId,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // Teacher details (for the PDF)
+  const { data: teacherDetails } = useQuery({
+    queryKey: ["teacher-details", teacherId],
+    queryFn: async () => {
+      if (!teacherId) return null;
+      const { data } = await supabase
+        .from("teachers")
+        .select("first_name, last_name, employee_code")
+        .eq("id", teacherId)
+        .single();
+      return data;
+    },
+    enabled: !!teacherId,
     staleTime: 10 * 60 * 1000,
   });
 
@@ -60,10 +80,23 @@ export default function MySalary() {
   const totalNet = payments.reduce((s, p) => s + (Number(p.net_amount) || 0), 0);
   const totalTDS = payments.reduce((s, p) => s + (Number(p.tds_amount) || 0), 0);
 
-  if (isLoading) return <AdminLayout><div className="p-8 text-center">Loading...</div></AdminLayout>;
+  // ── Handler – now passes org, branch & theme ──
+  const handleDownloadSlip = (payment) => {
+    if (!teacherDetails) return;
+    generateSalarySlipPDF(
+      {
+        ...payment,
+        teacher_name: `${teacherDetails.first_name} ${teacherDetails.last_name}`,
+        employee_code: teacherDetails.employee_code,
+      },
+      { org, branch, theme }      // <-- pass all three contexts
+    );
+  };
+
+  if (isLoading) return <><div className="p-8 text-center">Loading...</div></>;
 
   return (
-    <AdminLayout>
+    <>
       <BackButton to="/teacher" label="Dashboard" />
       <div className="mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">My Salary</h1>
@@ -105,6 +138,7 @@ export default function MySalary() {
                   <th className="p-3 text-right text-sm font-montserrat text-secondary-dark">Net Paid</th>
                   <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Mode</th>
                   <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Remarks</th>
+                  <th className="p-3 text-center text-sm font-montserrat text-secondary-dark">Slip</th>
                 </tr>
               </thead>
               <tbody>
@@ -117,6 +151,15 @@ export default function MySalary() {
                     <td className="p-3 text-right text-sm font-bold text-green-600">₹{Number(p.net_amount || p.amount || 0).toLocaleString("en-IN")}</td>
                     <td className="p-3 text-sm">{p.payment_mode || "—"}</td>
                     <td className="p-3 text-sm text-secondary">{p.remarks || "—"}</td>
+                    <td className="p-3 text-center">
+                      <button
+                        onClick={() => handleDownloadSlip(p)}
+                        className="inline-flex items-center gap-1 text-primary hover:text-primary-light text-sm font-medium"
+                        title="Download Salary Slip"
+                      >
+                        <Download size={16} /> Slip
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -124,6 +167,6 @@ export default function MySalary() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

@@ -14,7 +14,18 @@ import {
   PhoneOutlined,
   FormOutlined,
   TeamOutlined,
-  BarChartOutlined,   // <-- added for Reports
+  BarChartOutlined,
+  AppstoreOutlined,
+  SlidersOutlined,
+  BankOutlined,
+  FileTextOutlined,
+  ShoppingCartOutlined,
+  WalletOutlined,
+  PieChartOutlined,
+  AccountBookOutlined,
+  AuditOutlined,
+  MessageOutlined,
+  VideoCameraOutlined,  
 } from "@ant-design/icons";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
@@ -34,9 +45,9 @@ const breadcrumbNameMap = {
   "/accounting/vouchers": "Vouchers",
   "/accounting/ledger": "Ledger",
   "/accounting/trial-balance": "Trial Balance",
-  "/reports": "Reports Hub",        // <-- added
+  "/reports": "Reports Hub",
+  "/communication-hub": "Communication Hub",
 };
-
 // ── Sidebar menu items ──
 function getMenuItems(role) {
   if (role === "student") {
@@ -45,25 +56,160 @@ function getMenuItems(role) {
       { key: "/student/fees", icon: <DollarOutlined />, label: <Link to="/student/fees">Fees</Link> },
     ];
   }
-  if (role === "teacher") {
+   if (role === "teacher") {
     return [
       { key: "/teacher", icon: <DashboardOutlined />, label: <Link to="/teacher">Dashboard</Link> },
       { key: "/teacher/salary", icon: <DollarOutlined />, label: <Link to="/teacher/salary">My Salary</Link> },
+      { key: "/teacher/leaves", icon: <CalendarOutlined />, label: <Link to="/teacher/leaves">My Leaves</Link> },
+      { key: "/teacher/timetable", icon: <CalendarOutlined />, label: <Link to="/teacher/timetable">My Timetable</Link> },
+      
+      // ─── NEW: Attendance, Exams, Results ───────────────────
+      { key: "/teacher-attendance", icon: <CalendarOutlined />, label: <Link to="/teacher-attendance">Attendance</Link> },
+      { key: "/exams", icon: <FormOutlined />, label: <Link to="/exams">Exams</Link> },
+      { key: "/communication-hub", icon: <MessageOutlined />, label: <Link to="/communication-hub">Communication Hub</Link> },
+      { key: "/online-classes", icon: <VideoCameraOutlined />, label: <Link to="/online-classes">Online Classes</Link> },
+      { key: "/learning-resources", icon: <BookOutlined />, label: <Link to="/learning-resources">Learning Resources</Link> },
+      { key: "/results", icon: <BarChartOutlined />, label: <Link to="/results">Results</Link> },
+
+   
+
+      // ─── Communication ────────────────────────────────────
+      
+      { key: "/teacher/profile", icon: <UserOutlined />, label: <Link to="/teacher/profile">My Profile</Link> },
     ];
   }
+  // ── Admin / Super Admin / Organization Admin full menu ──
   return [
-    { key: "/", icon: <DashboardOutlined />, label: <Link to="/">Dashboard</Link> },
-    { key: "/master-data", icon: <SettingOutlined />, label: <Link to="/master-data">Master Data</Link> },
-    { key: "/inquiries", icon: <PhoneOutlined />, label: <Link to="/inquiries">Inquiries</Link> },
-    { key: "/students", icon: <UserOutlined />, label: <Link to="/students">Students</Link> },
-    { key: "/student-management", icon: <UserOutlined />, label: <Link to="/student-management">Student Hub</Link> },
-    { key: "/academics-hub", icon: <BookOutlined />, label: <Link to="/academics-hub">Academics</Link> },
-    { key: "/hr-hub", icon: <TeamOutlined />, label: <Link to="/hr-hub">HR Hub</Link> },
-    { key: "/fees", icon: <DollarOutlined />, label: <Link to="/fees">Student Fees</Link> },
-    { key: "/accounting", icon: <DollarOutlined />, label: <Link to="/accounting">Accounting</Link> },
-    // ─── NEW: Reports link ────────────────
-    { key: "/reports", icon: <BarChartOutlined />, label: <Link to="/reports">Reports</Link> },
-    { key: "/settings-hub", icon: <SettingOutlined />, label: <Link to="/settings-hub">Settings</Link> },
+    {
+      key: "dashboard",
+      icon: <DashboardOutlined />,
+      label: <Link to="/">Dashboard</Link>,
+    },
+    {
+      key: "master-data",
+      icon: <SettingOutlined />,
+      label: "Master Data",
+      children: [
+        { key: "/courses", label: <Link to="/courses">Courses</Link> },
+        { key: "/batches", label: <Link to="/batches">Batches</Link> },
+        { key: "/subjects", label: <Link to="/subjects">Subjects</Link> },
+        { key: "/teachers", label: <Link to="/teachers">Teachers</Link> },
+        { key: "/parents", label: <Link to="/parents">Parents</Link> },
+        { key: "/mediums", label: <Link to="/mediums">Mediums</Link> },
+        { key: "/tax-settings", label: <Link to="/tax-settings">Tax Rates</Link> },
+        { key: "/inventory-items", label: <Link to="/inventory-items">Inventory Items</Link> },
+      ],
+    },
+    {
+      key: "inquiries",
+      icon: <PhoneOutlined />,
+      label: <Link to="/inquiries">Inquiries</Link>,
+    },
+    {
+      key: "students",
+      icon: <UserOutlined />,
+      label: "Students",
+      children: [
+        { key: "/students", label: <Link to="/students">All Students</Link> },
+        { key: "/student-management", label: <Link to="/student-management">Student Hub</Link> },
+        { key: "/fees", label: <Link to="/fees">Student Fees</Link> },
+        { key: "/student-batches", label: <Link to="/student-batches">Batch Assignments</Link> },
+        { key: "/student-documents", label: <Link to="/student-documents">Documents</Link> },
+      ],
+    },
+    {
+      key: "academics",
+      icon: <BookOutlined />,
+      label: "Academics",
+      children: [
+        { key: "/academics-hub", label: <Link to="/academics-hub">Academics Hub</Link> },
+        { key: "/exams", label: <Link to="/exams">Exams</Link> },
+        { key: "/results", label: <Link to="/results">Results</Link> },
+        { key: "/homework", label: <Link to="/homework">Homework</Link> },
+        { key: "/attendance", label: <Link to="/attendance">Attendance</Link> },
+        { key: "/timetable", label: <Link to="/timetable">Master Timetable</Link> },
+        { key: "/online-classes", label: <Link to="/online-classes">Online Classes</Link> },
+        { key: "/progress", label: <Link to="/progress">Progress Evaluation</Link> },
+      ],
+    },
+    // ─── NEW: Communication group ──────────────────────────
+    {
+      key: "communication",
+      icon: <MessageOutlined />,
+      label: "Communication",
+      children: [
+        { key: "/communication-hub", label: <Link to="/communication-hub">Communication Hub</Link> },
+        { key: "/notifications", label: <Link to="/notifications">Notifications</Link> },
+        { key: "/online-classes", label: <Link to="/online-classes">Online Classes</Link> },
+        { key: "/learning-resources", label: <Link to="/learning-resources">Learning Resources</Link> },
+      ],
+    },
+    {
+      key: "hr",
+      icon: <TeamOutlined />,
+      label: "HR & Staff",
+      children: [
+        { key: "/hr-hub", label: <Link to="/hr-hub">HR Hub</Link> },
+        { key: "/teachers", label: <Link to="/teachers">Employees</Link> },
+        { key: "/teacher-attendance", label: <Link to="/teacher-attendance">Staff Attendance</Link> },
+        { key: "/leave-management", label: <Link to="/leave-management">Leave Management</Link> },
+        { key: "/salary-setup", label: <Link to="/salary-setup">Salary Setup</Link> },
+        { key: "/generate-salaries", label: <Link to="/generate-salaries">Generate Salaries</Link> },
+        { key: "/salary-payments", label: <Link to="/salary-payments">Salary Payments</Link> },
+        { key: "/salary-report", label: <Link to="/salary-report">Salary Report</Link> },
+      ],
+    },
+    {
+      key: "accounting",
+      icon: <BankOutlined />,
+      label: "Accounting",
+      children: [
+        { key: "/accounting", label: <Link to="/accounting">Accounting Hub</Link> },
+        { key: "/invoices", label: <Link to="/invoices">Invoices</Link> },
+        { key: "/receipts", label: <Link to="/receipts">Receipts</Link> },
+        { key: "/vouchers", label: <Link to="/vouchers">Vouchers</Link> },
+        { key: "/ledger", label: <Link to="/ledger">Ledger</Link> },
+        { key: "/trial-balance", label: <Link to="/trial-balance">Trial Balance</Link> },
+        { key: "/profit-loss", label: <Link to="/profit-loss">Profit & Loss</Link> },
+        { key: "/balance-sheet", label: <Link to="/balance-sheet">Balance Sheet</Link> },
+        { key: "/cash-book", label: <Link to="/cash-book">Cash Book</Link> },
+        { key: "/day-book", label: <Link to="/day-book">Day Book</Link> },
+        { key: "/chart-of-accounts", label: <Link to="/chart-of-accounts">Chart of Accounts</Link> },
+        { key: "/gst-report", label: <Link to="/gst-report">GST Reports</Link> },
+        { key: "/gst-settings", label: <Link to="/gst-settings">GST Settings</Link> },
+        { key: "/budgets", label: <Link to="/budgets">Budgets</Link> },
+        { key: "/budget-vs-actual", label: <Link to="/budget-vs-actual">Budget vs Actual</Link> },
+        { key: "/fixed-assets", label: <Link to="/fixed-assets">Fixed Assets</Link> },
+        { key: "/bank-reconciliation", label: <Link to="/bank-reconciliation">Bank Reconciliation</Link> },
+        { key: "/aged-receivables", label: <Link to="/aged-receivables">Aged Receivables</Link> },
+        { key: "/bill-wise", label: <Link to="/bill-wise">Bill-wise Entries</Link> },
+        { key: "/purchase-register", label: <Link to="/purchase-register">Purchase Register</Link> },
+        { key: "/purchase-invoices", label: <Link to="/purchase-invoices">Purchase Invoices</Link> },
+        { key: "/purchase-orders", label: <Link to="/purchase-orders">Purchase Orders</Link> },
+        { key: "/vendors", label: <Link to="/vendors">Vendors</Link> },
+        { key: "/inventory-items", label: <Link to="/inventory-items">Inventory Items</Link> },
+        { key: "/add-stock", label: <Link to="/add-stock">Add Stock</Link> },
+        { key: "/stock-dashboard", label: <Link to="/stock-dashboard">Stock Dashboard</Link> },
+      ],
+    },
+    {
+      key: "reports",
+      icon: <BarChartOutlined />,
+      label: <Link to="/reports">Reports Hub</Link>,
+    },
+    {
+      key: "settings",
+      icon: <SettingOutlined />,
+      label: "Settings",
+      children: [
+        { key: "/settings-hub", label: <Link to="/settings-hub">Settings Hub</Link> },
+        { key: "/organization-settings", label: <Link to="/organization-settings">Organization</Link> },
+        { key: "/theme-settings", label: <Link to="/theme-settings">Theme</Link> },
+        { key: "/branches", label: <Link to="/branches">Branches</Link> },
+        { key: "/user-management", label: <Link to="/user-management">User Management</Link> },
+        { key: "/activity-logs", label: <Link to="/activity-logs">Activity Logs</Link> },
+      ],
+    },
   ];
 }
 
@@ -89,7 +235,8 @@ export default function AdminLayout() {
     }),
   ];
 
-  const selectedKey = "/" + (pathSnippets[0] || "");
+  // Determine selected key
+  const selectedKey = pathSnippets.length === 0 ? "/" : "/" + pathSnippets[0];
 
   // ── Branch / FY change handlers ──
   const handleBranchChange = (e) => {
@@ -108,7 +255,6 @@ export default function AdminLayout() {
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
-      {/* ── Sidebar ── */}
       <Sider
         collapsible
         collapsed={collapsed}
@@ -150,44 +296,68 @@ export default function AdminLayout() {
           theme="dark"
           mode="inline"
           selectedKeys={[selectedKey]}
+          defaultOpenKeys={["master-data", "students", "academics", "communication", "hr", "accounting", "settings"]}
           items={menuItems}
         />
       </Sider>
 
-      {/* ── Main Layout ── */}
       <Layout style={{ marginLeft: collapsed ? 0 : 200 }}>
-        {/* Header */}
         <Header
           style={{
-            padding: "0 24px",
+            padding: "0 12px sm:0 24px",
             background: token.colorBgContainer,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
             zIndex: 1,
+            flexWrap: "wrap",
+            gap: "8px",
+            minHeight: "56px",
+            height: "auto",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Button
               type="text"
               icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
               onClick={() => setCollapsed(!collapsed)}
               style={{ fontSize: 16, width: 40, height: 40 }}
+              className="lg:hidden"
             />
+            <div className="hidden sm:block">
+              <p className="text-xs sm:text-sm text-secondary-dark font-montserrat whitespace-nowrap">
+                {new Date().toLocaleDateString("en-IN", {
+                  weekday: "short",
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                })}
+              </p>
+            </div>
+          </div>
+
+          <div style={{ flex: "1 1 160px", minWidth: "120px", margin: "0 8px" }}>
             <GlobalSearch />
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            {/* ─── Branch selector ──────────────────────────── */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
+            }}
+          >
             {!isStudent && (
               <select
                 value={branch?.id || ""}
                 onChange={handleBranchChange}
-                className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                className="border border-gray-300 rounded px-1.5 py-1 text-xs sm:text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600 max-w-[100px] sm:max-w-[140px] truncate"
               >
                 {branches.length === 0 ? (
-                  <option value="" disabled>Loading branches...</option>
+                  <option value="" disabled>Loading...</option>
                 ) : (
                   branches.map((b) => (
                     <option key={b.id} value={b.id}>
@@ -198,15 +368,14 @@ export default function AdminLayout() {
               </select>
             )}
 
-            {/* ─── Financial Year selector ──────────────────── */}
             {!isStudent && (
               <select
                 value={selectedFinancialYear?.id || ""}
                 onChange={handleFinancialYearChange}
-                className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                className="border border-gray-300 rounded px-1.5 py-1 text-xs sm:text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600 max-w-[80px] sm:max-w-[120px] truncate"
               >
                 {financialYears.length === 0 ? (
-                  <option value="" disabled>Loading FY...</option>
+                  <option value="" disabled>Loading...</option>
                 ) : selectedFinancialYear ? (
                   financialYears.map((fy) => (
                     <option key={fy.id} value={fy.id}>
@@ -231,16 +400,14 @@ export default function AdminLayout() {
           </div>
         </Header>
 
-        {/* Breadcrumb */}
-        <div style={{ padding: "12px 24px 0", background: token.colorBgLayout }}>
+        <div style={{ padding: "8px 16px 0", background: token.colorBgLayout }}>
           <Breadcrumb items={breadcrumbItems} />
         </div>
 
-        {/* Content */}
         <Content
           style={{
-            margin: "16px 24px",
-            padding: 24,
+            margin: "12px 16px",
+            padding: 16,
             background: token.colorBgContainer,
             borderRadius: token.borderRadiusLG,
             minHeight: 280,

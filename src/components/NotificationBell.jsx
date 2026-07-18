@@ -1,180 +1,234 @@
-// src/components/NotificationBell.jsx
 import { useState, useRef, useEffect } from "react";
-import { Badge, Popover, List, Button, Typography, Space } from "antd";
-import {
-  BellOutlined,
-  CheckOutlined,
-  CloseOutlined,
-} from "@ant-design/icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+import { Bell, Check } from "lucide-react";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
-
-const { Text } = Typography;
+import { useOrg } from "../context/OrganizationContext";
+import toast from "react-hot-toast";
 
 export default function NotificationBell() {
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
+  const { branch, selectedFinancialYear } = useOrg();
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
-  // ── Unread count ──
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+
+  // ── Helper: build base query with scope and role‑based filtering ──
+  const getBaseQuery = (select = "*") => {
+    let query = supabase
+      .from("notifications")
+      .select(select);
+
+    // ─── Role‑based filter ─────────────────────────────────
+    const isTeacher = profile?.role === "teacher";
+
+    // A user sees notifications:
+    // 1. Personal: user_id = their ID
+    // 2. Global: user_id IS NULL
+    //    - For teachers: exclude 'Fee Payment Received' global notifications
+    //    - For others: allow all global notifications
+    if (isTeacher) {
+      // Teachers: see their own + global except fee payments
+      query = query.or(
+        `user_id.eq.${user.id},and(user_id.is.null,title.neq."Fee Payment Received")`
+      );
+    } else {
+      // Admins / students: see their own + all global
+      query = query.or(
+        `user_id.eq.${user.id},user_id.is.null`
+      );
+    }
+
+    // Branch scope: show branch-specific OR NULL (global)
+    if (branchId) {
+      query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+
+    // Financial year scope: show FY-specific OR NULL (global)
+    if (financialYearId) {
+      query = query.or(`financial_year_id.eq.${financialYearId},financial_year_id.is.null`);
+    }
+
+    return query;
+  };
+
+  // ── Fetch unread count ──
   const { data: unreadCount = 0 } = useQuery({
-    queryKey: ["notification-unread-count", profile?.id],
+    queryKey: ["notification-unread-count", user?.id, branchId, financialYearId, profile?.role],
     queryFn: async () => {
-      if (!profile?.id) return 0;
-      const { count, error } = await supabase
-        .from("notifications")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", profile.id)
+      if (!user?.id || !branchId || !financialYearId) return 0;
+      const query = getBaseQuery("*")
         .eq("is_read", false);
-      return error ? 0 : count || 0;
+
+      const { count, error } = await query;
+      if (error) {
+        console.error("Error fetching unread count:", error);
+        return 0;
+      }
+      return count || 0;
     },
+    enabled: !!user?.id && !!branchId && !!financialYearId,
     refetchInterval: 30_000,
-    enabled: !!profile?.id,
+    staleTime: 10_000,
   });
 
-  // ── Recent notifications (only fetched when popover is open) ──
+  // ── Fetch recent notifications (for dropdown) ──
   const { data: recentNotifications = [] } = useQuery({
-    queryKey: ["notifications-recent", profile?.id],
+    queryKey: ["notifications-recent", user?.id, branchId, financialYearId, profile?.role],
     queryFn: async () => {
-      if (!profile?.id) return [];
-      const { data, error } = await supabase
-        .from("notifications")
-        .select("*")
-        .eq("user_id", profile.id)
+      if (!user?.id || !branchId || !financialYearId) return [];
+      const query = getBaseQuery("*")
         .order("created_at", { ascending: false })
         .limit(5);
-      return error ? [] : data;
+
+      const { data, error } = await query;
+      if (error) {
+        console.error("Error fetching recent notifications:", error);
+        return [];
+      }
+      return data || [];
     },
-    enabled: open && !!profile?.id,
+    enabled: dropdownOpen && !!user?.id && !!branchId && !!financialYearId,
+    staleTime: 10_000,
   });
 
-  // ── Mark all as read ──
+  // ── Mark all read mutation ──
   const markAllReadMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
-        .from("notifications")
+      if (!user?.id || !branchId || !financialYearId) return;
+      const query = getBaseQuery("*")
         .update({ is_read: true })
-        .eq("user_id", profile.id)
         .eq("is_read", false);
+
+      const { error } = await query;
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notification-unread-count", profile?.id] });
-      queryClient.invalidateQueries({ queryKey: ["notifications-recent", profile?.id] });
+      toast.success("All notifications marked as read");
+      queryClient.invalidateQueries({ queryKey: ["notification-unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications-recent"] });
     },
+    onError: (err) => toast.error(err.message),
   });
 
-  // ── Mark single as read ──
+  // ── Mark single read mutation ──
   const markReadMutation = useMutation({
     mutationFn: async (id) => {
-      const { error } = await supabase
+      if (!user?.id || !branchId || !financialYearId) return;
+      const query = supabase
         .from("notifications")
         .update({ is_read: true })
-        .eq("id", id)
-        .eq("user_id", profile.id);
+        .eq("id", id);
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { error } = await query;
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notification-unread-count", profile?.id] });
-      queryClient.invalidateQueries({ queryKey: ["notifications-recent", profile?.id] });
+      queryClient.invalidateQueries({ queryKey: ["notification-unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications-recent"] });
     },
+    onError: (err) => toast.error(err.message),
   });
 
-  // ── Popover content ──
-  const notificationContent = (
-    <div style={{ width: 360, maxWidth: "calc(100vw - 48px)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <Text strong style={{ fontSize: 16 }}>Notifications</Text>
-        {unreadCount > 0 && (
-          <Button
-            type="link"
-            size="small"
-            onClick={() => markAllReadMutation.mutate()}
-            loading={markAllReadMutation.isLoading}
-          >
-            Mark all read
-          </Button>
-        )}
-      </div>
-      {recentNotifications.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "16px 0", color: "#999" }}>
-          No notifications
-        </div>
-      ) : (
-        <List
-          dataSource={recentNotifications}
-          renderItem={(item) => (
-            <List.Item
-              style={{
-                background: item.is_read ? "transparent" : "#e6f7ff",
-                padding: "8px 12px",
-                borderRadius: 4,
-                cursor: "pointer",
-              }}
-              onClick={() => {
-                if (!item.is_read) {
-                  markReadMutation.mutate(item.id);
-                }
-              }}
-            >
-              <List.Item.Meta
-                title={<Text strong={!item.is_read}>{item.title}</Text>}
-                description={
-                  <>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {item.message}
-                    </Text>
-                    <br />
-                    <Text type="secondary" style={{ fontSize: 11 }}>
-                      {new Date(item.created_at).toLocaleString()}
-                    </Text>
-                  </>
-                }
-              />
-              {!item.is_read && (
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<CheckOutlined />}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    markReadMutation.mutate(item.id);
-                  }}
-                />
-              )}
-            </List.Item>
-          )}
-        />
-      )}
-      <div style={{ textAlign: "center", marginTop: 12, borderTop: "1px solid #f0f0f0", paddingTop: 12 }}>
-        <Button
-          type="link"
-          onClick={() => {
-            setOpen(false);
-            navigate("/notifications");
-          }}
-        >
-          View all notifications
-        </Button>
-      </div>
-    </div>
-  );
+  // ── Close dropdown on outside click ──
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleToggle = () => setDropdownOpen((prev) => !prev);
 
   return (
-    <Popover
-      content={notificationContent}
-      title={null}
-      trigger="click"
-      open={open}
-      onOpenChange={setOpen}
-      placement="bottomRight"
-    >
-      <Badge count={unreadCount} size="small" offset={[-2, 2]}>
-        <BellOutlined style={{ fontSize: 20, cursor: "pointer" }} />
-      </Badge>
-    </Popover>
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={handleToggle}
+        className="relative p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+        aria-label="Notifications"
+      >
+        <Bell size={20} className="text-secondary-dark" />
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] h-5 w-5 rounded-full flex items-center justify-center font-medium">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {dropdownOpen && (
+        <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-50 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+            <h4 className="font-semibold text-sm text-gray-800 dark:text-gray-100">
+              Notifications
+            </h4>
+            <button
+              onClick={() => markAllReadMutation.mutate()}
+              disabled={unreadCount === 0}
+              className="text-xs text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Mark all read
+            </button>
+          </div>
+
+          <div className="max-h-64 overflow-y-auto">
+            {recentNotifications.length === 0 ? (
+              <p className="p-4 text-sm text-center text-gray-500 dark:text-gray-400">
+                No notifications
+              </p>
+            ) : (
+              recentNotifications.map((n) => (
+                <div
+                  key={n.id}
+                  className={`flex items-start gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition ${
+                    !n.is_read ? "bg-blue-50/50 dark:bg-blue-900/10" : ""
+                  }`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                      {n.title}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                      {n.message}
+                    </p>
+                    <span className="text-xs text-gray-400 dark:text-gray-500 mt-1 block">
+                      {new Date(n.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                  {!n.is_read && (
+                    <button
+                      onClick={() => markReadMutation.mutate(n.id)}
+                      className="mt-1 text-primary hover:text-primary-light flex-shrink-0"
+                      title="Mark as read"
+                    >
+                      <Check size={16} />
+                    </button>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+            <Link
+              to="/notifications"
+              onClick={() => setDropdownOpen(false)}
+              className="w-full text-center text-sm text-primary hover:underline font-medium block"
+            >
+              View all notifications
+            </Link>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

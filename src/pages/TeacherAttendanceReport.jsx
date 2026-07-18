@@ -5,6 +5,7 @@ import { generateTeacherAttendancePDF } from "../utils/teacherAttendancePdf";
 import toast from "react-hot-toast";
 import { Calendar, Download, FileText } from "lucide-react";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";          // NEW
 
 const STATUS_COLORS = {
   present: "bg-green-100 text-green-700",
@@ -19,6 +20,7 @@ export default function TeacherAttendanceReport() {
   const [month, setMonth] = useState(today.getMonth() + 1); // 1-12
 
   const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const { theme } = useTheme();                            // NEW
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -26,7 +28,7 @@ export default function TeacherAttendanceReport() {
   const daysInMonth = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, "0")}-${daysInMonth}`;
 
-  // Fetch all active teachers – scoped to branch & FY
+  // Fetch all active teachers – scoped to branch & FY (unchanged)
   const { data: teachers = [] } = useQuery({
     queryKey: ["active-teachers-list", branchId, financialYearId],
     queryFn: async () => {
@@ -35,10 +37,8 @@ export default function TeacherAttendanceReport() {
         .select("id, first_name, last_name, employee_code")
         .eq("status", "active")
         .order("first_name");
-
       if (branchId) query = query.eq("branch_id", branchId);
       if (financialYearId) query = query.eq("financial_year_id", financialYearId);
-
       const { data } = await query;
       return data || [];
     },
@@ -46,7 +46,7 @@ export default function TeacherAttendanceReport() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch attendance for the selected month – scoped to branch & FY
+  // Fetch attendance for the selected month – scoped (unchanged)
   const { data: attendance = [], isLoading } = useQuery({
     queryKey: ["teacher-attendance-month", startDate, endDate, branchId, financialYearId],
     queryFn: async () => {
@@ -55,17 +55,15 @@ export default function TeacherAttendanceReport() {
         .select("teacher_id, attendance_date, status")
         .gte("attendance_date", startDate)
         .lte("attendance_date", endDate);
-
       if (branchId) query = query.eq("branch_id", branchId);
       if (financialYearId) query = query.eq("financial_year_id", financialYearId);
-
       const { data } = await query;
       return data || [];
     },
     enabled: !!startDate && !!endDate && !!branchId && !!financialYearId,
   });
 
-  // Build report data: each teacher has an array of day statuses
+  // Build report data (unchanged)
   const reportData = useMemo(() => {
     if (!teachers.length) return [];
     return teachers.map((teacher) => {
@@ -73,10 +71,7 @@ export default function TeacherAttendanceReport() {
         const dayNum = i + 1;
         const date = `${year}-${String(month).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
         const record = attendance.find((a) => a.teacher_id === teacher.id && a.attendance_date === date);
-        return {
-          date,
-          status: record ? record.status : null, // null = unmarked
-        };
+        return { date, status: record ? record.status : null };
       });
       return {
         id: teacher.id,
@@ -87,6 +82,7 @@ export default function TeacherAttendanceReport() {
     });
   }, [teachers, attendance, year, month, daysInMonth]);
 
+  // ── PDF Export (fixed) ──
   const handleExportPDF = async () => {
     if (reportData.length === 0) {
       toast.error("No data to export");
@@ -94,19 +90,23 @@ export default function TeacherAttendanceReport() {
     }
     const monthLabel = new Date(year, month - 1).toLocaleString("default", { month: "long", year: "numeric" });
 
-    const { data: org } = await supabase
-      .from("organization")
-      .select("*")
-      .eq("id", currentOrg?.id)
-      .single();
-
-    const doc = await generateTeacherAttendancePDF(reportData, monthLabel, org || {});
-    doc.save(`Teacher_Attendance_${year}-${String(month).padStart(2, "0")}.pdf`);
-    toast.success("PDF downloaded");
+    try {
+      // Now passes context directly – no separate org fetch
+      await generateTeacherAttendancePDF(reportData, monthLabel, {
+        org: currentOrg,
+        branch,
+        theme,
+      });
+      toast.success("PDF downloaded");
+    } catch (err) {
+      toast.error("Failed to generate PDF");
+      console.error(err);
+    }
   };
 
   const monthLabel = new Date(year, month - 1).toLocaleString("default", { month: "long", year: "numeric" });
 
+  // ── Render (unchanged) ──
   return (
     <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">

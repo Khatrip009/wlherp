@@ -1,7 +1,6 @@
 // src/utils/dailyTeacherAttendancePdf.js
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { supabase } from "../api/supabase";
 
 // Helper: load an image from a URL and return base64
 async function loadImage(url) {
@@ -18,64 +17,125 @@ async function loadImage(url) {
   }
 }
 
-export async function generateDailyTeacherAttendancePDF(data, startDate, endDate, org = {}) {
-  // Fetch organisation (for letterhead) if not already provided
-  let letterheadUrl = org?.letterhead_url || null;
-  let academyName = org?.company_name || "ShreeVidhya Academy";
+export async function generateDailyTeacherAttendancePDF(
+  data,
+  startDate,
+  endDate,
+  options = {}               // { org, branch, theme }
+) {
+  const { org, branch, theme } = options;
 
-  if (!letterheadUrl) {
-    const { data: orgData } = await supabase
-      .from("organization")
-      .select("company_name, letterhead_url")
-      .eq("id", 1)
-      .single();
-    if (orgData) {
-      letterheadUrl = orgData.letterhead_url;
-      academyName = orgData.company_name || academyName;
-    }
-  }
+  // ── Organisation & styling ─────────────────────────
+  const companyName = org?.company_name || "ShreeVidhya Academy";
+  const orgAddress = org?.address || "";
+  const phone = org?.phone || "";
+  const email = org?.email || "";
+  const gstin = org?.gstin || "";
+  const logoUrl = org?.logo_dark_url || org?.logo_light_url || null;
 
-  // Load letterhead as base64
-  let letterheadBase64 = null;
-  if (letterheadUrl) {
-    try {
-      letterheadBase64 = await loadImage(letterheadUrl);
-    } catch (e) {
-      console.warn("Letterhead could not be loaded for daily attendance PDF", e);
-    }
-  }
+  const branchName = branch?.branch_name || "";
+  const branchAddress = branch?.address || "";
+
+  const primaryColor = theme?.primary_color || "#0D47A1";
+  const fontBody = theme?.font_body || "helvetica";
 
   // A4 Portrait
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();   // 210 mm
   const pageHeight = doc.internal.pageSize.getHeight(); // 297 mm
-  const margin = 16;
-  const topMargin = 85;   // consistent with other A4 reports
+  const margin = 14;
 
-  // Add full‑page letterhead background on every page
-  const addLetterhead = () => {
-    if (letterheadBase64) {
-      doc.addImage(letterheadBase64, "PNG", 0, 0, pageWidth, pageHeight);
+  // Load logo
+  let logoBase64 = null;
+  if (logoUrl) {
+    logoBase64 = await loadImage(logoUrl);
+  }
+
+  // ── HEADER ────────────────────────────────────────
+  let y = margin;
+  const logoWidth = 30;
+  const logoHeight = 12;
+  if (logoBase64) {
+    doc.addImage(logoBase64, "PNG", margin, y, logoWidth, logoHeight);
+  }
+
+  const textX = logoBase64 ? margin + logoWidth + 4 : margin;
+  const textY = y + 1;
+  doc.setFont(fontBody, "bold");
+  doc.setFontSize(14);
+  doc.setTextColor(primaryColor);
+  doc.text(companyName, textX, textY);
+
+  doc.setFont(fontBody, "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor("#555");
+  let detailY = textY + 4.5;
+
+  // Org address
+  if (orgAddress) {
+    const addrLines = doc.splitTextToSize(orgAddress, pageWidth - textX - margin - 10);
+    doc.text(addrLines, textX, detailY);
+    detailY += addrLines.length * 3.5 + 1;
+  }
+
+  // Branch info
+  if (branchName) {
+    doc.setFont(fontBody, "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(primaryColor);
+    doc.text(`Branch: ${branchName}`, textX, detailY);
+    detailY += 3.5;
+    if (branchAddress) {
+      doc.setFont(fontBody, "normal");
+      doc.setFontSize(7);
+      doc.setTextColor("#555");
+      const brAddrLines = doc.splitTextToSize(branchAddress, pageWidth - textX - margin - 10);
+      doc.text(brAddrLines, textX, detailY);
+      detailY += brAddrLines.length * 3.5 + 1;
     }
-  };
-  addLetterhead();   // first page
+  }
 
-  let y = topMargin;
+  // Contact / GSTIN line
+  if (phone || email || gstin) {
+    doc.setFont(fontBody, "normal");
+    doc.setFontSize(7);
+    let infoLine = "";
+    if (phone) infoLine += `Phone: ${phone}`;
+    if (email) infoLine += `  |  Email: ${email}`;
+    if (gstin) infoLine += `  |  GSTIN: ${gstin}`;
+    doc.text(infoLine, textX, detailY);
+    detailY += 3.5;
+  }
 
-  // ── Report Title ──
-  doc.setFont("times", "bold");
-  doc.setFontSize(22);
-  doc.setTextColor("#0D47A1");
+  const headerHeight = Math.max(logoHeight + 2, detailY - textY + 4);
+  y += headerHeight + 4;
+
+  // Divider line
+  doc.setDrawColor(primaryColor);
+  doc.setLineWidth(0.5);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 6;
+
+  // ── Title ──────────────────────────────────────────
+  doc.setFont(fontBody, "bold");
+  doc.setFontSize(16);
+  doc.setTextColor(primaryColor);
   doc.text("Teacher Daily Attendance Report", pageWidth / 2, y, { align: "center" });
   y += 8;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(12);
+  doc.setFont(fontBody, "normal");
+  doc.setFontSize(11);
   doc.setTextColor("#333");
   doc.text(`Period: ${startDate} to ${endDate}`, pageWidth / 2, y, { align: "center" });
   y += 12;
 
   if (!data.length) {
-    // Save empty file (or just return doc)
+    // Add footer before returning
+    const footerY = pageHeight - margin - 5;
+    doc.setFont(fontBody, "italic");
+    doc.setFontSize(6);
+    doc.setTextColor("#999");
+    doc.text(`Generated on ${new Date().toLocaleString()}`, margin, footerY);
+    doc.text(`© ${companyName}`, pageWidth - margin, footerY, { align: "right" });
     return doc;
   }
 
@@ -97,7 +157,12 @@ export async function generateDailyTeacherAttendancePDF(data, startDate, endDate
     body: rows,
     theme: "grid",
     styles: { fontSize: 10, cellPadding: 3, halign: "center" },
-    headStyles: { fillColor: "#0D47A1", textColor: "#FFFFFF", fontSize: 10, fontStyle: "bold" },
+    headStyles: {
+      fillColor: primaryColor,
+      textColor: "#FFFFFF",
+      fontSize: 10,
+      fontStyle: "bold",
+    },
     columnStyles: {
       0: { cellWidth: 30, halign: "left" },
       1: { cellWidth: 60, halign: "left" },
@@ -106,20 +171,28 @@ export async function generateDailyTeacherAttendancePDF(data, startDate, endDate
     },
     margin: { left: margin, right: margin },
     didDrawPage: () => {
-      // Add letterhead on every new page
-      addLetterhead();
-      // Tiny page number
-      const pgNum = doc.internal.getCurrentPageInfo().pageNumber;
-      doc.setFontSize(7);
-      doc.setTextColor("#aaa");
-      doc.text(`Page ${pgNum}`, pageWidth - margin, pageHeight - 8, { align: "right" });
+      // Footer on every new page
+      const footerY = pageHeight - margin - 5;
+      doc.setFont(fontBody, "italic");
+      doc.setFontSize(6);
+      doc.setTextColor("#999");
+      doc.text(`Generated on ${new Date().toLocaleString()}`, margin, footerY);
+      doc.text(`© ${companyName}`, pageWidth - margin, footerY, { align: "right" });
     },
   });
 
-  // Ensure page numbers on all pages (if the table didn't overflow, we still need them)
+  // Final footer & page numbers on all pages
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
+    const footerY = pageHeight - margin - 5;
+    doc.setFont(fontBody, "italic");
+    doc.setFontSize(6);
+    doc.setTextColor("#999");
+    doc.text(`Generated on ${new Date().toLocaleString()}`, margin, footerY);
+    doc.text(`© ${companyName}`, pageWidth - margin, footerY, { align: "right" });
+
+    // Optional: page numbers
     doc.setFontSize(7);
     doc.setTextColor("#aaa");
     doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin, pageHeight - 8, { align: "right" });

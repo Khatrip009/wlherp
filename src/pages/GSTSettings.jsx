@@ -1,18 +1,26 @@
-// src/pages/GSTSettings.jsx
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
+import { useAuth } from "../context/AuthContext";
+import { useOrg } from "../context/OrganizationContext";
 import { getOrganization, updateOrganization } from "../services/organizationService";
 import toast from "react-hot-toast";
 import { Save, Loader, Building, Info } from "lucide-react";
 import GSTLookup from "../components/GSTLookup";
 
 export default function GSTSettings() {
+  const { profile } = useAuth();
+  const { org: currentOrg } = useOrg();
   const queryClient = useQueryClient();
 
+  // ── Check if user is branch admin ──
+  const isBranchAdmin = profile?.role?.toLowerCase() === "branch_admin";
+
+  // ── Fetch organisation – use current org id from context if available ──
   const { data: org, isLoading } = useQuery({
-    queryKey: ["organization"],
-    queryFn: getOrganization,
+    queryKey: ["organization", currentOrg?.id],
+    queryFn: () => getOrganization(currentOrg?.id),
+    enabled: !!currentOrg?.id,
     staleTime: 10 * 60 * 1000,
   });
 
@@ -63,6 +71,7 @@ export default function GSTSettings() {
   });
 
   const handleChange = (e) => {
+    if (isBranchAdmin) return;
     const { name, value, type, checked } = e.target;
     setForm((prev) => ({
       ...prev,
@@ -71,6 +80,7 @@ export default function GSTSettings() {
   };
 
   const handleGSTLookupSuccess = (data) => {
+    if (isBranchAdmin) return;
     setForm((prev) => ({
       ...prev,
       business_legal_name: data.legal_name || prev.business_legal_name,
@@ -82,6 +92,7 @@ export default function GSTSettings() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (isBranchAdmin) return;
     if (form.gst_registered && form.gstin) {
       const gstinClean = form.gstin.replace(/\s/g, "").toUpperCase();
       if (gstinClean.length !== 15) {
@@ -117,6 +128,15 @@ export default function GSTSettings() {
         </p>
       </div>
 
+      {isBranchAdmin && (
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
+          <p className="text-yellow-700 text-sm font-medium">Read‑only mode</p>
+          <p className="text-yellow-600 text-sm">
+            As a branch admin, you can view but cannot edit GST settings.
+          </p>
+        </div>
+      )}
+
       {/* Form */}
       <form
         onSubmit={handleSubmit}
@@ -130,11 +150,12 @@ export default function GSTSettings() {
             name="gst_registered"
             checked={form.gst_registered}
             onChange={handleChange}
-            className="w-5 h-5 text-primary border-gray-300 dark:border-gray-600 rounded focus:ring-primary dark:focus:ring-offset-gray-800"
+            disabled={isBranchAdmin}
+            className="w-5 h-5 text-primary border-gray-300 dark:border-gray-600 rounded focus:ring-primary dark:focus:ring-offset-gray-800 disabled:opacity-50"
           />
           <label
             htmlFor="gst_registered"
-            className="text-sm font-medium text-gray-700 dark:text-gray-300"
+            className="text-sm font-medium text-gray-700 dark:text-gray-300 disabled:opacity-50"
             style={{ fontFamily: "var(--font-body)" }}
           >
             GST Registered
@@ -154,7 +175,8 @@ export default function GSTSettings() {
               name="business_legal_name"
               value={form.business_legal_name}
               onChange={handleChange}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
+              disabled={isBranchAdmin}
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
               placeholder="As per GST registration"
             />
           </div>
@@ -170,7 +192,8 @@ export default function GSTSettings() {
               name="trade_name"
               value={form.trade_name}
               onChange={handleChange}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
+              disabled={isBranchAdmin}
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
               placeholder="Display name (optional)"
             />
           </div>
@@ -189,16 +212,19 @@ export default function GSTSettings() {
               name="gstin"
               value={form.gstin}
               onChange={handleChange}
-              className="flex-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm uppercase focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
+              disabled={isBranchAdmin}
+              className="flex-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm uppercase focus:ring-2 focus:ring-[var(--color-primary)] outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
               placeholder="22AAAAA0000A1Z5"
               maxLength={15}
             />
-            <GSTLookup
-              gstin={form.gstin}
-              onSuccess={handleGSTLookupSuccess}
-              buttonText="Fetch GST Details"
-              className="flex-shrink-0"
-            />
+            {!isBranchAdmin && (
+              <GSTLookup
+                gstin={form.gstin}
+                onSuccess={handleGSTLookupSuccess}
+                buttonText="Fetch GST Details"
+                className="flex-shrink-0"
+              />
+            )}
           </div>
           <p
             className="text-xs text-gray-500 dark:text-gray-400 mt-1"
@@ -221,7 +247,8 @@ export default function GSTSettings() {
               name="state_code"
               value={form.state_code}
               onChange={handleChange}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
+              disabled={isBranchAdmin}
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
             >
               <option value="">Select State</option>
               {states.map((state) => (
@@ -242,7 +269,8 @@ export default function GSTSettings() {
               name="place_of_supply"
               value={form.place_of_supply}
               onChange={handleChange}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
+              disabled={isBranchAdmin}
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
             >
               <option value="">Default Place of Supply</option>
               {states.map((state) => (
@@ -272,7 +300,8 @@ export default function GSTSettings() {
               name="registration_type"
               value={form.registration_type}
               onChange={handleChange}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
+              disabled={isBranchAdmin}
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
             >
               <option value="">Select Type</option>
               <option value="Regular">Regular</option>
@@ -292,7 +321,8 @@ export default function GSTSettings() {
               name="financial_year"
               value={form.financial_year}
               onChange={handleChange}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
+              disabled={isBranchAdmin}
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
               placeholder="e.g. 2025-26"
             />
           </div>
@@ -310,30 +340,40 @@ export default function GSTSettings() {
             name="fiscal_year_start"
             value={form.fiscal_year_start}
             onChange={handleChange}
-            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
+            disabled={isBranchAdmin}
+            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
           />
         </div>
 
-        <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
-          <button
-            type="submit"
-            disabled={mutation.isPending}
-            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-50 flex items-center gap-2"
-            style={{ fontFamily: "var(--font-body)" }}
-          >
-            {mutation.isPending ? (
-              <>
-                <Loader className="w-4 h-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4" />
-                Save Settings
-              </>
-            )}
-          </button>
-        </div>
+        {/* Save button – hidden for branch admin */}
+        {!isBranchAdmin && (
+          <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
+            <button
+              type="submit"
+              disabled={mutation.isPending}
+              className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-50 flex items-center gap-2"
+              style={{ fontFamily: "var(--font-body)" }}
+            >
+              {mutation.isPending ? (
+                <>
+                  <Loader className="w-4 h-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Save Settings
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
+        {isBranchAdmin && (
+          <div className="text-center text-sm text-gray-400 border-t pt-4 mt-2">
+            You are viewing this page in read‑only mode.
+          </div>
+        )}
       </form>
     </div>
   );
