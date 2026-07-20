@@ -1,4 +1,3 @@
-// src/components/UserMenu.jsx
 import { Dropdown, Avatar, Typography, Space } from "antd";
 import {
   UserOutlined,
@@ -7,16 +6,15 @@ import {
 } from "@ant-design/icons";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../api/supabase";
 
 const { Text } = Typography;
 
 export default function UserMenu() {
-  const { profile } = useAuth();
+  const { profile, signOut } = useAuth();          // 👈 use context's signOut
   const navigate = useNavigate();
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await signOut();                                // clears everything + cache
     navigate("/login", { replace: true });
   };
 
@@ -59,7 +57,6 @@ export default function UserMenu() {
       placement="bottomRight"
       trigger={["click"]}
     >
-      {/* Reduced gap, smaller avatar, tighter text */}
       <Space size={8} style={{ cursor: "pointer" }}>
         <Avatar
           size={28}

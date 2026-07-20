@@ -1,6 +1,8 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { supabase } from "../api/supabase";
 import toast from "react-hot-toast";
+import { useInactivityTimer } from "../hooks/useInactivityTimer";
+import queryClient from "../lib/queryClient";
 
 const AuthContext = createContext();
 
@@ -19,31 +21,32 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [orgAccessDenied, setOrgAccessDenied] = useState(false);
 
-  // ─── Sign out – ignores 403 errors (session already expired) ───
-  const signOut = async () => {
+  // ─── Sign out – stable reference, never changes ───
+  const signOut = useCallback(async () => {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) {
-        // If it's a 403, the session is already invalid – ignore it
         if (error.status === 403) {
           console.warn("Logout: session already expired, ignoring 403");
         } else {
-          // Re‑throw other errors so they can be caught upstream
           throw error;
         }
       }
     } catch (error) {
-      // Log only non‑403 errors
       if (error.status !== 403) {
         console.error("Logout error:", error);
       }
     } finally {
-      // Always clear local state – even if the request fails
       setUser(null);
       setProfile(null);
       setOrgAccessDenied(false);
+      queryClient.clear();
     }
-  };
+  }, []);
+
+  // ── Auto logout after 15 minutes of inactivity ────────────
+  // ✅ Pass signOut directly (not () => signOut()) to keep a stable reference
+  useInactivityTimer(signOut, 15 * 60 * 1000, !!user);
 
   useEffect(() => {
     // ── Initial session ──
@@ -101,4 +104,4 @@ export function AuthProvider({ children }) {
 
 export function useAuth() {
   return useContext(AuthContext);
-}
+} 
