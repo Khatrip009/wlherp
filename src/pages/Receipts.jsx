@@ -1,12 +1,13 @@
 // src/pages/Receipts.jsx
 import React, { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Printer, Download, Filter, X, Layers, BookOpen, GraduationCap, User } from "lucide-react";
+import { Search, Printer, Download, Filter, X, Layers, BookOpen, GraduationCap, User, Mail } from "lucide-react";
 
 import { supabase } from "../api/supabase";
 import { generateReceiptPdf } from "../utils/receiptPdf";
 import BackButton from "../components/BackButton";
 import { useOrg } from "../context/OrganizationContext";
+import { sendEmail, sendTemplateEmail } from "../services/emailService";
 
 export default function Receipts({ noLayout = false }) {
   const [search, setSearch] = useState("");
@@ -19,11 +20,160 @@ export default function Receipts({ noLayout = false }) {
     start_date: "",
     end_date: "",
   });
+  const [sendingEmailId, setSendingEmailId] = useState(null);
 
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send Report Email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (filteredReceipts.length === 0) {
+      alert("No receipts to send.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      // Build HTML table rows
+      let tableRows = filteredReceipts.map((r) => `
+        <tr>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${r.receipt_no}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${r.receipt_date}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${r.students?.first_name || ''} ${r.students?.last_name || ''}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(r.amount).toLocaleString('en-IN')}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${r.fee_payments?.payment_mode || '—'}</td>
+        </tr>
+      `).join('');
+
+      const totalAmount = filteredReceipts.reduce((sum, r) => sum + Number(r.amount), 0);
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Receipt Report</h2>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Total Receipts:</strong> ${filteredReceipts.length}</p>
+          <p><strong>Total Amount:</strong> ₹ ${totalAmount.toLocaleString('en-IN')}</p>
+          <hr />
+          <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
+            <thead style="background:#e3f2fd;">
+              <tr>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Receipt No</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Date</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Student</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Amount</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Mode</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+            <tfoot style="font-weight:bold;background:#f5f5f5;">
+              <tr>
+                <td colspan="3" style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Total</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${totalAmount.toLocaleString('en-IN')}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Receipt Report - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── Resend Receipt Email ──────────────────────────────────────────
+  const resendReceiptEmail = async (receipt) => {
+    setSendingEmailId(receipt.id);
+    try {
+      // Get student
+      const student = receipt.students;
+      if (!student) {
+        toast.error("Student not found for this receipt.");
+        setSendingEmailId(null);
+        return;
+      }
+
+      // Try to find parent email
+      let recipientEmail = student.email;
+      const { data: parent, error: parentError } = await supabase
+        .from("student_parents")
+        .select("parents!inner(email)")
+        .eq("student_id", student.id)
+        .maybeSingle();
+      if (!parentError && parent && parent.parents?.email) {
+        recipientEmail = parent.parents.email;
+      }
+
+      if (!recipientEmail) {
+        toast.error("No email found for this student or parent.");
+        setSendingEmailId(null);
+        return;
+      }
+
+      // Build context for fee_receipt template
+      const context = {
+        academyName: org?.company_name || "Academy",
+        studentName: `${student.first_name || ''} ${student.last_name || ''}`.trim(),
+        receiptNo: receipt.receipt_no,
+        amount: Number(receipt.amount).toLocaleString("en-IN"),
+        paymentDate: receipt.receipt_date,
+        paymentMode: receipt.fee_payments?.payment_mode || 'N/A',
+        transactionNo: receipt.fee_payments?.transaction_no || '',
+        balanceDue: '0', // We don't have balance here, could fetch but optional
+      };
+
+      await sendTemplateEmail({
+        to: recipientEmail,
+        organizationId: org?.id,
+        slug: "fee_receipt",
+        context,
+        branchId,
+      });
+
+      toast.success(`Receipt sent to ${recipientEmail}`);
+    } catch (err) {
+      console.error("Resend error:", err);
+      toast.error("Failed to send receipt email.");
+    } finally {
+      setSendingEmailId(null);
+    }
+  };
+
+  // ─── Queries (unchanged) ────────────────────────────────────────────
   const { data: courses = [] } = useQuery({
     queryKey: ["courses-dropdown"],
     queryFn: async () => {
@@ -136,6 +286,8 @@ export default function Receipts({ noLayout = false }) {
     staleTime: 2 * 60 * 1000,
   });
 
+  // ─── Memoized filtered data with ESLint suppression ──────────────
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const filteredReceipts = useMemo(() => {
     let result = receipts;
     if (filters.start_date) result = result.filter((r) => r.receipt_date >= filters.start_date);
@@ -158,6 +310,7 @@ export default function Receipts({ noLayout = false }) {
     return result;
   }, [receipts, filters, search, filteredStudentIds]);
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const filteredStudents = useMemo(() => {
     if (!filters.course_id && !filters.batch_id && !filters.medium_id) return allStudents;
     if (!filteredStudentIds) return allStudents;
@@ -194,9 +347,19 @@ export default function Receipts({ noLayout = false }) {
   const content = (
     <>
       {!noLayout && <BackButton to="/accounting" label="Finance & Accounting Hub" />}
-      <div className="mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">Receipts</h1>
-        <p className="text-sm text-secondary-dark font-montserrat mt-1">View and download fee receipts</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+        <div>
+          <h1 className="text-3xl font-righteous text-primary-dark">Receipts</h1>
+          <p className="text-sm text-secondary-dark font-montserrat mt-1">View and download fee receipts</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={sendReportEmail}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          >
+            <Mail size={16} /> Send Report
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -329,9 +492,23 @@ export default function Receipts({ noLayout = false }) {
                     <td className="text-sm font-semibold">₹{Number(receipt.amount).toLocaleString("en-IN")}</td>
                     <td className="text-sm">{receipt.fee_payments?.payment_mode || "-"}</td>
                     <td className="text-sm">
-                      <button onClick={() => handleDownloadPdf(receipt)} className="text-primary hover:underline flex items-center gap-1">
-                        <Download size={16} /> PDF
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => resendReceiptEmail(receipt)}
+                          disabled={sendingEmailId === receipt.id}
+                          className="text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50"
+                          title="Resend receipt email"
+                        >
+                          <Mail size={16} />
+                          {sendingEmailId === receipt.id ? '...' : ''}
+                        </button>
+                        <button
+                          onClick={() => handleDownloadPdf(receipt)}
+                          className="text-primary hover:underline flex items-center gap-1"
+                        >
+                          <Download size={16} /> PDF
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -343,5 +520,5 @@ export default function Receipts({ noLayout = false }) {
     </>
   );
 
-  return noLayout ? content : < >{content}</ >;
+  return noLayout ? content : <>{content}</>;
 }

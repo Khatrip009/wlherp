@@ -1,3 +1,4 @@
+// src/pages/OnlineClassList.jsx
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
@@ -14,9 +15,11 @@ import {
   Play,
   RefreshCw,
   Trash,
+  Mail,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import OnlineClassModal from "../components/CreateOnlineClassModal";
+import { sendEmail, sendTemplateEmail } from "../services/emailService";
 
 export default function OnlineClassList() {
   const navigate = useNavigate();
@@ -26,15 +29,13 @@ export default function OnlineClassList() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingClass, setEditingClass] = useState(null);
+  const [sendingReminder, setSendingReminder] = useState(null); // track class id
 
-  // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
   const userRole = profile?.role?.toLowerCase() || "student";
-
-  // ─── ✅ Expanded admin role check ──────────────────────
   const adminRoles = [
     "admin",
     "super_admin",
@@ -46,7 +47,167 @@ export default function OnlineClassList() {
   const isTeacher = userRole === "teacher";
   const isStudent = userRole === "student";
 
-  // ---------- Fetch classes (scoped) ----------
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send report email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (classes.length === 0) {
+      alert("No classes to send.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      // Build HTML table rows
+      let tableRows = classes.map((cls) => {
+        const teacherName = cls.teacher ? `${cls.teacher.first_name || ''} ${cls.teacher.last_name || ''}`.trim() : '—';
+        const statusColor = cls.status === "live" ? "#2e7d32" :
+                            cls.status === "scheduled" ? "#1565C0" : "#757575";
+        const statusBg = cls.status === "live" ? "#e8f5e9" :
+                         cls.status === "scheduled" ? "#e3f2fd" : "#f5f5f5";
+
+        return `
+          <tr>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${cls.title}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${cls.batch?.batch_name || '—'}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${teacherName}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${new Date(cls.start_time).toLocaleString()}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${cls.duration_minutes || '—'} min</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">
+              <span style="background:${statusBg};color:${statusColor};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;">${cls.status}</span>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Online Classes Report</h2>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Filters:</strong> Status: ${filterStatus} | Search: ${search || 'None'}</p>
+          <p><strong>Total Classes:</strong> ${classes.length}</p>
+          <hr />
+          <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
+            <thead style="background:#e3f2fd;">
+              <tr>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Title</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Batch</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Teacher</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Start Time</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Duration</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Online Classes Report - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── Send class reminder to students ───────────────────────────────
+  const sendClassReminder = async (cls) => {
+    try {
+      setSendingReminder(cls.id);
+
+      // 1. Fetch active students in the batch
+      let studentQuery = supabase
+        .from("student_batches")
+        .select("student_id, students(first_name, last_name, email)")
+        .eq("batch_id", cls.batch_id)
+        .eq("status", "active")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
+
+      const { data: studentBatches, error: studentError } = await studentQuery;
+      if (studentError) throw studentError;
+
+      if (!studentBatches || studentBatches.length === 0) {
+        toast.error("No active students in this batch.");
+        setSendingReminder(null);
+        return;
+      }
+
+      // 2. Send email to each student (or parent)
+      let sentCount = 0;
+      for (const sb of studentBatches) {
+        const student = sb.students;
+        let recipientEmail = student.email;
+
+        // Try to find parent email
+        const { data: parent, error: parentError } = await supabase
+          .from("student_parents")
+          .select("parents!inner(email)")
+          .eq("student_id", student.id)
+          .maybeSingle();
+        if (!parentError && parent && parent.parents?.email) {
+          recipientEmail = parent.parents.email;
+        }
+
+        if (!recipientEmail) continue;
+
+        const context = {
+          academyName: org?.company_name || "Academy",
+          batch_name: cls.batch?.batch_name || '',
+          title: cls.title,
+          start_time: new Date(cls.start_time).toLocaleString(),
+          duration: cls.duration_minutes || '30',
+          room_link: `https://your-meeting-link.com/${cls.room_name || ''}`, // adjust as needed
+        };
+
+        await sendTemplateEmail({
+          to: recipientEmail,
+          organizationId: org?.id,
+          slug: "online_class_scheduled",
+          context,
+          branchId,
+        });
+        sentCount++;
+      }
+      toast.success(`Class reminder sent to ${sentCount} student(s).`);
+    } catch (err) {
+      console.error("Reminder error:", err);
+      toast.error("Failed to send reminder emails.");
+    } finally {
+      setSendingReminder(null);
+    }
+  };
+
+  // ─── Fetch classes (unchanged) ─────────────────────────────────────
   const { data: classes = [], isLoading, error, refetch } = useQuery({
     queryKey: ["online-classes", filterStatus, search, branchId, financialYearId],
     queryFn: async () => {
@@ -59,7 +220,6 @@ export default function OnlineClassList() {
         `)
         .order("start_time", { ascending: true });
 
-      // Scope to current branch and financial year
       if (branchId) query = query.eq("branch_id", branchId);
       if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
@@ -123,7 +283,7 @@ export default function OnlineClassList() {
     enabled: !!profile?.id && !!branchId && !!financialYearId,
   });
 
-  // ---------- Delete single class mutation (scoped) ----------
+  // ─── Mutations (unchanged) ──────────────────────────────────────────
   const deleteMutation = useMutation({
     mutationFn: async (classId) => {
       let query = supabase
@@ -142,10 +302,8 @@ export default function OnlineClassList() {
     onError: (err) => toast.error(err.message),
   });
 
-  // ---------- Bulk delete old ended classes ----------
   const cleanupMutation = useMutation({
     mutationFn: async () => {
-      // Calculate the cutoff time (e.g., 7 days ago)
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - 7);
       const cutoffISO = cutoff.toISOString();
@@ -154,7 +312,7 @@ export default function OnlineClassList() {
         .from("online_classes")
         .delete()
         .eq("status", "ended")
-        .lt("start_time", cutoffISO); // Classes that ended more than 7 days ago
+        .lt("start_time", cutoffISO);
 
       if (branchId) query = query.eq("branch_id", branchId);
       if (financialYearId) query = query.eq("financial_year_id", financialYearId);
@@ -170,7 +328,6 @@ export default function OnlineClassList() {
     onError: (err) => toast.error(err.message || "Cleanup failed"),
   });
 
-  // ---------- Start class mutation (unchanged) ----------
   const startClassMutation = useMutation({
     mutationFn: async (classId) => {
       const { error } = await supabase
@@ -191,7 +348,7 @@ export default function OnlineClassList() {
     onError: (err) => toast.error(err.message),
   });
 
-  // ---------- Helpers ----------
+  // ─── Helpers ─────────────────────────────────────────────────────────
   const getStatusColor = (status) => {
     switch (status) {
       case "scheduled": return "bg-blue-100 text-blue-800";
@@ -224,7 +381,7 @@ export default function OnlineClassList() {
     }
   };
 
-  // ---------- Render ----------
+  // ─── Render ─────────────────────────────────────────────────────────
   return (
     <>
       <BackButton to="/communication-hub" label="Communication" />
@@ -236,6 +393,14 @@ export default function OnlineClassList() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {/* 👇 Send Report button */}
+          <button
+            onClick={sendReportEmail}
+            disabled={classes.length === 0}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2 disabled:opacity-50"
+          >
+            <Mail size={18} /> Send Report
+          </button>
           {(isAdmin || isTeacher) && (
             <>
               <button
@@ -371,6 +536,18 @@ export default function OnlineClassList() {
                               title="Start Class"
                             >
                               <Play size={15} /> Start
+                            </button>
+                          )}
+                          {/* 👇 Send Reminder button (mail icon) */}
+                          {(isAdmin || (isTeacher && cls.teacher_id === profile?.id)) && (
+                            <button
+                              onClick={() => sendClassReminder(cls)}
+                              disabled={sendingReminder === cls.id}
+                              className="text-purple-600 hover:underline flex items-center gap-1 disabled:opacity-50"
+                              title="Send reminder to students"
+                            >
+                              <Mail size={15} />
+                              {sendingReminder === cls.id ? '...' : ''}
                             </button>
                           )}
                           {canEdit && (

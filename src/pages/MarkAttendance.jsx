@@ -11,6 +11,7 @@ import {
   FileText,
   CheckCircle,
   BookOpen,
+  Mail,
 } from "lucide-react";
 
 import {
@@ -20,13 +21,13 @@ import {
 } from "../services/attendanceService";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { sendEmail } from "../services/emailService";
 
 export default function MarkAttendance() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
 
-  // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -35,8 +36,112 @@ export default function MarkAttendance() {
   const [remarks, setRemarks] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [sendingReport, setSendingReport] = useState(false);
   const [sessionInfo, setSessionInfo] = useState(null);
 
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send attendance report email ──────────────────────────────────
+  const sendAttendanceReport = async () => {
+    if (students.length === 0) {
+      alert("No students to report.");
+      return;
+    }
+
+    setSendingReport(true);
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        setSendingReport(false);
+        return;
+      }
+
+      // Build HTML table rows
+      let tableRows = students.map((student) => {
+        const status = attendance[student.student_id] || "Present";
+        const remark = remarks[student.student_id] || "";
+        const statusColor = status === "Present" ? "#2e7d32" : "#c62828";
+        const statusBg = status === "Present" ? "#e8f5e9" : "#ffebee";
+
+        return `
+          <tr>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${student.admission_no}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${student.first_name} ${student.last_name}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">
+              <span style="background:${statusBg};color:${statusColor};padding:2px 12px;border-radius:12px;font-size:10px;font-weight:600;">${status}</span>
+            </td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${remark || '—'}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const presentCount = students.filter(
+        (s) => (attendance[s.student_id] || "Present") === "Present"
+      ).length;
+      const absentCount = students.length - presentCount;
+
+      const sessionBatch = sessionInfo?.batches?.batch_name || "N/A";
+      const sessionDate = sessionInfo?.attendance_date || "N/A";
+      const sessionTopic = sessionInfo?.topic_covered || "—";
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Attendance Report</h2>
+          <p><strong>Batch:</strong> ${sessionBatch}</p>
+          <p><strong>Date:</strong> ${sessionDate}</p>
+          <p><strong>Topic:</strong> ${sessionTopic}</p>
+          <p><strong>Total Students:</strong> ${students.length}</p>
+          <p><strong>Present:</strong> ${presentCount} | <strong>Absent:</strong> ${absentCount}</p>
+          <hr />
+          <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
+            <thead style="background:#e3f2fd;">
+              <tr>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Admission No</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Student Name</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:center;">Status</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Remarks</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Attendance Report - ${sessionDate} (${sessionBatch})`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      toast.success("Attendance report sent to admins.");
+    } catch (err) {
+      console.error("Email error:", err);
+      toast.error("Failed to send report.");
+    } finally {
+      setSendingReport(false);
+    }
+  };
+
+  // ─── Load data ──────────────────────────────────────────────────────
   useEffect(() => {
     if (branchId && financialYearId) {
       loadData();
@@ -46,7 +151,6 @@ export default function MarkAttendance() {
   async function loadData() {
     setLoading(true);
     try {
-      // Fetch session info scoped to the current branch & financial year
       const { data: session } = await supabase
         .from("attendance_sessions")
         .select(
@@ -65,21 +169,17 @@ export default function MarkAttendance() {
       }
       setSessionInfo(session);
 
-      // Fetch students from the batch
       const studentList = await getStudentsByBatch(
         session.batch_id,
         branchId,
         financialYearId
       );
 
-      // ── DEDUPLICATE students by student_id ──
-      // This prevents duplicate keys if a student appears twice (e.g., in multiple batches)
       const uniqueStudents = Array.from(
         new Map(studentList.map((s) => [s.student_id, s])).values()
       );
       setStudents(uniqueStudents);
 
-      // Fetch existing attendance for this session
       const marked = await getMarkedAttendance(
         sessionId,
         branchId,
@@ -123,10 +223,8 @@ export default function MarkAttendance() {
 
     setSaving(true);
     try {
-      // Save attendance records with branch & financial year context
       await saveAttendance(sessionId, records, branchId, financialYearId);
 
-      // Link the session to the current teacher (scoped)
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: teacherData } = await supabase
@@ -216,13 +314,24 @@ export default function MarkAttendance() {
             <User size={18} />
             Students ({students.length})
           </h2>
-          <button
-            onClick={markAllPresent}
-            className="bg-green-100 text-green-700 px-4 py-2 rounded-lg text-sm font-montserrat hover:bg-green-200 transition flex items-center gap-2"
-          >
-            <CheckCircle size={16} />
-            Mark All Present
-          </button>
+          <div className="flex gap-2">
+            {/* 👇 Send Report button */}
+            <button
+              onClick={sendAttendanceReport}
+              disabled={sendingReport}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-montserrat transition flex items-center gap-2 disabled:opacity-50"
+            >
+              <Mail size={16} />
+              {sendingReport ? "Sending..." : "Send Report"}
+            </button>
+            <button
+              onClick={markAllPresent}
+              className="bg-green-100 text-green-700 px-4 py-2 rounded-lg text-sm font-montserrat hover:bg-green-200 transition flex items-center gap-2"
+            >
+              <CheckCircle size={16} />
+              Mark All Present
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -257,7 +366,6 @@ export default function MarkAttendance() {
                   </td>
                   <td className="p-3 text-center">
                     <div className="flex items-center justify-center gap-6">
-                      {/* Present radio */}
                       <label className="flex items-center gap-1.5 cursor-pointer">
                         <input
                           type="radio"
@@ -280,7 +388,6 @@ export default function MarkAttendance() {
                         </span>
                       </label>
 
-                      {/* Absent radio */}
                       <label className="flex items-center gap-1.5 cursor-pointer">
                         <input
                           type="radio"

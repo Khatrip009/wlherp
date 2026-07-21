@@ -1,5 +1,6 @@
 // src/services/admissionService.js
 import { supabase } from "../api/supabase";
+import { sendTemplateEmail } from "./emailService"; // 👈 Added import
 
 export async function convertInquiryToStudent(inquiry, branchId, financialYearId) {
   try {
@@ -62,6 +63,68 @@ export async function convertInquiryToStudent(inquiry, branchId, financialYearId
       .eq("id", inquiry.id);
 
     if (inquiryError) throw inquiryError;
+
+    // ─── 5. Send Admission Confirmation Email ──────────────────────────
+    // Fetch organization and branch details for the email context
+    try {
+      // Get branch details
+      const { data: branch, error: branchError } = await supabase
+        .from("branches")
+        .select("branch_name, organization_id")
+        .eq("id", branchId)
+        .single();
+
+      if (branchError) throw branchError;
+
+      // Get organization details
+      const { data: org, error: orgError } = await supabase
+        .from("organization")
+        .select("company_name, id")
+        .eq("id", branch.organization_id)
+        .single();
+
+      if (orgError) throw orgError;
+
+      // Get course name (if available)
+      let courseName = "N/A";
+      if (inquiry.interested_course_id) {
+        const { data: course, error: courseError } = await supabase
+          .from("courses")
+          .select("course_name")
+          .eq("id", inquiry.interested_course_id)
+          .single();
+
+        if (!courseError && course) {
+          courseName = course.course_name;
+        }
+      }
+
+      // Build the email context
+      const context = {
+        academyName: org.company_name,
+        student_name: inquiry.student_name,
+        admission_no: admissionNo,
+        course_name: courseName,
+        batch_name: "N/A", // You can assign a batch later if needed
+        joining_date: new Date().toISOString().split("T")[0],
+        branch_name: branch.branch_name,
+      };
+
+      // Send the email to the parent (inquiry.email) – or you can use student.email if available
+      await sendTemplateEmail({
+        to: inquiry.email,
+        organizationId: org.id,
+        slug: "admission_confirmation",
+        context,
+        branchId: branchId,
+      });
+
+      console.log("✅ Admission confirmation email sent to", inquiry.email);
+
+    } catch (emailError) {
+      // Email failure should not block the conversion – log the error
+      console.error("❌ Failed to send admission confirmation email:", emailError);
+    }
 
     return { success: true };
   } catch (error) {

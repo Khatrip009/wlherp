@@ -9,6 +9,7 @@ import {
   PlusOutlined, SearchOutlined, ExportOutlined, UploadOutlined,
   DollarOutlined, FileTextOutlined, DeleteOutlined, EditOutlined,
   EyeOutlined, SendOutlined, FilePdfOutlined, PrinterOutlined,
+  MailOutlined,
 } from "@ant-design/icons";
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import Papa from "papaparse";
@@ -24,6 +25,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import { useAuth } from "../context/AuthContext";
 import { generateReceiptPdf } from "../utils/receiptPdf";
 import { generateInvoicePDF } from "../utils/invoicePdf";
+import { sendEmail, sendFeeReceiptEmail } from "../services/emailService";
 
 const { Text } = Typography;
 
@@ -37,6 +39,7 @@ export default function StudentFees() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(null);
+  const [sendingEmailId, setSendingEmailId] = useState(null);
 
   // ── Print / Invoice modals ──
   const [printReceiptModal, setPrintReceiptModal] = useState({ open: false, feeId: null, payments: [] });
@@ -44,6 +47,149 @@ export default function StudentFees() {
   const [printingReceipt, setPrintingReceipt] = useState(false);
   const [printingInvoice, setPrintingInvoice] = useState(false);
 
+  // ── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send Report Email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (studentFees.length === 0) {
+      alert("No fee records to send.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      // Build HTML table rows
+      let tableRows = studentFees.map((fee) => {
+        const studentName = fee.students ? `${fee.students.first_name || ''} ${fee.students.last_name || ''}`.trim() : '—';
+        const course = fee.fee_structures?.courses?.course_name || '—';
+        const total = `₹ ${Number(fee.final_fee).toLocaleString('en-IN')}`;
+        const paid = `₹ ${Number(fee.total_paid || 0).toLocaleString('en-IN')}`;
+        const pending = `₹ ${Number(fee.pending || 0).toLocaleString('en-IN')}`;
+        const statusColor = fee.status === "Paid" ? "#2e7d32" : "#e65100";
+        const statusBg = fee.status === "Paid" ? "#e8f5e9" : "#fff3e0";
+        return `
+          <tr>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${studentName}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${course}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${total}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${paid}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${pending}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">
+              <span style="background:${statusBg};color:${statusColor};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;">${fee.status}</span>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      const totalPending = studentFees.reduce((sum, f) => sum + Number(f.pending || 0), 0);
+      const totalPaid = studentFees.reduce((sum, f) => sum + Number(f.total_paid || 0), 0);
+      const totalFee = studentFees.reduce((sum, f) => sum + Number(f.final_fee || 0), 0);
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Student Fee Report</h2>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Total Fees:</strong> ${studentFees.length}</p>
+          <p><strong>Total Amount:</strong> ₹ ${totalFee.toLocaleString('en-IN')}</p>
+          <p><strong>Total Paid:</strong> ₹ ${totalPaid.toLocaleString('en-IN')}</p>
+          <p><strong>Total Pending:</strong> ₹ ${totalPending.toLocaleString('en-IN')}</p>
+          <hr />
+          <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
+            <thead style="background:#e3f2fd;">
+              <tr>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Student</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Course</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Total</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Paid</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Pending</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:center;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+            <tfoot style="font-weight:bold;background:#f5f5f5;">
+              <tr>
+                <td colspan="2" style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Totals</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${totalFee.toLocaleString('en-IN')}</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${totalPaid.toLocaleString('en-IN')}</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${totalPending.toLocaleString('en-IN')}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Student Fee Report - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── Resend Receipt Email ──────────────────────────────────────────
+  const resendReceiptEmail = async (fee) => {
+    setSendingEmailId(fee.id);
+    try {
+      // 1. Find the latest payment that has a receipt
+      const { data: payments, error } = await supabase
+        .from("fee_payments")
+        .select("id, receipt_number")
+        .eq("student_fee_id", fee.id)
+        .not("receipt_number", "is", null)
+        .order("payment_date", { ascending: false })
+        .limit(1)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
+
+      if (error) throw error;
+      if (!payments || payments.length === 0) {
+        message.warning("No receipt found for this fee.");
+        setSendingEmailId(null);
+        return;
+      }
+
+      const paymentId = payments[0].id;
+      // Use the existing sendFeeReceiptEmail from emailService
+      await sendFeeReceiptEmail(paymentId, org);
+      message.success("Receipt email sent.");
+    } catch (err) {
+      console.error("Resend receipt error:", err);
+      message.error("Failed to send receipt email.");
+    } finally {
+      setSendingEmailId(null);
+    }
+  };
+
+  // ── Data fetching ──────────────────────────────────────────────────
   const {
     data,
     isLoading,
@@ -263,7 +409,6 @@ export default function StudentFees() {
   // ── Print Receipt ──
   const handlePrintReceiptClick = async (fee) => {
     try {
-      // Fetch payments for this fee
       const { data: payments, error } = await supabase
         .from("fee_payments")
         .select("*, receipts(*)")
@@ -274,7 +419,6 @@ export default function StudentFees() {
 
       if (error) throw error;
 
-      // Filter payments that have a receipt
       const paymentsWithReceipt = payments.filter(p => p.receipts && p.receipts.length > 0);
       if (paymentsWithReceipt.length === 0) {
         message.warning("No receipt found for this fee.");
@@ -282,16 +426,14 @@ export default function StudentFees() {
       }
 
       if (paymentsWithReceipt.length === 1) {
-        // Directly print the receipt
         await printReceipt(paymentsWithReceipt[0].id);
       } else {
-        // Show modal to select payment
         setPrintReceiptModal({
           open: true,
           feeId: fee.id,
           payments: paymentsWithReceipt,
         });
-        setSelectedPaymentId(paymentsWithReceipt[0].id); // default to first
+        setSelectedPaymentId(paymentsWithReceipt[0].id);
       }
     } catch (err) {
       console.error(err);
@@ -302,7 +444,6 @@ export default function StudentFees() {
   const printReceipt = async (paymentId) => {
     setPrintingReceipt(true);
     try {
-      // Fetch full receipt data with relations
       const { data: receipt, error } = await supabase
         .from("receipts")
         .select(`
@@ -328,108 +469,98 @@ export default function StudentFees() {
   };
 
   // ── Print Invoice ──
-// src/pages/StudentFees.jsx – inside the component
+  const handlePrintInvoiceClick = async (fee) => {
+    setPrintingInvoice(true);
+    try {
+      let invoiceId = null;
 
-const handlePrintInvoiceClick = async (fee) => {
-  setPrintingInvoice(true);
-  try {
-    let invoiceId = null;
+      const { data: existingInvoice, error: fetchError } = await supabase
+        .from("invoices")
+        .select("id")
+        .eq("student_fee_id", fee.id)
+        .is("fee_installment_id", null)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
+        .maybeSingle();
 
-    // 1. Check for existing invoice
-    const { data: existingInvoice, error: fetchError } = await supabase
-      .from("invoices")
-      .select("id")
-      .eq("student_fee_id", fee.id)
-      .is("fee_installment_id", null)
-      .eq("branch_id", branchId)
-      .eq("financial_year_id", financialYearId)
-      .maybeSingle();
+      if (fetchError) throw fetchError;
 
-    if (fetchError) throw fetchError;
-
-    if (existingInvoice) {
-      invoiceId = existingInvoice.id;
-    } else {
-      // Generate new invoice
-      try {
-        const generated = await generateInvoiceFromStudentFee(fee.id, null, ctx);
-        invoiceId = generated.id;
-        message.success("Invoice generated");
-      } catch (genErr) {
-        if (genErr?.code === '23505' || genErr?.message?.includes('duplicate key')) {
-          // Race condition – fetch again
-          const { data: existing } = await supabase
-            .from("invoices")
-            .select("id")
-            .eq("student_fee_id", fee.id)
-            .is("fee_installment_id", null)
-            .eq("branch_id", branchId)
-            .eq("financial_year_id", financialYearId)
-            .maybeSingle();
-          if (existing) {
-            invoiceId = existing.id;
-            message.info("Invoice already exists, opening existing.");
+      if (existingInvoice) {
+        invoiceId = existingInvoice.id;
+      } else {
+        try {
+          const generated = await generateInvoiceFromStudentFee(fee.id, null, ctx);
+          invoiceId = generated.id;
+          message.success("Invoice generated");
+        } catch (genErr) {
+          if (genErr?.code === '23505' || genErr?.message?.includes('duplicate key')) {
+            const { data: existing } = await supabase
+              .from("invoices")
+              .select("id")
+              .eq("student_fee_id", fee.id)
+              .is("fee_installment_id", null)
+              .eq("branch_id", branchId)
+              .eq("financial_year_id", financialYearId)
+              .maybeSingle();
+            if (existing) {
+              invoiceId = existing.id;
+              message.info("Invoice already exists, opening existing.");
+            } else {
+              throw new Error("Invoice generation failed and no existing found.");
+            }
           } else {
-            throw new Error("Invoice generation failed and no existing found.");
+            throw genErr;
           }
-        } else {
-          throw genErr;
         }
       }
-    }
 
-    if (!invoiceId) {
-      throw new Error("Could not find or generate invoice.");
-    }
-
-    // 2. Fetch full invoice with items AND student details
-    const { data: invoice, error: invoiceError } = await supabase
-      .from("invoices")
-      .select(`
-        *,
-        students(*),
-        invoice_items(*)
-      `)
-      .eq("id", invoiceId)
-      .eq("branch_id", branchId)
-      .eq("financial_year_id", financialYearId)
-      .single();
-
-    if (invoiceError) throw invoiceError;
-
-    // 3. Validate that we have items
-    if (!invoice.invoice_items || invoice.invoice_items.length === 0) {
-      // Try to fetch items separately (if relation failed)
-      const { data: items, error: itemsError } = await supabase
-        .from("invoice_items")
-        .select("*")
-        .eq("invoice_id", invoiceId)
-        .eq("branch_id", branchId)
-        .eq("financial_year_id", financialYearId);
-      if (!itemsError && items && items.length > 0) {
-        invoice.invoice_items = items;
-      } else {
-        // If still no items, we need to create them from the fee
-        // For now, show a warning and proceed with empty items
-        console.warn("Invoice has no items. Generating PDF with empty table.");
-        invoice.invoice_items = [];
+      if (!invoiceId) {
+        throw new Error("Could not find or generate invoice.");
       }
+
+      const { data: invoice, error: invoiceError } = await supabase
+        .from("invoices")
+        .select(`
+          *,
+          students(*),
+          invoice_items(*)
+        `)
+        .eq("id", invoiceId)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
+        .single();
+
+      if (invoiceError) throw invoiceError;
+
+      if (!invoice.invoice_items || invoice.invoice_items.length === 0) {
+        const { data: items, error: itemsError } = await supabase
+          .from("invoice_items")
+          .select("*")
+          .eq("invoice_id", invoiceId)
+          .eq("branch_id", branchId)
+          .eq("financial_year_id", financialYearId);
+        if (!itemsError && items && items.length > 0) {
+          invoice.invoice_items = items;
+        } else {
+          console.warn("Invoice has no items. Generating PDF with empty table.");
+          invoice.invoice_items = [];
+        }
+      }
+
+      const doc = await generateInvoicePDF(invoice, org, 'sales');
+      const pdfBlob = doc.output('blob');
+      const url = URL.createObjectURL(pdfBlob);
+      window.open(url, '_blank');
+      message.success("Invoice opened in new tab");
+
+    } catch (err) {
+      console.error(err);
+      message.error(err?.message || "Failed to generate invoice");
+    } finally {
+      setPrintingInvoice(false);
     }
+  };
 
-    // 4. Generate PDF
-    const doc = await generateInvoicePDF(invoice, org, 'sales');
-    const pdfBlob = doc.output('blob');
-    const url = URL.createObjectURL(pdfBlob);
-    window.open(url, '_blank');
-    message.success("Invoice opened in new tab");
-
-  } catch (err) {
-    console.error(err);
-    message.error(err?.message || "Failed to generate invoice");
-  } finally {
-    setPrintingInvoice(false);
-  }
-};
   // ── Columns ──
   const columns = [
     {
@@ -481,7 +612,7 @@ const handlePrintInvoiceClick = async (fee) => {
     },
     {
       title: "Actions",
-      width: 280,
+      width: 320,
       render: (_, record) => (
         <Space>
           <Tooltip title="Edit"><Button size="small" icon={<EditOutlined />} onClick={() => openAssign(record)} /></Tooltip>
@@ -493,6 +624,16 @@ const handlePrintInvoiceClick = async (fee) => {
           </Tooltip>
           <Tooltip title="Print Invoice">
             <Button size="small" icon={<FilePdfOutlined />} onClick={() => handlePrintInvoiceClick(record)} />
+          </Tooltip>
+          {/* 👇 Resend Receipt Email */}
+          <Tooltip title="Resend Receipt Email">
+            <Button
+              size="small"
+              icon={<MailOutlined />}
+              onClick={() => resendReceiptEmail(record)}
+              loading={sendingEmailId === record.id}
+              disabled={sendingEmailId === record.id}
+            />
           </Tooltip>
           <Tooltip title="Delete"><Button size="small" danger icon={<DeleteOutlined />} onClick={() => setConfirmDelete(record.id)} /></Tooltip>
         </Space>
@@ -552,6 +693,8 @@ const handlePrintInvoiceClick = async (fee) => {
             <Button icon={<ExportOutlined />} onClick={handleExport}>Export</Button>
             <Button icon={<UploadOutlined />} onClick={() => fileInputRef.current?.click()}>Import</Button>
             <input type="file" ref={fileInputRef} hidden accept=".csv" onChange={handleImport} />
+            {/* 👇 Send Report button */}
+            <Button icon={<MailOutlined />} onClick={sendReportEmail}>Send Report</Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => openAssign(null)}>
               Assign Fee
             </Button>
@@ -723,7 +866,6 @@ function FeeAssignDrawer({ open, editingFee, students, feeStructures, onSubmit, 
   React.useEffect(() => {
     if (!open) return;
     if (editingFee) {
-      // Use the fee structure's current amount to avoid stale values
       const structure = feeStructures.find(fs => fs.id === editingFee.fee_structure_id);
       const baseAmount = structure ? Number(structure.fee_amount) : Number(editingFee.total_fee);
       const discount = Number(editingFee.discount || 0);

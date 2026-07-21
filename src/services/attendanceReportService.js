@@ -1,5 +1,6 @@
 // src/services/attendanceReportService.js
 import { supabase } from "../api/supabase";
+import { sendEmail } from "./emailService"; // 👈 Added import for email sending
 
 /**
  * Get attendance report: per student in a batch (or all batches)
@@ -171,4 +172,117 @@ export async function getMediumOptions() {
     .order("name");
   if (error) throw error;
   return data || [];
+}
+
+// ─── NEW: Send attendance report via email ─────────────────────────────
+
+/**
+ * Fetches the attendance report and sends it as an HTML email to the specified recipients.
+ * 
+ * @param {Object} params
+ * @param {number} params.batchId - optional, batch ID to filter
+ * @param {string} params.startDate - optional, YYYY-MM-DD
+ * @param {string} params.endDate - optional, YYYY-MM-DD
+ * @param {number|null} params.mediumId - optional, medium filter
+ * @param {number} params.branchId - required
+ * @param {number} params.financialYearId - required
+ * @param {string|string[]} params.recipients - email address(es) to send the report to
+ * @param {string} [params.subject] - email subject (default: "Attendance Report")
+ * @param {string} [params.from] - optional sender override
+ * @param {string} [params.includeTable] - if true, include the full HTML table (default: true)
+ * 
+ * @returns {Promise<{ success: boolean, data?: any, error?: any }>}
+ */
+export async function sendAttendanceReportEmail({
+  batchId,
+  startDate,
+  endDate,
+  mediumId = null,
+  branchId,
+  financialYearId,
+  recipients,
+  subject = "Attendance Report",
+  from,
+  includeTable = true,
+}) {
+  try {
+    // 1. Fetch the report data
+    const reportData = await getAttendanceReport(
+      batchId,
+      startDate,
+      endDate,
+      mediumId,
+      branchId,
+      financialYearId
+    );
+
+    if (!reportData || reportData.length === 0) {
+      throw new Error("No attendance data found for the given parameters.");
+    }
+
+    // 2. Build an HTML table from the report
+    let tableHtml = `
+      <table style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 14px;">
+        <thead>
+          <tr style="background-color: #f2f2f2;">
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Student</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Admission No.</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Total Sessions</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Present</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Attendance %</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    reportData.forEach((row) => {
+      const percentage = parseFloat(row.percentage);
+      const color = percentage < 75 ? '#ff6b6b' : (percentage < 85 ? '#ffd93d' : '#6bcb77');
+      tableHtml += `
+        <tr>
+          <td style="border: 1px solid #ddd; padding: 8px;">${row.student_name}</td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${row.admission_no || '—'}</td>
+          <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${row.total_sessions}</td>
+          <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${row.present_count}</td>
+          <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold; color: ${color};">${row.percentage}%</td>
+        </tr>
+      `;
+    });
+
+    tableHtml += `
+        </tbody>
+      </table>
+    `;
+
+    // Add summary info
+    const batchInfo = reportData.length > 0 ? reportData[0].batch_name || 'All Batches' : 'All Batches';
+    const mediumInfo = reportData.length > 0 ? reportData[0].medium_name || 'All Mediums' : 'All Mediums';
+    const dateRange = startDate && endDate ? `${startDate} to ${endDate}` : 'All Dates';
+
+    const htmlBody = `
+      <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
+        <h2>Attendance Report</h2>
+        <p><strong>Batch:</strong> ${batchInfo}</p>
+        <p><strong>Medium:</strong> ${mediumInfo}</p>
+        <p><strong>Period:</strong> ${dateRange}</p>
+        <p><strong>Total Students:</strong> ${reportData.length}</p>
+        ${includeTable ? tableHtml : '<p>Report generated. (Table not included)</p>'}
+        <hr>
+        <p style="font-size: 12px; color: #888;">This is an automated report from your Academy Management System.</p>
+      </div>
+    `;
+
+    // 3. Send the email
+    const result = await sendEmail({
+      to: recipients,
+      subject: subject,
+      html: htmlBody,
+      from,
+    });
+
+    return { success: true, data: result };
+  } catch (error) {
+    console.error("Error sending attendance report email:", error);
+    return { success: false, error: error.message };
+  }
 }

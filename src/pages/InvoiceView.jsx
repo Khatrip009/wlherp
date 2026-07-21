@@ -9,6 +9,7 @@ import {
   deleteInvoice,
 } from "../services/invoiceService";
 import { generateInvoicePDF, numberToWords } from "../utils/invoicePdf";
+import { sendEmail } from "../services/emailService";
 import toast from "react-hot-toast";
 import {
   ArrowLeft,
@@ -19,6 +20,7 @@ import {
   Loader,
   FileText,
   DollarSign,
+  Mail,
 } from "lucide-react";
 import { useOrg } from "../context/OrganizationContext";
 import { useTheme } from "../context/ThemeContext";
@@ -32,6 +34,7 @@ export default function InvoiceView() {
   const [generatingPDF, setGeneratingPDF] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedFee, setSelectedFee] = useState(null);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   const { branch, selectedFinancialYear, org } = useOrg();
   const branchId = branch?.id;
@@ -86,6 +89,191 @@ export default function InvoiceView() {
     },
     onError: (err) => toast.error(err.message),
   });
+
+  // ─── Send Invoice Email ────────────────────────────────────────────
+  const sendInvoiceEmail = async () => {
+    if (!invoice || !org) return;
+    setSendingEmail(true);
+    try {
+      // 1. Find recipient email (parent or student)
+      const student = invoice.students || {};
+      let recipientEmail = student.email;
+
+      // Try to find parent email
+      if (invoice.student_id) {
+        const { data: parent, error: parentError } = await supabase
+          .from("student_parents")
+          .select("parents!inner(email)")
+          .eq("student_id", invoice.student_id)
+          .maybeSingle();
+        if (!parentError && parent && parent.parents?.email) {
+          recipientEmail = parent.parents.email;
+        }
+      }
+
+      if (!recipientEmail) {
+        toast.error("No email found for the student or parent.");
+        setSendingEmail(false);
+        return;
+      }
+
+      // 2. Build HTML invoice content
+      const formatCurrency = (amount) =>
+        `₹ ${Number(amount).toLocaleString("en-IN", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`;
+
+      const items = invoice.invoice_items || [];
+      const totals = {
+        taxable: items.reduce((sum, item) => sum + Number(item.taxable_amount || 0), 0),
+        cgst: items.reduce((sum, item) => sum + Number(item.cgst_amount || 0), 0),
+        sgst: items.reduce((sum, item) => sum + Number(item.sgst_amount || 0), 0),
+        igst: items.reduce((sum, item) => sum + Number(item.igst_amount || 0), 0),
+        total: items.reduce((sum, item) => sum + Number(item.total_amount || 0), 0),
+      };
+      const roundOff = Number(invoice.round_off || 0);
+      const grandTotal = totals.total + roundOff;
+      const words = numberToWords(grandTotal);
+      const reverseCharge = invoice.reverse_charge;
+
+      const primaryColor = theme?.primary_color || "#0D47A1";
+      const studentName = `${student.first_name || ""} ${student.last_name || ""}`.trim() || "N/A";
+
+      // Build items table rows
+      let itemsRows = items.map((item, idx) => `
+        <tr>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${idx+1}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${item.description}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${item.quantity}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${formatCurrency(item.unit_price)}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${formatCurrency(item.taxable_amount)}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${formatCurrency(item.cgst_amount)}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${formatCurrency(item.sgst_amount)}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${formatCurrency(item.igst_amount)}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${formatCurrency(item.total_amount)}</td>
+        </tr>
+      `).join('');
+
+      // Build payment history rows
+      const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+      const balance = grandTotal - totalPaid;
+      let paymentRows = payments.map(p => `
+        <tr>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${p.payment_date}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${formatCurrency(p.amount)}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${p.payment_mode || "—"}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${p.receipts?.[0]?.receipt_no || "—"}</td>
+        </tr>
+      `).join('');
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:20px;border:1px solid #ddd;">
+          <h2 style="text-align:center;color:${primaryColor};">TAX INVOICE</h2>
+          <div style="display:flex;justify-content:space-between;margin-bottom:16px;">
+            <div>
+              <strong>Billed To:</strong> ${studentName}
+              ${student.admission_no ? `<div>Admission: ${student.admission_no}</div>` : ''}
+              ${student.gstin ? `<div>GSTIN: ${student.gstin}</div>` : ''}
+              ${student.billing_address ? `<div>Address: ${student.billing_address}</div>` : ''}
+            </div>
+            <div style="text-align:right;">
+              <strong>Invoice Details</strong>
+              <div>No: ${invoice.invoice_number}</div>
+              <div>Date: ${invoice.invoice_date}</div>
+              <div>Status: ${invoice.status}</div>
+              ${invoice.due_date ? `<div>Due Date: ${invoice.due_date}</div>` : ''}
+            </div>
+          </div>
+
+          <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+            <thead>
+              <tr style="background:${primaryColor};color:#fff;">
+                <th style="padding:6px;border:1px solid #ccc;text-align:left;">#</th>
+                <th style="padding:6px;border:1px solid #ccc;text-align:left;">Description</th>
+                <th style="padding:6px;border:1px solid #ccc;text-align:right;">Qty</th>
+                <th style="padding:6px;border:1px solid #ccc;text-align:right;">Unit Price</th>
+                <th style="padding:6px;border:1px solid #ccc;text-align:right;">Taxable</th>
+                <th style="padding:6px;border:1px solid #ccc;text-align:right;">CGST</th>
+                <th style="padding:6px;border:1px solid #ccc;text-align:right;">SGST</th>
+                <th style="padding:6px;border:1px solid #ccc;text-align:right;">IGST</th>
+                <th style="padding:6px;border:1px solid #ccc;text-align:right;">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsRows}
+            </tbody>
+          </table>
+
+          <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+            <div style="width:250px;">
+              <div style="display:flex;justify-content:space-between;"><span>Taxable:</span><span>${formatCurrency(totals.taxable)}</span></div>
+              <div style="display:flex;justify-content:space-between;"><span>CGST:</span><span>${formatCurrency(totals.cgst)}</span></div>
+              <div style="display:flex;justify-content:space-between;"><span>SGST:</span><span>${formatCurrency(totals.sgst)}</span></div>
+              <div style="display:flex;justify-content:space-between;"><span>IGST:</span><span>${formatCurrency(totals.igst)}</span></div>
+              ${roundOff !== 0 ? `<div style="display:flex;justify-content:space-between;"><span>Round Off:</span><span>${formatCurrency(roundOff)}</span></div>` : ''}
+              <div style="display:flex;justify-content:space-between;font-weight:bold;font-size:1.2em;border-top:2px solid ${primaryColor};margin-top:4px;padding-top:4px;">
+                <span>Grand Total:</span>
+                <span style="color:${primaryColor};">${formatCurrency(grandTotal)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-bottom:8px;"><strong>Amount in words:</strong> ${words}</div>
+
+          ${reverseCharge ? `<div style="color:#CC0000;font-weight:bold;margin-bottom:8px;">** Reverse Charge Applicable – Tax payable by recipient **</div>` : ''}
+
+          <div style="margin-top:20px;border-top:1px solid #ddd;padding-top:16px;">
+            <h3 style="margin:0 0 8px 0;">Payment History</h3>
+            ${payments.length === 0 ? '<p style="color:#888;">No payments recorded.</p>' : `
+              <table style="width:100%;border-collapse:collapse;font-size:9pt;">
+                <thead>
+                  <tr style="background:#f0f0f0;">
+                    <th style="padding:4px;border:1px solid #ddd;text-align:left;">Date</th>
+                    <th style="padding:4px;border:1px solid #ddd;text-align:right;">Amount</th>
+                    <th style="padding:4px;border:1px solid #ddd;text-align:left;">Mode</th>
+                    <th style="padding:4px;border:1px solid #ddd;text-align:left;">Receipt No</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${paymentRows}
+                </tbody>
+                <tfoot>
+                  <tr style="font-weight:bold;">
+                    <td style="padding:4px;border:1px solid #ddd;">Total Paid</td>
+                    <td style="padding:4px;border:1px solid #ddd;text-align:right;">${formatCurrency(totalPaid)}</td>
+                    <td colspan="2" style="padding:4px;border:1px solid #ddd;"></td>
+                  </tr>
+                  <tr style="font-weight:bold;">
+                    <td style="padding:4px;border:1px solid #ddd;">Balance Due</td>
+                    <td style="padding:4px;border:1px solid #ddd;text-align:right;color:${balance > 0 ? '#cc0000' : '#008000'};">${formatCurrency(balance)}</td>
+                    <td colspan="2" style="padding:4px;border:1px solid #ddd;"></td>
+                  </tr>
+                </tfoot>
+              </table>
+            `}
+          </div>
+
+          <p style="color:#888;font-size:10px;margin-top:20px;">This is a computer‑generated invoice from ${org.company_name || 'Academy'}.</p>
+        </div>
+      `;
+
+      // 3. Send email
+      await sendEmail({
+        to: recipientEmail,
+        subject: `Invoice ${invoice.invoice_number} from ${org.company_name || 'Academy'}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      toast.success(`Invoice sent to ${recipientEmail}`);
+    } catch (err) {
+      console.error("Email error:", err);
+      toast.error("Failed to send invoice email.");
+    } finally {
+      setSendingEmail(false);
+    }
+  };
 
   // ── Print using PDF with auto‑print ──
   const handlePrint = async () => {
@@ -182,6 +370,14 @@ export default function InvoiceView() {
           <ArrowLeft size={18} /> Back to Invoices
         </button>
         <div className="flex flex-wrap gap-2">
+          {/* 👇 NEW Email Invoice button */}
+          <button
+            onClick={sendInvoiceEmail}
+            disabled={sendingEmail}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
+          >
+            <Mail size={16} /> {sendingEmail ? "Sending..." : "Email Invoice"}
+          </button>
           <button
             onClick={handleDownloadPDF}
             disabled={generatingPDF}
@@ -231,8 +427,6 @@ export default function InvoiceView() {
           {!isFullyPaid && (
             <button
               onClick={() => {
-                // Create a fake fee object to pass to CollectPaymentModal
-                // The modal expects a fee object with student details and fee structure
                 setSelectedFee({
                   id: invoice.student_fee_id || null,
                   student_id: invoice.student_id,

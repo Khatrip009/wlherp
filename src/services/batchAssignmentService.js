@@ -1,5 +1,111 @@
 // src/services/batchAssignmentService.js
 import { supabase } from "../api/supabase";
+import { sendTemplateEmail } from "./emailService"; // 👈 Added
+
+// ------------------------------------------------------------
+// Helper: send batch change email for a student
+// ------------------------------------------------------------
+async function sendBatchChangeEmail({
+  studentId,
+  newBatchId,
+  branchId,
+  financialYearId,
+  oldBatchId = null, // optionally pass to avoid fetching
+}) {
+  try {
+    // 1. Fetch student details
+    const { data: student, error: studentError } = await supabase
+      .from("students")
+      .select("first_name, last_name, email, admission_no")
+      .eq("id", studentId)
+      .single();
+    if (studentError) throw studentError;
+
+    // 2. Fetch parent email (prefer parent, fallback to student email)
+    const { data: parent, error: parentError } = await supabase
+      .from("student_parents")
+      .select("parents!inner(email, father_name, mother_name)")
+      .eq("student_id", studentId)
+      .maybeSingle();
+    // parentError is ignored – we just may not have a parent
+
+    let parentEmail = student.email; // fallback
+    let parentName = student.first_name; // fallback
+    if (parent && parent.parents) {
+      parentEmail = parent.parents.email || student.email;
+      parentName = parent.parents.father_name || parent.parents.mother_name || student.first_name;
+    }
+
+    // 3. Fetch new batch details
+    const { data: newBatch, error: batchError } = await supabase
+      .from("batches")
+      .select("batch_name, course_id, courses(course_name), branch_id")
+      .eq("id", newBatchId)
+      .single();
+    if (batchError) throw batchError;
+
+    // 4. Fetch organization details from branch
+    const { data: branch, error: branchError } = await supabase
+      .from("branches")
+      .select("organization_id")
+      .eq("id", branchId)
+      .single();
+    if (branchError) throw branchError;
+
+    const { data: org, error: orgError } = await supabase
+      .from("organization")
+      .select("company_name, id")
+      .eq("id", branch.organization_id)
+      .single();
+    if (orgError) throw orgError;
+
+    // 5. Fetch old batch name (if oldBatchId is not provided, try to find current active batch)
+    let oldBatchName = "None";
+    if (oldBatchId) {
+      const { data: oldBatch } = await supabase
+        .from("batches")
+        .select("batch_name")
+        .eq("id", oldBatchId)
+        .single();
+      if (oldBatch) oldBatchName = oldBatch.batch_name;
+    } else {
+      // Try to find an active batch for this student (excluding the new one)
+      const { data: currentBatch } = await supabase
+        .from("student_batches")
+        .select("batch_id, batches(batch_name)")
+        .eq("student_id", studentId)
+        .eq("status", "active")
+        .neq("batch_id", newBatchId)
+        .maybeSingle();
+      if (currentBatch && currentBatch.batches) {
+        oldBatchName = currentBatch.batches.batch_name;
+      }
+    }
+
+    // 6. Build context for email template
+    const context = {
+      academyName: org.company_name,
+      student_name: `${student.first_name} ${student.last_name}`,
+      old_batch: oldBatchName,
+      new_batch: newBatch.batch_name,
+      effective_date: new Date().toISOString().split("T")[0],
+    };
+
+    // 7. Send email
+    await sendTemplateEmail({
+      to: parentEmail,
+      organizationId: org.id,
+      slug: "batch_change",
+      context,
+      branchId,
+    });
+
+    console.log(`✅ Batch change email sent to ${parentEmail} for student ${studentId}`);
+  } catch (error) {
+    // Email failure should not block the assignment – log the error
+    console.error("❌ Failed to send batch change email:", error);
+  }
+}
 
 // ------------------------------------------------------------
 // PAGINATED LIST
@@ -147,7 +253,7 @@ export async function getAllStudentBatchesForExport({
 }
 
 // ------------------------------------------------------------
-// WRITE OPERATIONS (already used context, no change needed)
+// WRITE OPERATIONS with email notifications
 // ------------------------------------------------------------
 
 // context: { branchId, financialYearId }
@@ -164,6 +270,16 @@ export async function assignStudentToBatch(payload, context) {
     .select()
     .single();
   if (error) throw error;
+
+  // ─── Send email notification ──────────────────────────────
+  await sendBatchChangeEmail({
+    studentId: payload.student_id,
+    newBatchId: payload.batch_id,
+    branchId,
+    financialYearId,
+    // oldBatchId not provided – will be auto-detected
+  });
+
   return data;
 }
 
@@ -181,11 +297,30 @@ export async function bulkAssignStudents(batchId, studentIds, enrollmentDate, co
 
   const { error } = await supabase.from("student_batches").insert(payload);
   if (error) throw error;
+
+  // ─── Send email notifications for each student ──────────
+  for (const sid of studentIds) {
+    await sendBatchChangeEmail({
+      studentId: sid,
+      newBatchId: batchId,
+      branchId,
+      financialYearId,
+    });
+  }
 }
 
 // context: { branchId, financialYearId }
 export async function updateStudentBatch(id, payload, context) {
   const { branchId, financialYearId } = context;
+
+  // Fetch current batch before update (for email)
+  const { data: current, error: fetchError } = await supabase
+    .from("student_batches")
+    .select("student_id, batch_id")
+    .eq("id", id)
+    .single();
+  if (fetchError) throw fetchError;
+
   const enrichedPayload = {
     ...payload,
     branch_id: branchId,
@@ -198,6 +333,18 @@ export async function updateStudentBatch(id, payload, context) {
     .select()
     .single();
   if (error) throw error;
+
+  // If batch_id changed, send notification
+  if (payload.batch_id && payload.batch_id !== current.batch_id) {
+    await sendBatchChangeEmail({
+      studentId: current.student_id,
+      newBatchId: payload.batch_id,
+      branchId,
+      financialYearId,
+      oldBatchId: current.batch_id, // pass old batch
+    });
+  }
+
   return data;
 }
 

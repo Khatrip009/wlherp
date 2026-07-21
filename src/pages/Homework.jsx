@@ -17,7 +17,8 @@ import {
   X,
   BookOpen,
   Layers,
-} from "lucide-react";
+  Mail,
+} from "lucide-react"; // 👈 Added Mail
 import Papa from "papaparse";
 
 import HomeworkForm from "../components/HomeworkForm";
@@ -34,18 +35,19 @@ import {
 } from "../services/homeworkService";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
+import { supabase } from "../api/supabase";
+import { sendEmail, sendTemplateEmail } from "../services/emailService"; // 👈 Import
 
 export default function Homework() {
   const { profile } = useAuth();
+  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
+  const branchId = branch?.id;
+  const financialYearId = selectedFinancialYear?.id;
+  const ctx = { branchId, financialYearId };
 
   const role = (profile?.role || "").toLowerCase().replace(/\s+/g, "_");
   const isAdmin = role === "admin" || role === "super_admin";
   const isTeacher = role === "teacher";
-
-  const { branch, selectedFinancialYear } = useOrg();
-  const branchId = branch?.id;
-  const financialYearId = selectedFinancialYear?.id;
-  const ctx = { branchId, financialYearId };
 
   const queryClient = useQueryClient();
 
@@ -66,9 +68,170 @@ export default function Homework() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [viewingSubmissions, setViewingSubmissions] = useState(null);
+  const [sendingReminder, setSendingReminder] = useState(null);
   const fileInputRef = useRef(null);
 
-  // Batches – scoped
+  // ─── Helpers for email ──────────────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send homework reminder to students ─────────────────────────────
+  const sendHomeworkReminder = async (homeworkId) => {
+    try {
+      // 1. Fetch homework details with batch and subject
+      const { data: homework, error: hwError } = await supabase
+        .from("homework")
+        .select(`
+          *,
+          batches(batch_name),
+          subjects(subject_name),
+          teachers(first_name, last_name)
+        `)
+        .eq("id", homeworkId)
+        .single();
+      if (hwError) throw hwError;
+
+      // 2. Fetch active students in the batch
+      let studentQuery = supabase
+        .from("student_batches")
+        .select("student_id, students(first_name, last_name, email)")
+        .eq("batch_id", homework.batch_id)
+        .eq("status", "active")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
+
+      const { data: studentBatches, error: studentError } = await studentQuery;
+      if (studentError) throw studentError;
+
+      if (!studentBatches || studentBatches.length === 0) {
+        toast.error("No active students in this batch.");
+        return;
+      }
+
+      // 3. Send email to each student (or parent)
+      let sentCount = 0;
+      for (const sb of studentBatches) {
+        const student = sb.students;
+        let recipientEmail = student.email;
+
+        // Try to find parent email
+        const { data: parent, error: parentError } = await supabase
+          .from("student_parents")
+          .select("parents!inner(email)")
+          .eq("student_id", student.id)
+          .maybeSingle();
+        if (!parentError && parent && parent.parents?.email) {
+          recipientEmail = parent.parents.email;
+        }
+
+        if (!recipientEmail) continue;
+
+        const context = {
+          academyName: org?.company_name || "Academy",
+          batch_name: homework.batches?.batch_name || "",
+          subject_name: homework.subjects?.subject_name || "",
+          title: homework.title,
+          description: homework.description || "",
+          due_date: homework.due_date,
+          attachment_url: homework.attachment_url || "",
+        };
+
+        await sendTemplateEmail({
+          to: recipientEmail,
+          organizationId: org?.id,
+          slug: "new_homework", // re-use the same template
+          context,
+          branchId,
+        });
+        sentCount++;
+      }
+      toast.success(`Homework reminder sent to ${sentCount} student(s).`);
+    } catch (err) {
+      console.error("Send reminder error:", err);
+      toast.error("Failed to send reminder emails.");
+    }
+  };
+
+  // ─── Send Report Email to Admins ──────────────────────────────────
+  const sendReportEmail = async () => {
+    if (homeworks.length === 0) {
+      alert("No homework to send.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      // Build HTML table rows
+      let tableRows = homeworks.map((h) => `
+        <tr>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${h.title}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${h.batches?.batch_name || ''}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${h.medium_name || ''}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${h.subjects?.subject_name || ''}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${h.assigned_date}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${h.due_date || '-'}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${h.submission_count || 0}</td>
+        </tr>
+      `).join('');
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Homework Report</h2>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Total Homework:</strong> ${homeworks.length}</p>
+          <hr />
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:#e3f2fd;">
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Title</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Batch</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Medium</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Subject</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Assigned</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Due</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:center;">Submissions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Homework Report - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── Queries ─────────────────────────────────────────────────────────
   const { data: batches = [] } = useQuery({
     queryKey: ["batches-dropdown", branchId, financialYearId],
     queryFn: () => getBatchOptions(branchId, financialYearId),
@@ -76,14 +239,12 @@ export default function Homework() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Mediums – org‑wide
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediums-dropdown"],
     queryFn: getMediumOptions,
     staleTime: 10 * 60 * 1000,
   });
 
-  // Homework list – scoped
   const {
     data,
     isLoading,
@@ -106,7 +267,7 @@ export default function Homework() {
 
   const homeworks = data?.pages.flatMap((page) => page.data) || [];
 
-  // Mutations – pass context
+  // ─── Mutations ──────────────────────────────────────────────────────
   const createMutation = useMutation({
     mutationFn: (payload) => createHomework(payload, ctx),
     onSuccess: () => {
@@ -128,7 +289,7 @@ export default function Homework() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => deleteHomework(id, branchId, financialYearId),
+    mutationFn: (id) => deleteHomework(id, ctx),
     onSuccess: () => {
       toast.success("Homework deleted");
       queryClient.invalidateQueries({ queryKey: ["homeworks"] });
@@ -136,6 +297,7 @@ export default function Homework() {
     onError: () => toast.error("Delete failed"),
   });
 
+  // ─── CSV Handlers ──────────────────────────────────────────────────
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -211,8 +373,6 @@ export default function Homework() {
 
   return (
     <div className="space-y-6 px-4 sm:px-6 lg:px-0">
-     
-
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -239,6 +399,14 @@ export default function Homework() {
             >
               <BookOpen size={18} /> Add Homework
             </button>
+            {/* 👇 NEW Send Report button */}
+            <button
+              onClick={sendReportEmail}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+              style={{ fontFamily: "var(--font-body)" }}
+            >
+              <Mail size={18} /> Send Report
+            </button>
             <button
               onClick={handleCSVExport}
               className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
@@ -264,7 +432,7 @@ export default function Homework() {
         )}
       </div>
 
-      {/* Search & Filter Toggle */}
+      {/* Search & Filter Toggle (unchanged) */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search
@@ -468,18 +636,33 @@ export default function Homework() {
                       {hw.submission_count}
                     </td>
                     <td className="text-sm">
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
                         <button
                           onClick={() => setViewingSubmissions(hw)}
                           className="text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1"
                         >
                           <Layers size={15} /> Submissions
                         </button>
+                        {/* 👇 Send Reminder button */}
+                        <button
+                          onClick={() => {
+                            setSendingReminder(hw.id);
+                            sendHomeworkReminder(hw.id).finally(() =>
+                              setSendingReminder(null)
+                            );
+                          }}
+                          disabled={sendingReminder === hw.id}
+                          className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 disabled:opacity-50"
+                          title="Send reminder to students"
+                        >
+                          <Mail size={15} />
+                          {sendingReminder === hw.id ? '...' : ''}
+                        </button>
                         {isAdmin && (
                           <>
                             <button
                               onClick={() => setEditing(hw)}
-                              className="text-blue-600 dark:text-blue-400 hover:underline"
+                              className="text-yellow-600 dark:text-yellow-400 hover:underline"
                             >
                               <Edit3 size={15} />
                             </button>

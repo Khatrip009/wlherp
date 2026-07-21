@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
 import { useOrg } from "../context/OrganizationContext";
+import { sendEmail } from "../services/emailService";
 import toast from "react-hot-toast";
 
 import {
@@ -16,6 +17,7 @@ import {
   IndianRupee,
   FileText,
   Building,
+  Mail,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -30,19 +32,216 @@ export default function PurchaseRegister() {
   const [taxRateFilter, setTaxRateFilter] = useState("");
   const [search, setSearch] = useState("");
 
-  // ── Branch & Financial Year context ──
   const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  // Organization details
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
     queryFn: () => getOrganization(currentOrg?.id),
     enabled: !!currentOrg?.id,
   });
 
-  // ─── Fetch vendors for filter dropdown – scoped ─────────────────────
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!currentOrg?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", currentOrg.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send Report Email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (expenses.length === 0) {
+      alert("No data to send.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      const orgName = org?.company_name || "Academy";
+      const orgAddr = org?.address || "";
+      const orgPhone = org?.phone || "";
+      const orgEmail = org?.email || "";
+
+      // Build summary cards HTML
+      const summaryCards = `
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:10px 0;">
+          <div style="border:1px solid #ddd;padding:8px 12px;border-radius:6px;background:#f9f9f9;text-align:center;">
+            <div style="font-size:10px;color:#888;">Total Taxable</div>
+            <div style="font-size:16px;font-weight:700;">₹ ${summaries.totalTaxable.toLocaleString('en-IN')}</div>
+          </div>
+          <div style="border:1px solid #ddd;padding:8px 12px;border-radius:6px;background:#f9f9f9;text-align:center;">
+            <div style="font-size:10px;color:#888;">Total GST</div>
+            <div style="font-size:16px;font-weight:700;color:#1565C0;">₹ ${summaries.totalGST.toLocaleString('en-IN')}</div>
+          </div>
+          <div style="border:1px solid #ddd;padding:8px 12px;border-radius:6px;background:#f9f9f9;text-align:center;">
+            <div style="font-size:10px;color:#888;">ITC Claimed</div>
+            <div style="font-size:16px;font-weight:700;color:#2e7d32;">₹ ${summaries.totalITC.toLocaleString('en-IN')}</div>
+          </div>
+          <div style="border:1px solid #ddd;padding:8px 12px;border-radius:6px;background:#f9f9f9;text-align:center;">
+            <div style="font-size:10px;color:#888;">Total Amount</div>
+            <div style="font-size:16px;font-weight:700;color:#0D47A1;">₹ ${summaries.totalAmount.toLocaleString('en-IN')}</div>
+          </div>
+          <div style="border:1px solid #ddd;padding:8px 12px;border-radius:6px;background:#f9f9f9;text-align:center;">
+            <div style="font-size:10px;color:#888;">Invoices</div>
+            <div style="font-size:16px;font-weight:700;">${summaries.invoiceCount}</div>
+          </div>
+          <div style="border:1px solid #ddd;padding:8px 12px;border-radius:6px;background:#f9f9f9;text-align:center;">
+            <div style="font-size:10px;color:#888;">Vendors</div>
+            <div style="font-size:16px;font-weight:700;">${summaries.vendorCount}</div>
+          </div>
+        </div>
+      `;
+
+      // Tax Rate table
+      let taxRows = summaries.byRate.map(rate => `
+        <tr>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${rate.rateName} (${rate.ratePercent}%)</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${rate.count}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${rate.taxable.toLocaleString('en-IN')}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${rate.gst.toLocaleString('en-IN')}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${rate.itc.toLocaleString('en-IN')}</td>
+        </tr>
+      `).join('');
+
+      // Vendor table
+      let vendorRows = summaries.byVendor.map(v => `
+        <tr>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${v.vendor_name}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${v.gstin || '—'}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${v.count}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${v.taxable.toLocaleString('en-IN')}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${v.gst.toLocaleString('en-IN')}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${v.itc.toLocaleString('en-IN')}</td>
+        </tr>
+      `).join('');
+
+      // Detailed entries (first 20 rows to keep email size manageable)
+      const detailRows = expenses.slice(0, 20).map(e => `
+        <tr>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${e.expense_date}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${e.vendors?.vendor_name || '—'}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${e.invoice_number || '—'}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(e.amount || 0).toLocaleString('en-IN')}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(e.gst_amount || 0).toLocaleString('en-IN')}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${(Number(e.amount || 0) + Number(e.gst_amount || 0)).toLocaleString('en-IN')}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${e.itc_claimed ? '✓' : '—'}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${e.tax_rates?.name || '—'}</td>
+        </tr>
+      `).join('');
+
+      const totalDetail = expenses.length > 20 ? `<p style="font-size:10px;color:#888;">... and ${expenses.length - 20} more entries</p>` : '';
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Purchase Register</h2>
+          <p><strong>Organization:</strong> ${orgName}</p>
+          <p>${orgAddr}</p>
+          <p>Phone: ${orgPhone} | Email: ${orgEmail}</p>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Period:</strong> ${startDate} – ${endDate}</p>
+          <hr />
+          ${summaryCards}
+          <h3 style="color:#0D47A1;margin-top:15px;">Tax Rate Breakdown</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;">
+            <thead style="background:#e3f2fd;">
+              <tr>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Tax Rate</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Count</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Taxable</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">GST</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">ITC</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${taxRows}
+              <tr style="font-weight:bold;background:#f5f5f5;">
+                <td style="padding:4px 8px;border:1px solid #ddd;">Total</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${expenses.length}</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${summaries.totalTaxable.toLocaleString('en-IN')}</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${summaries.totalGST.toLocaleString('en-IN')}</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${summaries.totalITC.toLocaleString('en-IN')}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3 style="color:#0D47A1;margin-top:15px;">Vendor Summary</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;">
+            <thead style="background:#e3f2fd;">
+              <tr>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Vendor</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">GSTIN</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Count</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Taxable</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">GST</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">ITC</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${vendorRows}
+              <tr style="font-weight:bold;background:#f5f5f5;">
+                <td style="padding:4px 8px;border:1px solid #ddd;">Total</td>
+                <td></td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${expenses.length}</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${summaries.totalTaxable.toLocaleString('en-IN')}</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${summaries.totalGST.toLocaleString('en-IN')}</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${summaries.totalITC.toLocaleString('en-IN')}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3 style="color:#0D47A1;margin-top:15px;">Detailed Entries (first ${Math.min(expenses.length, 20)} of ${expenses.length})</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:10px;">
+            <thead style="background:#e3f2fd;">
+              <tr>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Date</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Vendor</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Invoice</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Taxable</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">GST</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Total</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:center;">ITC</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Tax Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${detailRows}
+            </tbody>
+          </table>
+          ${totalDetail}
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${orgName}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Purchase Register - ${startDate} to ${endDate}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      toast.success("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      toast.error("Failed to send report.");
+    }
+  };
+
+  // ─── Vendors dropdown ──────────────────────────────────────────────
   const { data: vendors = [] } = useQuery({
     queryKey: ["vendors-dropdown", branchId, financialYearId],
     queryFn: async () => {
@@ -59,7 +258,7 @@ export default function PurchaseRegister() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // ─── Fetch tax rates for filter dropdown – scoped ──────────────────
+  // ─── Tax rates dropdown ────────────────────────────────────────────
   const { data: taxRates = [] } = useQuery({
     queryKey: ["tax-rates-dropdown", branchId, financialYearId],
     queryFn: async () => {
@@ -76,7 +275,7 @@ export default function PurchaseRegister() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // ─── Main query: fetch expenses – scoped ──
+  // ─── Main query ─────────────────────────────────────────────────────
   const {
     data: expenses = [],
     isLoading,
@@ -114,7 +313,7 @@ export default function PurchaseRegister() {
     staleTime: 2 * 60 * 1000,
   });
 
-  // ─── Summaries (unchanged) ──────────────────────────────────────────
+  // ─── Summaries ─────────────────────────────────────────────────────
   const summaries = useMemo(() => {
     const totalTaxable = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
     const totalGST = expenses.reduce((s, e) => s + Number(e.gst_amount || 0), 0);
@@ -180,7 +379,7 @@ export default function PurchaseRegister() {
     };
   }, [expenses]);
 
-  // ─── Export CSV (unchanged) ───────────────────────────────────────
+  // ─── Export handlers (unchanged) ──────────────────────────────────
   const handleExportCSV = () => {
     if (expenses.length === 0) {
       toast.error("No data to export");
@@ -211,7 +410,6 @@ export default function PurchaseRegister() {
     toast.success("CSV exported");
   };
 
-  // ─── Export PDF (unchanged) ───────────────────────────────────────
   const handleExportPDF = () => {
     if (expenses.length === 0) {
       toast.error("No data to export");
@@ -313,7 +511,7 @@ export default function PurchaseRegister() {
     toast.success("PDF exported");
   };
 
-  // ─── Handle Print (unchanged) ─────────────────────────────────────
+  // ─── Print handler ─────────────────────────────────────────────────
   const handlePrint = () => {
     const content = document.getElementById("purchase-register-content")?.innerHTML;
     if (!content) return;
@@ -346,10 +544,17 @@ export default function PurchaseRegister() {
   };
 
   return (
-    < >
+    <>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <h1 className="text-3xl font-righteous text-primary-dark">Purchase Register</h1>
         <div className="flex flex-wrap gap-2">
+          {/* 👇 Send Report button */}
+          <button
+            onClick={sendReportEmail}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          >
+            <Mail size={16} /> Send Report
+          </button>
           <button
             onClick={handlePrint}
             className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
@@ -639,6 +844,6 @@ export default function PurchaseRegister() {
           <span className="text-sm text-secondary-dark">Loading purchase data...</span>
         </div>
       )}
-    </ >
+    </>
   );
 }

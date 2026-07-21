@@ -3,12 +3,14 @@ import { useState, useRef } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Table, Button, Input, Select, Space, Tag, Popconfirm, message, Drawer } from "antd";
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, UploadOutlined, FilePdfOutlined } from "@ant-design/icons";
+import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, UploadOutlined, FilePdfOutlined, MailOutlined } from "@ant-design/icons";
 import Papa from "papaparse";
 import StudentForm from "../components/StudentForm";
 import { getStudents, createStudent, updateStudent, deleteStudent, getMediumOptions, getAllStudentsForExport } from "../services/studentService";
 import { useOrg } from "../context/OrganizationContext";
 import { generateReportPdf } from "../utils/generateReportPdf";
+import { supabase } from "../api/supabase";
+import { sendEmail, sendTemplateEmail } from "../services/emailService";
 
 export default function Students() {
   const queryClient = useQueryClient();
@@ -17,6 +19,7 @@ export default function Students() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const [sendingEmailId, setSendingEmailId] = useState(null);
   const fileInputRef = useRef();
 
   const { branch, selectedFinancialYear, org, theme } = useOrg();
@@ -24,6 +27,145 @@ export default function Students() {
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
 
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send Report Email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (students.length === 0) {
+      alert("No students to send.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      // Build HTML table rows
+      let tableRows = students.map((s) => `
+        <tr>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${s.admission_no || '—'}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${s.first_name || ''} ${s.last_name || ''}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${s.medium_name || '—'}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${s.mobile || '—'}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${s.status || 'Active'}</td>
+        </tr>
+      `).join('');
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Student List Report</h2>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Filters:</strong> ${search ? `Search: "${search}"` : 'None'} ${filterMedium ? `, Medium: ${mediums.find(m => m.id === filterMedium)?.name || ''}` : ''}</p>
+          <p><strong>Total Students:</strong> ${students.length}</p>
+          <hr />
+          <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
+            <thead style="background:#e3f2fd;">
+              <tr>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Admission No</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Name</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Medium</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Mobile</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Student List Report - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── Resend Welcome Email to Student ──────────────────────────────
+  const resendWelcomeEmail = async (student) => {
+    setSendingEmailId(student.id);
+    try {
+      // 1. Get student email
+      let recipientEmail = student.email;
+      if (!recipientEmail) {
+        // Try to fetch from DB (just in case)
+        const { data: freshStudent, error } = await supabase
+          .from("students")
+          .select("email")
+          .eq("id", student.id)
+          .single();
+        if (error) throw error;
+        recipientEmail = freshStudent?.email;
+      }
+      if (!recipientEmail) {
+        message.warning("No email address for this student.");
+        setSendingEmailId(null);
+        return;
+      }
+
+      // 2. Try to find parent email (prefer parent)
+      const { data: parent, error: parentError } = await supabase
+        .from("student_parents")
+        .select("parents!inner(email)")
+        .eq("student_id", student.id)
+        .maybeSingle();
+      if (!parentError && parent && parent.parents?.email) {
+        recipientEmail = parent.parents.email;
+      }
+
+      // 3. Build context for account_welcome template
+      const fullName = `${student.first_name || ''} ${student.last_name || ''}`.trim() || 'Student';
+      const context = {
+        academyName: org?.company_name || "Academy",
+        full_name: fullName,
+        role: 'Student',
+        login_link: `${window.location.origin}/login`,
+      };
+
+      await sendTemplateEmail({
+        to: recipientEmail,
+        organizationId: org?.id,
+        slug: "account_welcome",
+        context,
+        branchId,
+      });
+
+      message.success(`Welcome email sent to ${recipientEmail}`);
+    } catch (err) {
+      console.error("Resend welcome error:", err);
+      message.error("Failed to send welcome email.");
+    } finally {
+      setSendingEmailId(null);
+    }
+  };
+
+  // ─── Data fetching ──────────────────────────────────────────────────
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediums-dropdown"],
     queryFn: getMediumOptions,
@@ -51,6 +193,7 @@ export default function Students() {
 
   const students = data?.pages.flatMap((page) => page.data) || [];
 
+  // ─── Mutations ──────────────────────────────────────────────────────
   const deleteMutation = useMutation({
     mutationFn: (id) => deleteStudent(id, ctx),
     onSuccess: () => {
@@ -60,11 +203,10 @@ export default function Students() {
     onError: (err) => message.error(err.message),
   });
 
-  // ─── PDF Export ─────────────────────────────────────────────
+  // ─── PDF Export ─────────────────────────────────────────────────────
   const handleExportPDF = async () => {
     setExporting(true);
     try {
-      // Fetch all students matching current filters
       const allStudents = await getAllStudentsForExport({
         filters: { search, medium_id: filterMedium },
         branchId,
@@ -77,7 +219,6 @@ export default function Students() {
         return;
       }
 
-      // Transform data for the report
       const rows = allStudents.map((s) => ({
         admission_no: s.admission_no || "-",
         name: `${s.first_name || ""} ${s.last_name || ""}`.trim() || "-",
@@ -86,7 +227,6 @@ export default function Students() {
         status: s.status || "Active",
       }));
 
-      // Build dynamic config
       const config = {
         title: "Student List",
         description: `Filtered students${search ? ` (search: "${search}")` : ""}${filterMedium ? `, Medium: ${mediums.find(m => m.id === filterMedium)?.name || ''}` : ""}`,
@@ -109,11 +249,7 @@ export default function Students() {
         },
       };
 
-      const filters = {
-        start_date: null,
-        end_date: null,
-      };
-
+      const filters = { start_date: null, end_date: null };
       const doc = await generateReportPdf(config, rows, filters, org, theme);
       doc.save(`students_${new Date().toISOString().slice(0, 10)}.pdf`);
       message.success("PDF exported successfully");
@@ -125,7 +261,7 @@ export default function Students() {
     }
   };
 
-  // CSV import (unchanged)
+  // ─── CSV Import ─────────────────────────────────────────────────────
   const handleImport = (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -162,7 +298,7 @@ export default function Students() {
     });
   };
 
-  // Columns definition
+  // ─── Columns ────────────────────────────────────────────────────────
   const columns = [
     {
       title: "Admission No",
@@ -204,9 +340,17 @@ export default function Students() {
     },
     {
       title: "Actions",
-      width: 120,
+      width: 150,
       render: (_, record) => (
         <Space>
+          <Button
+            type="link"
+            size="small"
+            icon={<MailOutlined />}
+            onClick={() => resendWelcomeEmail(record)}
+            disabled={sendingEmailId === record.id}
+            title="Resend welcome email"
+          />
           <Button
             type="link"
             size="small"
@@ -249,6 +393,10 @@ export default function Students() {
           />
         </Space>
         <Space>
+          {/* 👇 Send Report button */}
+          <Button icon={<MailOutlined />} onClick={sendReportEmail}>
+            Send Report
+          </Button>
           <Button icon={<FilePdfOutlined />} onClick={handleExportPDF} loading={exporting}>
             PDF
           </Button>

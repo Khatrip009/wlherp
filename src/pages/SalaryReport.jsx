@@ -1,12 +1,14 @@
+// src/pages/SalaryReport.jsx
 import { useState, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import toast from "react-hot-toast";
-import { Calendar, Download, FileText, TrendingUp, IndianRupee, AlertCircle } from "lucide-react";
+import { Calendar, Download, FileText, TrendingUp, IndianRupee, AlertCircle, Mail } from "lucide-react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { getOrganization } from "../services/organizationService";
 import { useOrg } from "../context/OrganizationContext";
+import { sendEmail } from "../services/emailService";
 
 // ─── Helper: Create rupee symbol as image ──────────────
 function createRupeeSymbolImage() {
@@ -51,6 +53,7 @@ export default function SalaryReport() {
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [year, setYear] = useState(today.getFullYear());
   const tableRef = useRef();
+  const [sendingReport, setSendingReport] = useState(false);
 
   // ── Organisation, Branch & Financial Year context ──
   const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
@@ -64,13 +67,156 @@ export default function SalaryReport() {
     staleTime: 10 * 60 * 1000,
   });
 
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!currentOrg?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", currentOrg.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send Report Email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (payments.length === 0) {
+      alert("No salary data to send.");
+      return;
+    }
+
+    setSendingReport(true);
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        setSendingReport(false);
+        return;
+      }
+
+      const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long' });
+      const orgName = org?.company_name || "Academy";
+
+      // Build table rows
+      let tableRows = payments.map((p) => {
+        const teacherName = `${p.teachers?.first_name || ''} ${p.teachers?.last_name || ''}`.trim();
+        const employeeCode = p.teachers?.employee_code || '';
+        const monthlySalary = p.teachers?.monthly_salary ? `₹ ${p.teachers.monthly_salary.toLocaleString('en-IN')}` : '—';
+        const perLecture = p.teachers?.per_lecture_rate ? `₹ ${p.teachers.per_lecture_rate.toLocaleString('en-IN')}` : '—';
+        const gross = `₹ ${(p.amount || 0).toLocaleString('en-IN')}`;
+        const tdsPercent = `${p.tds_percentage || 0}%`;
+        const net = `₹ ${(p.net_amount || 0).toLocaleString('en-IN')}`;
+        const type = p.payment_type === "fixed" ? "Fixed" : "Lecture";
+        const accounting = p.journal_entry_id ? "✓ Posted" : "✗ Missing";
+        return `
+          <tr>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${teacherName}<br/><span style="font-size:10px;color:#888;">${employeeCode}</span></td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${monthlySalary}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${perLecture}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${gross}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${tdsPercent}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;font-weight:bold;">${net}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${type}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${accounting}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const summary = {
+        totalGross: payments.reduce((s, p) => s + (p.amount || 0), 0),
+        totalTDS: payments.reduce((s, p) => s + (p.tds_amount || 0), 0),
+        totalNet: payments.reduce((s, p) => s + (p.net_amount || 0), 0),
+        teacherCount: new Set(payments.map((p) => p.teacher_id)).size,
+        journalCreatedCount: payments.filter((p) => p.journal_entry_id !== null).length,
+      };
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Salary Report – ${monthName} ${year}</h2>
+          <p><strong>Organization:</strong> ${orgName}</p>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <hr />
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:15px;">
+            <div style="border:1px solid #ddd;padding:8px 12px;border-radius:6px;background:#f9f9f9;text-align:center;">
+              <div style="font-size:10px;color:#888;">Total Gross</div>
+              <div style="font-size:16px;font-weight:700;color:#0D47A1;">₹ ${summary.totalGross.toLocaleString('en-IN')}</div>
+            </div>
+            <div style="border:1px solid #ddd;padding:8px 12px;border-radius:6px;background:#f9f9f9;text-align:center;">
+              <div style="font-size:10px;color:#888;">Total TDS</div>
+              <div style="font-size:16px;font-weight:700;color:#D32F2F;">₹ ${summary.totalTDS.toLocaleString('en-IN')}</div>
+            </div>
+            <div style="border:1px solid #ddd;padding:8px 12px;border-radius:6px;background:#f9f9f9;text-align:center;">
+              <div style="font-size:10px;color:#888;">Total Net</div>
+              <div style="font-size:16px;font-weight:700;color:#2E7D32;">₹ ${summary.totalNet.toLocaleString('en-IN')}</div>
+            </div>
+            <div style="border:1px solid #ddd;padding:8px 12px;border-radius:6px;background:#f9f9f9;text-align:center;">
+              <div style="font-size:10px;color:#888;">Teachers</div>
+              <div style="font-size:16px;font-weight:700;color:#1976D2;">${summary.teacherCount}</div>
+            </div>
+            <div style="border:1px solid #ddd;padding:8px 12px;border-radius:6px;background:#f9f9f9;text-align:center;">
+              <div style="font-size:10px;color:#888;">Journal Entries</div>
+              <div style="font-size:16px;font-weight:700;">${summary.journalCreatedCount} / ${payments.length}</div>
+            </div>
+          </div>
+          <h3 style="color:#0D47A1;margin-bottom:8px;">Detailed Salary Breakdown</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
+            <thead style="background:#e3f2fd;">
+              <tr>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Teacher</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Monthly</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Lecture</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Gross</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">TDS%</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Net</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:center;">Type</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:center;">Accounting</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+            <tfoot style="font-weight:bold;background:#f5f5f5;">
+              <tr>
+                <td colspan="3" style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Totals</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${summary.totalGross.toLocaleString('en-IN')}</td>
+                <td></td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${summary.totalNet.toLocaleString('en-IN')}</td>
+                <td colspan="2"></td>
+              </tr>
+            </tfoot>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated salary report from ${orgName}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Salary Report - ${monthName} ${year}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      toast.success("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      toast.error("Failed to send report.");
+    } finally {
+      setSendingReport(false);
+    }
+  };
+
+  // ─── Data fetching ──────────────────────────────────────────────────
   const { data: payments = [], isLoading, refetch } = useQuery({
     queryKey: ["salary-report", month, year, branchId, financialYearId],
     queryFn: async () => {
       const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
       const endDate = new Date(year, month, 0).toISOString().split("T")[0];
 
-      // 1. Fetch salary payments – scoped
       let salaryQuery = supabase
         .from("salary_payments")
         .select(
@@ -97,7 +243,6 @@ export default function SalaryReport() {
       if (sErr) throw sErr;
       if (!salaryData || salaryData.length === 0) return [];
 
-      // 2. Fetch journal entries – scoped (if the table has branch/FY)
       const paymentIds = salaryData.map((p) => p.id);
       const references = paymentIds.map((id) => `Salary #${id}`);
 
@@ -154,7 +299,6 @@ export default function SalaryReport() {
     const margin = 14;
     let y = 16;
 
-    // ── Organisation Header ──
     const orgName = org?.company_name || "ShreeVidhya Academy";
     const address = org?.address || "";
     const phone = org?.phone || "";
@@ -173,7 +317,6 @@ export default function SalaryReport() {
     doc.text(`Phone: ${phone} | Email: ${email}`, margin, y);
     y += 12;
 
-    // ── Title ──
     const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long' });
     doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
@@ -182,7 +325,6 @@ export default function SalaryReport() {
     doc.text(title, pageWidth / 2, y, { align: 'center' });
     y += 10;
 
-    // ── Summary Boxes ──
     const boxWidth = (pageWidth - 2 * margin - 20) / 5;
     const boxHeight = 18;
     const boxY = y;
@@ -215,7 +357,6 @@ export default function SalaryReport() {
     });
     y += boxHeight + 12;
 
-    // ── Detailed Table ──
     const tableRows = payments.map((p) => [
       `${p.teachers?.first_name || ''} ${p.teachers?.last_name || ''}`.trim(),
       p.teachers?.employee_code || '',
@@ -358,6 +499,15 @@ export default function SalaryReport() {
           </div>
           <button onClick={() => refetch()} className="border px-3 py-1.5 rounded-lg text-sm hover:bg-gray-50 transition">
             Refresh
+          </button>
+          {/* 👇 Send Report button */}
+          <button
+            onClick={sendReportEmail}
+            disabled={sendingReport || payments.length === 0}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
+          >
+            <Mail className="w-4 h-4" />
+            {sendingReport ? 'Sending...' : 'Send Report'}
           </button>
           <button
             onClick={handleExportCSV}

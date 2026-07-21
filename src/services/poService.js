@@ -1,5 +1,87 @@
 // src/services/poService.js
 import { supabase } from "../api/supabase";
+import { sendTemplateEmail } from "./emailService"; // 👈 Added
+
+// ─── Helpers ──────────────────────────────────────────────────────────
+
+async function getOrganizationFromBranch(branchId) {
+  const { data: branch, error: branchError } = await supabase
+    .from("branches")
+    .select("organization_id")
+    .eq("id", branchId)
+    .single();
+  if (branchError) throw branchError;
+
+  const { data: org, error: orgError } = await supabase
+    .from("organization")
+    .select("id, company_name")
+    .eq("id", branch.organization_id)
+    .single();
+  if (orgError) throw orgError;
+  return org;
+}
+
+/**
+ * Send PO sent email to vendor using the "po_sent" template.
+ */
+async function sendPOSentEmail(po, context) {
+  const { branchId, financialYearId } = context;
+  try {
+    if (!po.vendor_email) {
+      console.warn(`No vendor email for PO ${po.po_number}, skipping email.`);
+      return;
+    }
+
+    const org = await getOrganizationFromBranch(branchId);
+
+    // Fetch PO items with inventory item names
+    let itemsQuery = supabase
+      .from("purchase_order_items")
+      .select(`
+        quantity_ordered,
+        unit_price,
+        inventory_items(item_name)
+      `)
+      .eq("purchase_order_id", po.id);
+
+    if (branchId) itemsQuery = itemsQuery.eq("branch_id", branchId);
+    if (financialYearId) itemsQuery = itemsQuery.eq("financial_year_id", financialYearId);
+
+    const { data: items, error: itemsError } = await itemsQuery;
+    if (itemsError) throw itemsError;
+
+    // Build items list string
+    const itemsList = (items || [])
+      .map(item => {
+        const name = item.inventory_items?.item_name || 'Unknown Item';
+        return `${name} x ${item.quantity_ordered} @ ₹${item.unit_price}`;
+      })
+      .join('; ');
+
+    const contextEmail = {
+      academyName: org.company_name,
+      vendor_name: po.vendor || 'Vendor',
+      po_number: po.po_number,
+      order_date: po.order_date,
+      expected_date: po.expected_date || 'Not specified',
+      total_amount: po.total_amount || 0,
+      items_list: itemsList || 'No items',
+    };
+
+    await sendTemplateEmail({
+      to: po.vendor_email,
+      organizationId: org.id,
+      slug: "po_sent",
+      context: contextEmail,
+      branchId,
+    });
+    console.log(`✅ PO sent email sent to ${po.vendor_email} for ${po.po_number}`);
+  } catch (error) {
+    console.error("❌ Failed to send PO sent email:", error);
+  }
+}
+
+// ─── Main Service Functions ──────────────────────────────────────────
 
 export async function getPurchaseOrders(filters = {}, branchId, financialYearId) {
   let query = supabase.from("purchase_orders").select("*");
@@ -84,12 +166,28 @@ export async function createPO(payload, context) {
   if (items.length > 0) {
     await supabase.from("purchase_order_items").insert(items);
   }
+
+  // If status is "Final", send email to vendor
+  if (po.status === "Final") {
+    await sendPOSentEmail(po, context);
+  }
+
   return po;
 }
 
 // context: { branchId, financialYearId }
 export async function updatePOStatus(id, status, context) {
   const { branchId, financialYearId } = context;
+
+  // Fetch current PO (for email) – scoped
+  let fetchQuery = supabase
+    .from("purchase_orders")
+    .select("*")
+    .eq("id", id);
+  if (branchId) fetchQuery = fetchQuery.eq("branch_id", branchId);
+  if (financialYearId) fetchQuery = fetchQuery.eq("financial_year_id", financialYearId);
+  const { data: po, error: fetchError } = await fetchQuery.single();
+  if (fetchError) throw fetchError;
 
   let query = supabase
     .from("purchase_orders")
@@ -106,6 +204,21 @@ export async function updatePOStatus(id, status, context) {
 
   const { error } = await query;
   if (error) throw error;
+
+  // If new status is "Final" and it changed from something else, send email
+  if (status === "Final" && po.status !== "Final") {
+    // Fetch the updated PO (with maybe new data) – re‑fetch to get the latest
+    let updatedQuery = supabase
+      .from("purchase_orders")
+      .select("*")
+      .eq("id", id);
+    if (branchId) updatedQuery = updatedQuery.eq("branch_id", branchId);
+    if (financialYearId) updatedQuery = updatedQuery.eq("financial_year_id", financialYearId);
+    const { data: updatedPO } = await updatedQuery.single();
+    if (updatedPO) {
+      await sendPOSentEmail(updatedPO, context);
+    }
+  }
 }
 
 // context: { branchId, financialYearId }

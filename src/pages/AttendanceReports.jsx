@@ -8,11 +8,14 @@ import {
   BarChart3,
   Calendar,
   Layers,
-} from "lucide-react";
+  Mail,
+} from "lucide-react"; // 👈 Added Mail
 import Papa from "papaparse";
 
 import BackButton from "../components/BackButton";
 import { useOrg } from "../context/OrganizationContext";
+import { supabase } from "../api/supabase";
+import { sendEmail } from "../services/emailService"; // 👈 Import
 
 import {
   getAttendanceReport,
@@ -21,7 +24,7 @@ import {
 } from "../services/attendanceReportService";
 
 export default function AttendanceReports() {
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -71,6 +74,108 @@ export default function AttendanceReports() {
       }
     },
   });
+
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send Report Email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (report.length === 0) {
+      alert("No data to send. Please generate a report first.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found to send the report.");
+        return;
+      }
+
+      // Build HTML table rows
+      let tableRows = report.map((r) => {
+        const percentage = Number(r.percentage);
+        const statusColor = percentage >= 75 ? "#22c55e" : percentage >= 50 ? "#eab308" : "#ef4444";
+        return `
+          <tr>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${r.admission_no || ""}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${r.student_name}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${r.batch_name || "—"}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${r.medium_name || "—"}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${r.total_sessions}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${r.present_count}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;font-weight:bold;color:${statusColor};">${r.percentage}%</td>
+          </tr>
+        `;
+      }).join('');
+
+      const totalStudents = report.length;
+      const avgAttendance = (report.reduce((sum, r) => sum + Number(r.percentage), 0) / totalStudents).toFixed(1);
+
+      // Build full HTML body
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Attendance Report</h2>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Period:</strong> ${filters.start_date || 'Start'} to ${filters.end_date || 'End'}</p>
+          <p><strong>Batch:</strong> ${filters.batch_id ? batches.find(b => b.id == filters.batch_id)?.batch_name || 'N/A' : 'All Batches'}</p>
+          <p><strong>Medium:</strong> ${filters.medium_id ? mediums.find(m => m.id == filters.medium_id)?.name || 'N/A' : 'All Mediums'}</p>
+          <p><strong>Total Students:</strong> ${totalStudents}</p>
+          <p><strong>Average Attendance:</strong> ${avgAttendance}%</p>
+          <hr />
+          <h3>Student-wise Attendance</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:#e3f2fd;">
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Admission No</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Student</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Batch</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Medium</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:center;">Total Sessions</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:center;">Present</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:center;">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+            <tfoot>
+              <tr style="font-weight:bold;background:#f5f5f5;">
+                <td colspan="6" style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Average</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${avgAttendance}%</td>
+              </tr>
+            </tfoot>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Attendance Report - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
 
   function handleFilterChange(e) {
     setFilters((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -205,7 +310,14 @@ export default function AttendanceReports() {
 
       {/* Report Actions */}
       {report.length > 0 && (
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={sendReportEmail}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            <Mail size={18} /> Send Report
+          </button>
           <button
             onClick={exportCSV}
             className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"

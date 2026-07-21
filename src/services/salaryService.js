@@ -1,5 +1,79 @@
 // src/services/salaryService.js
 import { supabase } from '../api/supabase';
+import { sendTemplateEmail } from './emailService'; // 👈 Added
+
+// ─── Helpers ──────────────────────────────────────────────────────────
+
+async function getOrganizationFromBranch(branchId) {
+  const { data: branch, error: branchError } = await supabase
+    .from("branches")
+    .select("organization_id")
+    .eq("id", branchId)
+    .single();
+  if (branchError) throw branchError;
+
+  const { data: org, error: orgError } = await supabase
+    .from("organization")
+    .select("id, company_name")
+    .eq("id", branch.organization_id)
+    .single();
+  if (orgError) throw orgError;
+  return org;
+}
+
+/**
+ * Send salary slip email to the teacher using the "salary_slip" template.
+ */
+async function sendSalarySlipEmail(paymentId, context) {
+  const { branchId, financialYearId } = context;
+  try {
+    // 1. Fetch payment details with teacher info
+    let paymentQuery = supabase
+      .from("salary_payments")
+      .select(`
+        *,
+        teachers(
+          id, first_name, last_name, employee_code, email
+        )
+      `)
+      .eq("id", paymentId);
+
+    if (branchId) paymentQuery = paymentQuery.eq("branch_id", branchId);
+    if (financialYearId) paymentQuery = paymentQuery.eq("financial_year_id", financialYearId);
+
+    const { data: payment, error } = await paymentQuery.single();
+    if (error) throw error;
+
+    if (!payment.teachers?.email) {
+      console.warn(`No email for teacher ${payment.teacher_id}, skipping salary slip.`);
+      return;
+    }
+
+    const org = await getOrganizationFromBranch(branchId);
+    const teacher = payment.teachers;
+
+    const contextEmail = {
+      academyName: org.company_name,
+      teacher_name: `${teacher.first_name} ${teacher.last_name}`,
+      employee_code: teacher.employee_code || 'N/A',
+      payment_date: payment.payment_date,
+      gross_amount: payment.amount,
+      tds: payment.tds_amount || 0,
+      net_amount: payment.net_amount || 0,
+    };
+
+    await sendTemplateEmail({
+      to: teacher.email,
+      organizationId: org.id,
+      slug: "salary_slip",
+      context: contextEmail,
+      branchId,
+    });
+    console.log(`✅ Salary slip sent to ${teacher.email} for ${payment.payment_date}`);
+  } catch (error) {
+    console.error("❌ Failed to send salary slip email:", error);
+  }
+}
 
 // ─── GET SALARY PAYMENTS (with optional filters) ──────────
 export async function getSalaryPayments(
@@ -149,6 +223,10 @@ export async function generateTeacherSalary(
     .select()
     .single();
   if (pErr) throw pErr;
+
+  // ─── Send salary slip email ──────────────────────────────
+  await sendSalarySlipEmail(payment.id, context);
+
   return payment;
 }
 

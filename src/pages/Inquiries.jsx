@@ -21,6 +21,7 @@ import {
   ThumbsDown,
   PhoneCall,
   FileText,
+  Mail,
 } from "lucide-react";
 import Papa from "papaparse";
 import InquiryForm from "../components/InquiryForm";
@@ -38,6 +39,8 @@ import {
   rejectInquiry,
 } from "../services/inquiryService";
 import { useOrg } from "../context/OrganizationContext";
+import { supabase } from "../api/supabase";
+import { sendEmail, sendTemplateEmail } from "../services/emailService"; // 👈 Added
 
 // ── Reject Modal ──
 function RejectModal({ inquiry, onConfirm, onClose }) {
@@ -152,7 +155,7 @@ function ScheduleDemoModal({ inquiry, onConfirm, onClose }) {
 export default function Inquiries() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const isBranchReady = !!branchId && !!financialYearId;
@@ -177,7 +180,116 @@ export default function Inquiries() {
   const [showScheduleModal, setShowScheduleModal] = useState(null);
   const [showStudentForm, setShowStudentForm] = useState(false);
   const [studentFormInquiryId, setStudentFormInquiryId] = useState(null);
+  const [sendingEmailId, setSendingEmailId] = useState(null);
   const fileInputRef = useRef(null);
+
+  // ─── Helpers for email ──────────────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send Report Email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (inquiries.length === 0) {
+      alert("No inquiries to send.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      // Build HTML table rows
+      let tableRows = inquiries.map((inq) => `
+        <tr>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${inq.inquiry_no}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${inq.student_name}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${inq.parent_name || ''}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${inq.mobile}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${getCourseName(inq.interested_course_id)}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${inq.status}</td>
+        </tr>
+      `).join('');
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Inquiry Report</h2>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Total Inquiries:</strong> ${inquiries.length}</p>
+          <p><strong>Filters:</strong> ${JSON.stringify(allFilters).replace(/[{}"]/g,'')}</p>
+          <hr />
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:#e3f2fd;">
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Inquiry No</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Student</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Parent</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Mobile</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Course</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Inquiry Report - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── Resend inquiry confirmation email ─────────────────────────────
+  const resendConfirmationEmail = async (inquiry) => {
+    try {
+      const context = {
+        academyName: org?.company_name || "Academy",
+        parent_name: inquiry.parent_name || "Parent",
+        student_name: inquiry.student_name,
+        inquiry_no: inquiry.inquiry_no,
+        mobile: inquiry.mobile,
+        course_name: getCourseName(inquiry.interested_course_id),
+      };
+
+      await sendTemplateEmail({
+        to: inquiry.email,
+        organizationId: org?.id,
+        slug: "inquiry_confirmation",
+        context,
+        branchId,
+      });
+      toast.success("Confirmation email resent.");
+    } catch (err) {
+      console.error("Resend error:", err);
+      toast.error("Failed to resend email.");
+    }
+  };
 
   // ── Data fetching ──
   const {
@@ -234,6 +346,11 @@ export default function Inquiries() {
     medium_id: cleanNullable(payload.medium_id),
   });
 
+  function getCourseName(courseId) {
+    const course = courses.find((c) => c.id === courseId);
+    return course ? course.course_name : "—";
+  }
+
   // ── Mutations ──
   const createMutation = useMutation({
     mutationFn: async (payload) => {
@@ -288,7 +405,7 @@ export default function Inquiries() {
     onError: (err) => toast.error("Failed to reject: " + err.message),
   });
 
-  // ── CSV Import ──
+  // ─── CSV Import ──
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -389,11 +506,6 @@ export default function Inquiries() {
     setShowRejectModal(inquiry);
   }
 
-  function getCourseName(courseId) {
-    const course = courses.find((c) => c.id === courseId);
-    return course ? course.course_name : "—";
-  }
-
   function getStatusBadge(status) {
     const map = {
       "Interested": "bg-blue-100 text-blue-700",
@@ -416,6 +528,13 @@ export default function Inquiries() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {/* 👇 NEW Send Report button */}
+          <button
+            onClick={sendReportEmail}
+            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+          >
+            <Mail size={18} /> Send Report
+          </button>
           <button
             onClick={() => setShowForm(true)}
             disabled={!isBranchReady}
@@ -435,7 +554,6 @@ export default function Inquiries() {
           >
             <Upload size={18} /> Import
           </button>
-          {/* NEW: Pipeline Report button */}
           <button
             onClick={() => navigate("/reports/admission_pipeline")}
             className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
@@ -620,9 +738,24 @@ export default function Inquiries() {
                     </td>
                     <td className="text-sm">
                       <div className="flex flex-wrap gap-1">
+                        {/* 👇 Resend Email button */}
+                        <button
+                          onClick={() => {
+                            setSendingEmailId(inquiry.id);
+                            resendConfirmationEmail(inquiry).finally(() =>
+                              setSendingEmailId(null)
+                            );
+                          }}
+                          disabled={sendingEmailId === inquiry.id || !inquiry.email}
+                          className={`text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50`}
+                          title="Resend confirmation email"
+                        >
+                          <Mail size={15} />
+                          {sendingEmailId === inquiry.id ? '...' : ''}
+                        </button>
                         <button
                           onClick={() => setEditing(inquiry)}
-                          className="text-blue-600 hover:underline flex items-center gap-1"
+                          className="text-yellow-600 hover:underline flex items-center gap-1"
                         >
                           <Edit3 size={15} />
                         </button>

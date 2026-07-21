@@ -1,5 +1,63 @@
 // src/services/teacherService.js
 import { supabase } from "../api/supabase";
+import { sendTemplateEmail } from "./emailService"; // 👈 Added
+
+// ─── Helpers ──────────────────────────────────────────────────────────
+
+async function getOrganizationFromBranch(branchId) {
+  const { data: branch, error: branchError } = await supabase
+    .from("branches")
+    .select("organization_id")
+    .eq("id", branchId)
+    .single();
+  if (branchError) throw branchError;
+
+  const { data: org, error: orgError } = await supabase
+    .from("organization")
+    .select("id, company_name")
+    .eq("id", branch.organization_id)
+    .single();
+  if (orgError) throw orgError;
+  return org;
+}
+
+/**
+ * Send a teacher onboarding email using the "teacher_onboarding" template.
+ */
+async function sendTeacherOnboardingEmail(teacher, context) {
+  const { branchId, financialYearId } = context;
+  try {
+    if (!teacher.email) {
+      console.warn(`No email for teacher ${teacher.id}, skipping onboarding email.`);
+      return;
+    }
+
+    const org = await getOrganizationFromBranch(branchId);
+    const fullName = `${teacher.first_name} ${teacher.last_name}`.trim();
+
+    const contextEmail = {
+      academyName: org.company_name,
+      teacher_name: fullName || 'Teacher',
+      employee_code: teacher.employee_code || 'N/A',
+      email: teacher.email,
+      // We don't have a password here; you can generate one and create auth user if needed.
+      // For now, we provide a placeholder.
+      temp_password: 'Please set your password using the "Forgot Password" link',
+      login_link: `${window.location.origin}/login`, // adjust to your app's login URL
+    };
+
+    await sendTemplateEmail({
+      to: teacher.email,
+      organizationId: org.id,
+      slug: "teacher_onboarding",
+      context: contextEmail,
+      branchId,
+    });
+    console.log(`✅ Onboarding email sent to teacher ${teacher.email}`);
+  } catch (error) {
+    console.error("❌ Failed to send teacher onboarding email:", error);
+  }
+}
 
 // ─── Helper: clean teacher data ──────────────────────────
 function cleanTeacherData(data) {
@@ -216,7 +274,7 @@ export async function getAllTeachersForExport(
 export async function createTeacher(payload, context) {
   const {
     email,
-    password,        // ignored
+    password,        // ignored for now; you can use it to create auth user
     medium_ids,
     course_ids,
     course_level_ids,
@@ -255,6 +313,11 @@ export async function createTeacher(payload, context) {
   await insertJunction("teacher_courses", "course_id", course_ids);
   await insertJunction("teacher_course_levels", "course_level_id", course_level_ids);
   await insertJunction("teacher_subjects", "subject_id", subject_ids);
+
+  // ─── Send onboarding email if email is provided ────────
+  if (email) {
+    await sendTeacherOnboardingEmail({ ...teacher, email }, context);
+  }
 
   return teacher;
 }

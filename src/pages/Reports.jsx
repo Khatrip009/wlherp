@@ -1,3 +1,4 @@
+// src/pages/Reports.jsx
 import { useState, useMemo } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import {
@@ -10,10 +11,13 @@ import {
   FileText,
   BarChart3,
   ArrowLeft,
+  Mail,
 } from 'lucide-react';
 import { reportTypes } from '../utils/reportConfig';
 import { useAuth } from '../context/AuthContext';
 import { useOrg } from '../context/OrganizationContext';
+import { supabase } from '../api/supabase';
+import { sendEmail } from '../services/emailService';
 
 // ─── Category definitions ──────────────────────────────────
 const CATEGORIES = {
@@ -102,7 +106,7 @@ const CATEGORIES = {
 
 export default function Reports() {
   const { profile } = useAuth();
-  const { theme } = useOrg();
+  const { org, theme } = useOrg();
   const [search, setSearch] = useState('');
 
   // ── Admin role check ──
@@ -134,6 +138,79 @@ export default function Reports() {
       .filter((cat) => cat.reports.length > 0);
   }, [search]);
 
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('organization_id', org.id)
+      .in('role', ['admin', 'super_admin', 'organization_admin'])
+      .eq('is_active', true);
+    if (error) {
+      console.error('Failed to fetch admin emails:', error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send Report Email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (filteredCategories.length === 0) {
+      alert('No reports to send.');
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert('No admin emails found.');
+        return;
+      }
+
+      // Build HTML content
+      let categoriesHtml = '';
+      for (const cat of filteredCategories) {
+        categoriesHtml += `<h3 style="color:#0D47A1;margin:12px 0 4px;">${cat.label}</h3><ul style="margin:0;padding-left:20px;">`;
+        for (const reportId of cat.reports) {
+          const r = reportTypes[reportId];
+          if (!r) continue;
+          categoriesHtml += `
+            <li style="margin-bottom:4px;">
+              <strong>${r.title}</strong>
+              ${r.description ? ` – ${r.description}` : ''}
+            </li>
+          `;
+        }
+        categoriesHtml += '</ul>';
+      }
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Reports Hub</h2>
+          <p><strong>Organization:</strong> ${org?.company_name || 'Academy'}</p>
+          <p><strong>Search Filter:</strong> ${search || 'All'}</p>
+          <p><strong>Total Categories:</strong> ${filteredCategories.length}</p>
+          <hr />
+          ${categoriesHtml}
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report list from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Reports List - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert('Report list sent to admins.');
+    } catch (err) {
+      console.error('Failed to send report:', err);
+      alert('Failed to send report. Check console for details.');
+    }
+  };
+
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-8">
       {/* ─── Back button ─── */}
@@ -158,16 +235,26 @@ export default function Reports() {
             Generate, view and export business reports for your academy.
           </p>
         </div>
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary-light" size={18} />
-          <input
-            type="text"
-            placeholder="Search reports…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 bg-white"
-            style={{ '--tw-ring-color': primaryColor }}
-          />
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="relative flex-1 sm:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary-light" size={18} />
+            <input
+              type="text"
+              placeholder="Search reports…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 bg-white"
+              style={{ '--tw-ring-color': primaryColor }}
+            />
+          </div>
+          {/* 👇 Send Report button */}
+          <button
+            onClick={sendReportEmail}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 whitespace-nowrap"
+          >
+            <Mail size={18} />
+            Send Report
+          </button>
         </div>
       </div>
 
@@ -209,7 +296,6 @@ export default function Reports() {
                     key={reportId}
                     to={`/reports/${reportId}`}
                     className="group relative flex flex-col p-5 bg-white border border-gray-200 rounded-xl hover:shadow-lg hover:border-primary/30 transition-all duration-200"
-                    style={{ borderColor: 'var(--tw-border-opacity)' }}
                   >
                     <div className="flex items-start justify-between">
                       <h3 className="text-base font-righteous text-primary group-hover:text-accent transition-colors pr-4">
@@ -218,7 +304,6 @@ export default function Reports() {
                       <BarChart3
                         size={16}
                         className="text-secondary-light group-hover:text-accent transition-colors flex-shrink-0"
-                        style={{ color: 'var(--tw-text-opacity)' }}
                       />
                     </div>
                     {report.description && (

@@ -1,17 +1,123 @@
 // src/services/invoiceService.js
 import { supabase } from "../api/supabase";
+import { sendTemplateEmail } from "./emailService"; // 👈 Added
+
+// ─── Helpers ──────────────────────────────────────────────────────────
+
+async function getOrganizationFromBranch(branchId) {
+  const { data: branch, error: branchError } = await supabase
+    .from("branches")
+    .select("organization_id")
+    .eq("id", branchId)
+    .single();
+  if (branchError) throw branchError;
+
+  const { data: org, error: orgError } = await supabase
+    .from("organization")
+    .select("id, company_name")
+    .eq("id", branch.organization_id)
+    .single();
+  if (orgError) throw orgError;
+  return org;
+}
+
+async function getStudentParentEmail(studentId) {
+  // Fetch student email
+  const { data: student, error: studentError } = await supabase
+    .from("students")
+    .select("email, first_name, last_name")
+    .eq("id", studentId)
+    .single();
+  if (studentError) return null;
+
+  // Try to find a parent
+  const { data: parent, error: parentError } = await supabase
+    .from("student_parents")
+    .select("parents!inner(email, father_name, mother_name)")
+    .eq("student_id", studentId)
+    .maybeSingle();
+
+  if (!parentError && parent && parent.parents && parent.parents.email) {
+    return { email: parent.parents.email, name: parent.parents.father_name || parent.parents.mother_name || student.first_name };
+  }
+  return { email: student.email, name: `${student.first_name} ${student.last_name}` };
+}
+
+async function sendInvoiceNotification(invoice, branchId, financialYearId) {
+  try {
+    const org = await getOrganizationFromBranch(branchId);
+    const recipient = await getStudentParentEmail(invoice.student_id);
+    if (!recipient || !recipient.email) {
+      console.warn(`No email found for student ${invoice.student_id}, skipping invoice notification.`);
+      return;
+    }
+
+    const message = `A new invoice has been generated:\n` +
+      `Invoice Number: ${invoice.invoice_number}\n` +
+      `Date: ${invoice.invoice_date}\n` +
+      `Total Amount: ₹${Number(invoice.grand_total).toLocaleString('en-IN')}\n` +
+      `Status: ${invoice.status}\n\n` +
+      `Please log in to view the full invoice.`;
+
+    await sendTemplateEmail({
+      to: recipient.email,
+      organizationId: org.id,
+      slug: "system_announcement",
+      context: {
+        academyName: org.company_name,
+        title: "New Invoice Generated",
+        message,
+        target_type: "Student/Parent",
+      },
+      branchId,
+    });
+    console.log(`✅ Invoice notification sent to ${recipient.email}`);
+  } catch (error) {
+    console.error("❌ Failed to send invoice notification:", error);
+  }
+}
+
+async function notifyAdmins(orgId, title, message, branchId) {
+  try {
+    const { data: admins, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", orgId)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) throw error;
+    const adminEmails = admins?.map(a => a.email).filter(Boolean);
+    if (!adminEmails || adminEmails.length === 0) return;
+
+    await sendTemplateEmail({
+      to: adminEmails,
+      organizationId: orgId,
+      slug: "system_announcement",
+      context: {
+        academyName: "", // not required for admins, but pass something
+        title,
+        message,
+        target_type: "Admin",
+      },
+      branchId,
+    });
+    console.log(`✅ Admin notification sent for: ${title}`);
+  } catch (error) {
+    console.error("❌ Failed to send admin notification:", error);
+  }
+}
+
+// ─── INVOICES ──────────────────────────────────────────────────────────
 
 // ─── Get the next invoice number from the database ──────────
 async function generateUniqueInvoiceNumber() {
   const { data, error } = await supabase.rpc('next_invoice_number');
   if (error) {
-    // If the RPC fails, we throw – no fallback to the old broken generator
     throw new Error('Could not generate invoice number: ' + error.message, { cause: error });
   }
   return data;   // e.g. "INV-2026-0001"
 }
 
-// ─── INVOICES ──────────────────────────────────────────────
 export async function getInvoices(filters = {}, branchId, financialYearId) {
   let query = supabase
     .from("invoices")
@@ -96,7 +202,8 @@ export async function getInvoice(id, branchId, financialYearId) {
   return { ...invoice, invoice_items: enrichedItems };
 }
 
-// ─── Create Invoice (uses only the new RPC) ─────────────────
+// ─── Create Invoice ────────────────────────────────────────────────
+
 export async function createInvoice(payload, context) {
   const {
     student_id,
@@ -113,7 +220,6 @@ export async function createInvoice(payload, context) {
 
   const { branchId, financialYearId } = context;
 
-  // Determine place of supply from branch
   let orgState = "";
   if (branchId) {
     const { data: branch } = await supabase
@@ -125,7 +231,6 @@ export async function createInvoice(payload, context) {
   }
   const placeOfSupply = place_of_supply || orgState;
 
-  // Tax rate resolution
   const taxRateIds = items.map(i => i.tax_rate_id).filter(id => id);
   let taxRateQuery = supabase.from("tax_rates").select("*").in("id", taxRateIds);
   if (branchId) taxRateQuery = taxRateQuery.eq("branch_id", branchId);
@@ -181,10 +286,8 @@ export async function createInvoice(payload, context) {
     return existingInvoice;
   }
 
-  // Generate the next number using the database sequence
   const invoiceNumber = await generateUniqueInvoiceNumber();
 
-  // Insert the invoice
   const { data: invoice, error } = await supabase
     .from("invoices")
     .insert({
@@ -202,7 +305,7 @@ export async function createInvoice(payload, context) {
       total_amount: totalAmount,
       round_off: roundOff,
       grand_total: grandTotal,
-      status: "Draft",
+      status: "Draft", // default
       student_fee_id: student_fee_id || null,
       fee_installment_id: fee_installment_id || null,
       branch_id: branchId,
@@ -213,7 +316,6 @@ export async function createInvoice(payload, context) {
 
   if (error) throw error;
 
-  // Insert items
   const itemInserts = invoiceItems.map(item => ({
     invoice_id: invoice.id,
     item_type: item.item_type,
@@ -235,10 +337,16 @@ export async function createInvoice(payload, context) {
   const { error: insError } = await supabase.from("invoice_items").insert(itemInserts);
   if (insError) throw insError;
 
+  // If status is "Final", send email immediately
+  if (payload.status === "Final") {
+    await sendInvoiceNotification(invoice, branchId, financialYearId);
+  }
+
   return invoice;
 }
 
-// ─── Update Invoice ─────────────────────────────────────────
+// ─── Update Invoice ──────────────────────────────────────────────────
+
 export async function updateInvoice(id, payload, context) {
   const { items, ...headerData } = payload;
   const { branchId, financialYearId } = context;
@@ -301,6 +409,8 @@ export async function deleteInvoice(id, branchId, financialYearId) {
   if (error) throw error;
 }
 
+// ─── Finalize Invoice ──────────────────────────────────────────────
+
 export async function finalizeInvoice(id, context) {
   const { branchId, financialYearId } = context;
   let query = supabase
@@ -316,6 +426,10 @@ export async function finalizeInvoice(id, context) {
   if (financialYearId) query = query.eq("financial_year_id", financialYearId);
   const { data, error } = await query.select().single();
   if (error) throw error;
+
+  // ─── Send invoice notification ──────────────────────────────
+  await sendInvoiceNotification(data, branchId, financialYearId);
+
   return data;
 }
 
@@ -346,7 +460,8 @@ export async function getInvoiceByStudentFee(studentFeeId, branchId, financialYe
   return data?.[0] || null;
 }
 
-// ─── CREDIT NOTES ──────────────────────────────────────────
+// ─── CREDIT NOTES ────────────────────────────────────────────────────
+
 export async function getCreditNotes(filters = {}, branchId, financialYearId) {
   let query = supabase.from("credit_notes").select("*").order("date", { ascending: false });
   if (branchId) query = query.eq("branch_id", branchId);
@@ -390,10 +505,25 @@ export async function finalizeCreditNote(id, context) {
   if (financialYearId) query = query.eq("financial_year_id", financialYearId);
   const { data, error } = await query.select().single();
   if (error) throw error;
+
+  // ─── Notify admins ──────────────────────────────────────────
+  try {
+    const org = await getOrganizationFromBranch(branchId);
+    const message = `A credit note has been finalized:\n` +
+      `Credit Note #: ${data.credit_note_number}\n` +
+      `Amount: ₹${Number(data.amount).toLocaleString('en-IN')}\n` +
+      `Date: ${data.date}\n` +
+      `Reason: ${data.reason}`;
+    await notifyAdmins(org.id, "Credit Note Finalized", message, branchId);
+  } catch (emailError) {
+    console.error("❌ Failed to send credit note notification:", emailError);
+  }
+
   return data;
 }
 
-// ─── DEBIT NOTES ───────────────────────────────────────────
+// ─── DEBIT NOTES ──────────────────────────────────────────────────────
+
 export async function getDebitNotes(filters = {}, branchId, financialYearId) {
   let query = supabase.from("debit_notes").select("*").order("date", { ascending: false });
   if (branchId) query = query.eq("branch_id", branchId);
@@ -437,5 +567,19 @@ export async function finalizeDebitNote(id, context) {
   if (financialYearId) query = query.eq("financial_year_id", financialYearId);
   const { data, error } = await query.select().single();
   if (error) throw error;
+
+  // ─── Notify admins ──────────────────────────────────────────
+  try {
+    const org = await getOrganizationFromBranch(branchId);
+    const message = `A debit note has been finalized:\n` +
+      `Debit Note #: ${data.debit_note_number}\n` +
+      `Amount: ₹${Number(data.amount).toLocaleString('en-IN')}\n` +
+      `Date: ${data.date}\n` +
+      `Reason: ${data.reason}`;
+    await notifyAdmins(org.id, "Debit Note Finalized", message, branchId);
+  } catch (emailError) {
+    console.error("❌ Failed to send debit note notification:", emailError);
+  }
+
   return data;
 }

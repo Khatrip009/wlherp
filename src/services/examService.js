@@ -1,5 +1,100 @@
 // src/services/examService.js
 import { supabase } from "../api/supabase";
+import { sendTemplateEmail } from "./emailService"; // 👈 Added
+
+// ─── Helper: send exam schedule emails to all students in the batch ──
+async function sendExamScheduleEmails(examId, context) {
+  const { branchId, financialYearId } = context;
+  try {
+    // 1. Fetch exam details with batch, subject, and course
+    const { data: exam, error: examError } = await supabase
+      .from("exams")
+      .select(`
+        *,
+        batches (
+          batch_name,
+          course_id,
+          courses (course_name)
+        ),
+        subjects (subject_name)
+      `)
+      .eq("id", examId)
+      .single();
+    if (examError) throw examError;
+
+    // 2. Fetch all active students in the batch
+    let studentQuery = supabase
+      .from("student_batches")
+      .select("student_id, students(first_name, last_name, email, branch_id)")
+      .eq("batch_id", exam.batch_id)
+      .eq("status", "active");
+    if (branchId) studentQuery = studentQuery.eq("branch_id", branchId);
+    if (financialYearId) studentQuery = studentQuery.eq("financial_year_id", financialYearId);
+
+    const { data: studentBatches, error: studentError } = await studentQuery;
+    if (studentError) throw studentError;
+
+    if (!studentBatches || studentBatches.length === 0) {
+      console.log(`No active students found for batch ${exam.batch_id}, skipping emails.`);
+      return;
+    }
+
+    // 3. Fetch organization details (from branch)
+    const { data: branch, error: branchError } = await supabase
+      .from("branches")
+      .select("organization_id")
+      .eq("id", branchId)
+      .single();
+    if (branchError) throw branchError;
+
+    const { data: org, error: orgError } = await supabase
+      .from("organization")
+      .select("company_name, id")
+      .eq("id", branch.organization_id)
+      .single();
+    if (orgError) throw orgError;
+
+    // 4. For each student, find parent email or fallback to student email
+    for (const sb of studentBatches) {
+      const student = sb.students;
+      let recipientEmail = student.email;
+
+      // Try to find a parent
+      const { data: parent, error: parentError } = await supabase
+        .from("student_parents")
+        .select("parents!inner(email, father_name, mother_name)")
+        .eq("student_id", student.id)
+        .maybeSingle();
+      if (!parentError && parent && parent.parents && parent.parents.email) {
+        recipientEmail = parent.parents.email;
+      }
+
+      // Build context for this student
+      const contextEmail = {
+        academyName: org.company_name,
+        exam_name: exam.exam_name,
+        subject_name: exam.subjects?.subject_name || '',
+        exam_date: exam.exam_date,
+        total_marks: exam.total_marks,
+        batch_name: exam.batches?.batch_name || '',
+      };
+
+      // Send email
+      await sendTemplateEmail({
+        to: recipientEmail,
+        organizationId: org.id,
+        slug: "exam_schedule",
+        context: contextEmail,
+        branchId,
+      });
+    }
+
+    console.log(`✅ Exam schedule emails sent to ${studentBatches.length} students for exam ${examId}`);
+  } catch (error) {
+    // Email failure should not block exam creation – log the error
+    console.error("❌ Failed to send exam schedule emails:", error);
+  }
+}
 
 // ============================
 // EXAMS LIST (paginated, filters) – now includes medium & scoping
@@ -126,7 +221,7 @@ export async function getAllExamsForExport(filters = {}, branchId, financialYear
 }
 
 // ============================
-// CRUD – already uses context, adds scope to delete
+// CRUD – now sends exam schedule emails on create
 // ============================
 export async function createExam(payload, context) {
   const { branchId, financialYearId } = context;
@@ -136,6 +231,10 @@ export async function createExam(payload, context) {
     .select()
     .single();
   if (error) throw error;
+
+  // ─── Send exam schedule emails ──────────────────────────────
+  await sendExamScheduleEmails(data.id, context);
+
   return data;
 }
 

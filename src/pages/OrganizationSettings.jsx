@@ -1,12 +1,14 @@
+// src/pages/OrganizationSettings.jsx
 import { useState, useEffect } from "react";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
 import toast from "react-hot-toast";
 
-import { Building, Phone, Mail, Globe, MapPin, Eye, EyeOff, Save, FileText } from "lucide-react";
+import { Building, Phone, Mail, Globe, MapPin, Eye, EyeOff, Save, FileText, Mail as MailIcon } from "lucide-react";
 import { getMediums } from "../services/mediumService";
 import { updateOrganization } from "../services/organizationService";
+import { sendEmail } from "../services/emailService";
 
 export default function OrganizationSettings() {
   const { profile } = useAuth();
@@ -36,6 +38,70 @@ export default function OrganizationSettings() {
 
   // ── Check if user is branch admin ──
   const isBranchAdmin = profile?.role?.toLowerCase() === "branch_admin";
+
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send organization report email ───────────────────────────────
+  const sendOrgReport = async () => {
+    if (!org) {
+      alert("Organization not loaded.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      const mediums = allMediums.filter(m => selectedMediumIds.includes(m.id)).map(m => m.name).join(', ') || 'None';
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Organization Profile</h2>
+          <p><strong>Name:</strong> ${org.company_name || '—'}</p>
+          <p><strong>Phone:</strong> ${org.phone || '—'}</p>
+          <p><strong>Email:</strong> ${org.email || '—'}</p>
+          <p><strong>Website:</strong> ${org.website || '—'}</p>
+          <p><strong>GSTIN:</strong> ${org.gstin || '—'}</p>
+          <p><strong>Address:</strong> ${org.address || '—'}</p>
+          <p><strong>Vision:</strong> ${org.vision || '—'}</p>
+          <p><strong>Mission:</strong> ${org.mission || '—'}</p>
+          <p><strong>Description:</strong> ${org.description || '—'}</p>
+          <p><strong>Mediums:</strong> ${mediums}</p>
+          <hr />
+          <p style="color:#888;font-size:10px;">Computer‑generated report from ${org.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Organization Profile - ${org.company_name || 'Academy'}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      toast.success("Organization report sent to admins.");
+    } catch (err) {
+      console.error("Email error:", err);
+      toast.error("Failed to send report.");
+    }
+  };
 
   // ── Fetch org from context or profile ──
   useEffect(() => {
@@ -160,8 +226,19 @@ export default function OrganizationSettings() {
 
   return (
     <>
-      <h1 className="text-3xl font-righteous text-primary-dark mb-2">Organization Settings</h1>
-      <p className="text-sm text-secondary-dark mb-6">Update academy details</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
+        <div>
+          <h1 className="text-3xl font-righteous text-primary-dark mb-2">Organization Settings</h1>
+          <p className="text-sm text-secondary-dark">Update academy details</p>
+        </div>
+        {/* 👇 Send Report button */}
+        <button
+          onClick={sendOrgReport}
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+        >
+          <MailIcon size={18} /> Send Report
+        </button>
+      </div>
 
       {isBranchAdmin && (
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded">

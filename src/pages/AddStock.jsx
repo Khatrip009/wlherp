@@ -5,10 +5,11 @@ import toast from "react-hot-toast";
 import { Plus, Trash2, Save } from "lucide-react";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { sendTemplateEmail } from "../services/emailService"; // 👈 Import
 
 export default function AddStock() {
   const queryClient = useQueryClient();
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -20,7 +21,23 @@ export default function AddStock() {
     { item_id: "", quantity: "1", unit_price: "", total: 0 },
   ]);
 
-  // Items – scoped
+  // ─── Helper: get admin emails ────────────────────────────────────
+  async function getAdminEmails() {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  }
+
+  // ─── Items, Tax Rates, Accounts queries (unchanged) ─────────────
   const { data: items = [] } = useQuery({
     queryKey: ["inventory-items", branchId, financialYearId],
     queryFn: async () => {
@@ -36,7 +53,6 @@ export default function AddStock() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Tax rates – scoped
   const { data: taxRates = [] } = useQuery({
     queryKey: ["tax-rates", branchId, financialYearId],
     queryFn: async () => {
@@ -51,7 +67,6 @@ export default function AddStock() {
     enabled: !!branchId && !!financialYearId,
   });
 
-  // Fetch account IDs – scoped
   const { data: accounts } = useQuery({
     queryKey: ["account-ids-stock", branchId, financialYearId],
     queryFn: async () => {
@@ -94,6 +109,7 @@ export default function AddStock() {
     staleTime: Infinity,
   });
 
+  // ─── Mutation with email notification ────────────────────────────
   const addStockMutation = useMutation({
     mutationFn: async () => {
       const acc = accounts;
@@ -104,6 +120,12 @@ export default function AddStock() {
       const selectedTax = taxRates.find((t) => t.id == taxRateId);
       const taxRate = selectedTax ? parseFloat(selectedTax.rate) : 0;
 
+      // We'll collect transaction details for the email
+      let totalSubtotal = 0;
+      let totalTax = 0;
+      let totalGrand = 0;
+      let itemNames = [];
+
       for (const line of lines) {
         const itemId = parseInt(line.item_id, 10);
         const qty = parseInt(line.quantity, 10) || 0;
@@ -112,7 +134,13 @@ export default function AddStock() {
 
         if (!itemId || qty <= 0 || price <= 0) continue;
 
-        // 1. Insert inventory transaction (already scoped)
+        // Get item name for summary
+        const item = items.find(i => i.id === itemId);
+        if (item) itemNames.push(`${item.item_name} x ${qty}`);
+
+        totalSubtotal += total;
+
+        // 1. Insert inventory transaction
         const { data: tx, error: txError } = await supabase
           .from("inventory_transactions")
           .insert({
@@ -128,15 +156,13 @@ export default function AddStock() {
           .select("id")
           .single();
 
-        if (txError) {
-          console.error("TX insert error:", txError);
-          throw txError;
-        }
+        if (txError) throw txError;
 
-        // 2. Journal entry (already scoped)
+        // 2. Journal entry
         if (taxRate > 0 && acc.inputCgstId && acc.inputSgstId) {
           const taxAmount = total * (taxRate / 100);
           const taxHalf = Math.round((taxAmount / 2) * 100) / 100;
+          totalTax += taxAmount;
 
           const { data: journal } = await supabase
             .from("journal_entries")
@@ -177,9 +203,22 @@ export default function AddStock() {
           ]);
         }
       }
-      return { success: true };
+
+      totalGrand = totalSubtotal + totalTax;
+
+      return {
+        success: true,
+        vendor,
+        reference,
+        date,
+        totalSubtotal,
+        totalTax,
+        totalGrand,
+        taxRate,
+        itemNames,
+      };
     },
-    onSuccess: () => {
+    onSuccess: async (result) => {
       toast.success("Stock added successfully");
       queryClient.invalidateQueries(["inventory-items"]);
       queryClient.invalidateQueries(["inventory-transactions"]);
@@ -187,9 +226,52 @@ export default function AddStock() {
       setVendor("");
       setReference("");
       setTaxRateId("");
+
+      // ─── Send email to admins ──────────────────────────────────
+      try {
+        if (!org?.id) {
+          console.warn("No organization ID, skipping admin notification.");
+          return;
+        }
+
+        const adminEmails = await getAdminEmails();
+        if (adminEmails.length === 0) {
+          console.warn("No admin emails found, skipping notification.");
+          return;
+        }
+
+        const message = `New stock has been added:\n` +
+          `Branch: ${branch?.branch_name || 'N/A'}\n` +
+          `Date: ${result.date}\n` +
+          `Vendor: ${result.vendor || 'N/A'}\n` +
+          `Reference: ${result.reference || 'N/A'}\n` +
+          `Items: ${result.itemNames.join(', ')}\n` +
+          `Subtotal: ₹${result.totalSubtotal.toLocaleString('en-IN')}\n` +
+          `Tax (${result.taxRate || 0}%): ₹${result.totalTax.toLocaleString('en-IN')}\n` +
+          `Grand Total: ₹${result.totalGrand.toLocaleString('en-IN')}`;
+
+        await sendTemplateEmail({
+          to: adminEmails,
+          organizationId: org.id,
+          slug: "system_announcement",
+          context: {
+            academyName: org.company_name || "Academy",
+            title: "New Stock Added",
+            message,
+            target_type: "Admin",
+          },
+          branchId,
+        });
+        console.log("✅ Admin stock notification sent.");
+      } catch (emailError) {
+        console.error("❌ Failed to send admin stock notification:", emailError);
+      }
     },
     onError: (err) => toast.error(err.message || "Failed to add stock"),
   });
+
+  // ─── Rest of the component (addLine, removeLine, updateLine, handlers) unchanged ──
+  // ... (all the existing JSX and handlers remain exactly as before)
 
   const addLine = () => setLines([...lines, { item_id: "", quantity: "1", unit_price: "", total: 0 }]);
   const removeLine = (idx) => setLines(lines.filter((_, i) => i !== idx));

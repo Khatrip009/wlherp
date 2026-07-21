@@ -1,10 +1,12 @@
+// src/pages/GSTReport.jsx
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Printer, Download, FileText, IndianRupee } from "lucide-react";
+import { Printer, Download, FileText, IndianRupee, Mail } from "lucide-react"; // 👈 Added Mail
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
 import toast from "react-hot-toast";
 import { useOrg } from "../context/OrganizationContext";
+import { sendEmail } from "../services/emailService"; // 👈 Import
 
 // ─── HELPERS ───────────────────────────────────────────────
 
@@ -63,7 +65,6 @@ function buildGSTR1JSON(invoices, org, startDate, endDate) {
     const totalSgst = items.reduce((s, i) => s + (i.sgst_amount || 0), 0);
     const totalIgst = items.reduce((s, i) => s + (i.igst_amount || 0), 0);
 
-    // Determine if inter‑state
     const pos = inv.place_of_supply || orgState;
     const isInterState = pos !== orgState;
 
@@ -149,7 +150,7 @@ export default function GSTReport() {
   const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
 
   // ── Branch & FY context for scoping ──
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org: currentOrg } = useOrg(); // 👈 Added currentOrg
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -178,7 +179,6 @@ export default function GSTReport() {
     queryFn: async () => {
       if (!branchId || !financialYearId) return [];
 
-      // 1. Fetch invoices – scoped
       let invQuery = supabase
         .from("invoices")
         .select(
@@ -196,7 +196,6 @@ export default function GSTReport() {
 
       if (!invoiceData.length) return [];
 
-      // 2. Fetch invoice items – scoped
       const invoiceIds = invoiceData.map((inv) => inv.id);
       let itemsQuery = supabase
         .from("invoice_items")
@@ -209,7 +208,6 @@ export default function GSTReport() {
       const { data: itemsData, error: itemsError } = await itemsQuery;
       if (itemsError) throw itemsError;
 
-      // 3. Fetch tax rates for items – scoped
       const taxRateIds = [...new Set(itemsData.map((item) => item.tax_rate_id).filter(Boolean))];
       let taxRates = [];
       if (taxRateIds.length > 0) {
@@ -224,7 +222,6 @@ export default function GSTReport() {
       }
       const taxRateMap = Object.fromEntries(taxRates.map((tr) => [tr.id, tr]));
 
-      // 4. Fetch inventory items for product items – scoped
       const productItemIds = itemsData
         .filter((item) => item.item_type === "product" && item.item_id)
         .map((item) => item.item_id);
@@ -241,7 +238,6 @@ export default function GSTReport() {
       }
       const inventoryMap = Object.fromEntries(inventoryItems.map((inv) => [inv.id, inv]));
 
-      // 5. Combine everything
       return invoiceData.map((inv) => ({
         ...inv,
         invoice_items: itemsData
@@ -327,7 +323,139 @@ export default function GSTReport() {
     };
   }, [invoices]);
 
-  // ── Handle JSON Download ──
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!currentOrg?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", currentOrg.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send Report Email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (invoices.length === 0) {
+      alert("No invoices found for the selected period.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      // Build HSN table rows
+      let hsnRows = summaries.hsnSummary.map((h) => `
+        <tr>
+          <td style="padding:4px 8px;border:1px solid #ddd;font-family:monospace;">${h.hsn_code}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${h.description || "—"}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${h.quantity}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${h.unit}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${h.taxable_value.toLocaleString('en-IN')}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${h.tax_amount.toLocaleString('en-IN')}</td>
+        </tr>
+      `).join('');
+
+      const totalHsnTaxable = summaries.hsnSummary.reduce((s, h) => s + h.taxable_value, 0);
+      const totalHsnTax = summaries.hsnSummary.reduce((s, h) => s + h.tax_amount, 0);
+
+      const orgName = org?.company_name || "Academy";
+      const gstin = org?.gstin || "Not Registered";
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">GSTR-1 Report</h2>
+          <p><strong>Organization:</strong> ${orgName}</p>
+          <p><strong>GSTIN:</strong> ${gstin}</p>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Period:</strong> ${startDate} – ${endDate}</p>
+          <hr />
+          <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:15px;">
+            <div style="border:1px solid #ddd;padding:8px 16px;border-radius:6px;background:#f9f9f9;">
+              <div style="font-size:10px;color:#888;">Total Invoices</div>
+              <div style="font-size:18px;font-weight:700;">${summaries.totalInvoices}</div>
+              <div style="font-size:10px;">B2B: ${summaries.totalB2B} | B2C: ${summaries.totalB2C}</div>
+            </div>
+            <div style="border:1px solid #ddd;padding:8px 16px;border-radius:6px;background:#f9f9f9;">
+              <div style="font-size:10px;color:#888;">Taxable Value</div>
+              <div style="font-size:18px;font-weight:700;">₹ ${summaries.totalTaxable.toLocaleString('en-IN')}</div>
+            </div>
+            <div style="border:1px solid #ddd;padding:8px 16px;border-radius:6px;background:#f9f9f9;">
+              <div style="font-size:10px;color:#888;">Total GST</div>
+              <div style="font-size:18px;font-weight:700;color:#2e7d32;">₹ ${summaries.totalGst.toLocaleString('en-IN')}</div>
+            </div>
+            <div style="border:1px solid #ddd;padding:8px 16px;border-radius:6px;background:#f9f9f9;">
+              <div style="font-size:10px;color:#888;">Avg Tax Rate</div>
+              <div style="font-size:18px;font-weight:700;color:#283593;">
+                ${summaries.totalTaxable > 0 ? ((summaries.totalGst / summaries.totalTaxable) * 100).toFixed(1) : 0}%
+              </div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:15px;">
+            <div style="border:1px solid #ddd;padding:8px 16px;border-radius:6px;background:#f9f9f9;">
+              <div style="font-weight:600;color:#1565C0;">B2B Supplies (${summaries.totalB2B} invoices)</div>
+              <div>Taxable Value: ₹ ${summaries.b2bTaxable.toLocaleString('en-IN')}</div>
+              <div>GST: ₹ ${summaries.b2bGst.toLocaleString('en-IN')}</div>
+            </div>
+            <div style="border:1px solid #ddd;padding:8px 16px;border-radius:6px;background:#f9f9f9;">
+              <div style="font-weight:600;color:#E65100;">B2C Supplies (${summaries.totalB2C} invoices)</div>
+              <div>Taxable Value: ₹ ${summaries.b2cTaxable.toLocaleString('en-IN')}</div>
+              <div>GST: ₹ ${summaries.b2cGst.toLocaleString('en-IN')}</div>
+            </div>
+          </div>
+
+          <h3 style="color:#0D47A1;">HSN Summary</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
+            <thead style="background:#e3f2fd;">
+              <tr>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">HSN/SAC</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Description</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Qty</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Unit</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Taxable Value</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Tax</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${hsnRows || '<tr><td colspan="6" style="padding:8px;text-align:center;">No HSN data</td></tr>'}
+            </tbody>
+            <tfoot style="font-weight:bold;background:#f5f5f5;">
+              <tr>
+                <td colspan="4" style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Total</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${totalHsnTaxable.toLocaleString('en-IN')}</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${totalHsnTax.toLocaleString('en-IN')}</td>
+              </tr>
+            </tfoot>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated GSTR-1 report from ${orgName}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `GSTR-1 Report - ${startDate} to ${endDate}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── Handle JSON Download ───────────────────────────────────────────
   const handleDownloadJSON = () => {
     if (!org) {
       toast.error("Organization details not loaded");
@@ -348,7 +476,7 @@ export default function GSTReport() {
     toast.success("GSTR-1 JSON downloaded");
   };
 
-  // ── Handle Print ──
+  // ─── Handle Print ──────────────────────────────────────────────────
   const handlePrint = () => {
     const printContent = document.getElementById("gst-preview")?.outerHTML;
     if (!printContent) return;
@@ -434,6 +562,14 @@ export default function GSTReport() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {/* 👇 NEW Send Report button */}
+          <button
+            onClick={sendReportEmail}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            <Mail size={16} /> Send Report
+          </button>
           <button
             onClick={handlePrint}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"

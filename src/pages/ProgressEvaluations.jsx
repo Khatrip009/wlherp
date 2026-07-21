@@ -18,11 +18,11 @@ import {
   X,
   TrendingUp,
   Calendar,
+  Mail,
 } from "lucide-react";
 import Papa from "papaparse";
 
 import BackButton from "../components/BackButton";
-
 import ProgressEvaluationForm from "../components/ProgressEvaluationForm";
 import {
   getProgressEvaluations,
@@ -34,12 +34,13 @@ import {
   getMediumOptions,
 } from "../services/progressService";
 import { useOrg } from "../context/OrganizationContext";
+import { supabase } from "../api/supabase";
+import { sendEmail } from "../services/emailService";
 
 export default function ProgressEvaluations() {
   const queryClient = useQueryClient();
 
-  // ── Organization, Branch & Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
@@ -64,7 +65,104 @@ export default function ProgressEvaluations() {
   const [editing, setEditing] = useState(null);
   const fileInputRef = useRef(null);
 
-  // Dropdown for batches & mediums
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send Report Email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (evaluations.length === 0) {
+      alert("No evaluations to send.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      // Build HTML table rows
+      let tableRows = evaluations.map((e) => {
+        const studentName = e.students ? `${e.students.first_name || ''} ${e.students.last_name || ''}`.trim() : '—';
+        const admissionNo = e.students?.admission_no || '—';
+        const batchName = e.batches?.batch_name || '—';
+        const mediumName = e.medium_name || '—';
+        const date = e.evaluation_date || '—';
+        const attendance = e.attendance_percentage != null ? `${e.attendance_percentage}%` : '-';
+        const score = e.performance_score != null ? e.performance_score : '-';
+        const remarks = e.teacher_remarks || '-';
+
+        return `
+          <tr>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${studentName}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${admissionNo}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${batchName}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${mediumName}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${date}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${attendance}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${score}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${remarks}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Progress Evaluation Report</h2>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Total Evaluations:</strong> ${evaluations.length}</p>
+          <p><strong>Filters:</strong> ${JSON.stringify(allFilters).replace(/[{}"]/g,'')}</p>
+          <hr />
+          <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
+            <thead style="background:#e3f2fd;">
+              <tr>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Student</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Admission No</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Batch</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Medium</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Date</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:center;">Attendance %</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:center;">Score</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Remarks</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Progress Evaluation Report - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── Dropdowns ──────────────────────────────────────────────────────
   const { data: batches = [] } = useQuery({
     queryKey: ["active-batches", branchId, financialYearId],
     queryFn: () => getActiveBatches(branchId, financialYearId),
@@ -74,11 +172,11 @@ export default function ProgressEvaluations() {
 
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediums"],
-    queryFn: getMediumOptions, // organisation‑wide
+    queryFn: getMediumOptions,
     staleTime: 10 * 60 * 1000,
   });
 
-  // Infinite query for evaluations – now scoped
+  // ─── Infinite query ─────────────────────────────────────────────────
   const {
     data,
     isLoading,
@@ -103,7 +201,7 @@ export default function ProgressEvaluations() {
 
   const evaluations = data?.pages.flatMap((page) => page.data) || [];
 
-  // Auto-computed averages
+  // ─── Averages ──────────────────────────────────────────────────────
   const averages = useMemo(() => {
     const items = evaluations.filter(
       (e) => e.attendance_percentage != null && e.performance_score != null
@@ -117,7 +215,7 @@ export default function ProgressEvaluations() {
     };
   }, [evaluations]);
 
-  // Mutations – now pass context or explicit IDs
+  // ─── Mutations ──────────────────────────────────────────────────────
   const createMutation = useMutation({
     mutationFn: (payload) => createProgressEvaluation(payload, ctx),
     onSuccess: () => {
@@ -147,7 +245,7 @@ export default function ProgressEvaluations() {
     onError: () => toast.error("Delete failed"),
   });
 
-  // CSV Import – pass context
+  // ─── CSV handlers ──────────────────────────────────────────────────
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -179,7 +277,6 @@ export default function ProgressEvaluations() {
     });
   }
 
-  // CSV Export – scoped
   async function handleCSVExport() {
     try {
       const allData = await getAllProgressEvaluationsForExport(
@@ -228,6 +325,7 @@ export default function ProgressEvaluations() {
   return (
     <>
       <BackButton to="/academics-hub" label="Academics" />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
@@ -237,6 +335,13 @@ export default function ProgressEvaluations() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {/* 👇 Send Report button */}
+          <button
+            onClick={sendReportEmail}
+            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+          >
+            <Mail size={18} /> Send Report
+          </button>
           <button
             onClick={() => setShowForm(true)}
             className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"

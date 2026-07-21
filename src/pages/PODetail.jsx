@@ -3,12 +3,13 @@ import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { ArrowLeft, Printer, Truck } from "lucide-react";
+import { ArrowLeft, Printer, Truck, Mail } from "lucide-react";
 
 import { supabase } from "../api/supabase";
 import { receivePO } from "../services/poService";
 import { getOrganization } from "../services/organizationService";
 import { useOrg } from "../context/OrganizationContext";
+import { sendTemplateEmail } from "../services/emailService";
 
 // Indian English number‑to‑words converter
 function numberToWords(num) {
@@ -32,7 +33,6 @@ export default function PODetail() {
   const { id } = useParams();
   const queryClient = useQueryClient();
 
-  // ── Get organisation and branch/FY for print header and scoping ──
   const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
@@ -45,7 +45,7 @@ export default function PODetail() {
 
   const context = { branchId, financialYearId };
 
-  // Fetch purchase order – scoped
+  // ─── Fetch PO ───────────────────────────────────────────────────────
   const { data: po, isLoading } = useQuery({
     queryKey: ["purchase-order", id, branchId, financialYearId],
     queryFn: async () => {
@@ -68,7 +68,7 @@ export default function PODetail() {
     enabled: !!id && !!branchId && !!financialYearId,
   });
 
-  // Receive PO mutation (already uses context)
+  // ─── Receive PO mutation ──────────────────────────────────────────
   const receiveMut = useMutation({
     mutationFn: () => receivePO(id, context),
     onSuccess: () => {
@@ -79,6 +79,55 @@ export default function PODetail() {
     onError: () => toast.error("Receive failed"),
   });
 
+  // ─── Email PO to vendor ────────────────────────────────────────────
+  const sendPOEmail = async () => {
+    if (!po) return;
+    if (!po.vendor_email) {
+      toast.error("No vendor email address found.");
+      return;
+    }
+
+    try {
+      // Build items list string
+      const items = po.purchase_order_items || [];
+      const itemsList = items
+        .map(item => {
+          const name = item.inventory_items?.item_name || 'Unknown Item';
+          return `${name} x ${item.quantity_ordered} @ ₹${item.unit_price}`;
+        })
+        .join('; ');
+
+      const subtotal = items.reduce((s, i) => s + i.quantity_ordered * i.unit_price, 0);
+      // Compute total tax (simplified – we don't have tax rate per item in this context, we'll just use total_amount from the PO)
+      const totalTax = (po.total_amount || 0) - subtotal;
+      const grandTotal = po.total_amount || subtotal + totalTax;
+
+      const contextEmail = {
+        academyName: org?.company_name || "Academy",
+        vendor_name: po.vendor || 'Vendor',
+        po_number: po.po_number,
+        order_date: po.order_date,
+        expected_date: po.expected_date || 'Not specified',
+        total_amount: grandTotal,
+        items_list: itemsList || 'No items',
+      };
+
+      await sendTemplateEmail({
+        to: po.vendor_email,
+        organizationId: org?.id,
+        slug: "po_sent",
+        context: contextEmail,
+        branchId,
+      });
+
+      toast.success(`PO sent to ${po.vendor_email}`);
+    } catch (err) {
+      console.error("Email error:", err);
+      toast.error("Failed to send PO email.");
+    }
+  };
+
+  // ─── Print handler ──────────────────────────────────────────────────
   const handlePrint = () => {
     const printContent = document.getElementById("po-print-area")?.innerHTML;
     if (!printContent) return;
@@ -132,13 +181,12 @@ export default function PODetail() {
     printWindow.document.close();
   };
 
-  if (isLoading) return <><div className="p-8 text-center">Loading PO…</div></>;
-  if (!po) return <><div className="p-8 text-center text-red-600">PO not found</div></>;
+  if (isLoading) return <div className="p-8 text-center">Loading PO…</div>;
+  if (!po) return <div className="p-8 text-center text-red-600">PO not found</div>;
 
   const items = po.purchase_order_items || [];
   const subtotal = items.reduce((s, i) => s + i.quantity_ordered * i.unit_price, 0);
 
-  // Calculate tax totals per rate
   const taxSummary = {};
   items.forEach((item) => {
     const rate = item.tax_rates;
@@ -164,12 +212,26 @@ export default function PODetail() {
           <ArrowLeft size={18} /> Back to POs
         </Link>
         <div className="flex gap-2">
+          {/* 👇 Email PO button */}
+          <button
+            onClick={sendPOEmail}
+            disabled={!po.vendor_email}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50"
+          >
+            <Mail size={16} /> Email PO
+          </button>
           {po.status !== "Received" && po.status !== "Cancelled" && (
-            <button onClick={() => receiveMut.mutate()} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+            <button
+              onClick={() => receiveMut.mutate()}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            >
               <Truck size={16} /> Receive
             </button>
           )}
-          <button onClick={handlePrint} className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+          <button
+            onClick={handlePrint}
+            className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          >
             <Printer size={16} /> Print
           </button>
         </div>

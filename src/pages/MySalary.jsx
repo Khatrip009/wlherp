@@ -1,24 +1,37 @@
+// src/pages/MySalary.jsx
 import { useQuery } from "@tanstack/react-query";
-import { IndianRupee, Download } from "lucide-react";
+import { IndianRupee, Download, Mail } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../api/supabase";
 import BackButton from "../components/BackButton";
 import { useOrg } from "../context/OrganizationContext";
-import { useTheme } from "../context/ThemeContext";                     // NEW
+import { useTheme } from "../context/ThemeContext";
 import { generateSalarySlipPDF } from "../utils/salarySlipPdf";
+import { sendEmail } from "../services/emailService";
 
 export default function MySalary() {
   const { user } = useAuth();
 
-  // ── Context: org, branch, financial year, theme ──
   const { branch, selectedFinancialYear, org } = useOrg();
-  const { theme } = useTheme();                                       // NEW
+  const { theme } = useTheme();
 
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  // Teacher ID – scoped to branch & FY
+  // ─── Helper: fetch teacher's email ────────────────────────────────
+  const getTeacherEmail = async (id) => {
+    if (!id) return null;
+    const { data, error } = await supabase
+      .from("teachers")
+      .select("email")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) return null;
+    return data?.email || null;
+  };
+
+  // ─── Teacher ID – scoped ──────────────────────────────────────────
   const { data: teacherId } = useQuery({
     queryKey: ["teacher-id", user?.id, branchId, financialYearId],
     queryFn: async () => {
@@ -37,14 +50,14 @@ export default function MySalary() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Teacher details (for the PDF)
+  // ─── Teacher details (including email for report) ────────────────
   const { data: teacherDetails } = useQuery({
     queryKey: ["teacher-details", teacherId],
     queryFn: async () => {
       if (!teacherId) return null;
       const { data } = await supabase
         .from("teachers")
-        .select("first_name, last_name, employee_code")
+        .select("first_name, last_name, employee_code, email")
         .eq("id", teacherId)
         .single();
       return data;
@@ -53,7 +66,7 @@ export default function MySalary() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Salary payments – scoped to branch & FY
+  // ─── Salary payments – scoped ─────────────────────────────────────
   const { data: payments = [], isLoading } = useQuery({
     queryKey: ["my-salary", teacherId, branchId, financialYearId],
     queryFn: async () => {
@@ -80,7 +93,87 @@ export default function MySalary() {
   const totalNet = payments.reduce((s, p) => s + (Number(p.net_amount) || 0), 0);
   const totalTDS = payments.reduce((s, p) => s + (Number(p.tds_amount) || 0), 0);
 
-  // ── Handler – now passes org, branch & theme ──
+  // ─── Send salary report email ──────────────────────────────────────
+  const sendSalaryReport = async () => {
+    if (payments.length === 0) {
+      alert("No salary records to send.");
+      return;
+    }
+
+    try {
+      // 1. Determine recipient email (teacher's email)
+      let recipientEmail = teacherDetails?.email;
+      if (!recipientEmail && teacherId) {
+        recipientEmail = await getTeacherEmail(teacherId);
+      }
+      if (!recipientEmail) {
+        alert("No email address found for your account.");
+        return;
+      }
+
+      // 2. Build HTML table rows
+      let tableRows = payments.map((p) => `
+        <tr>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${p.payment_date}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(p.amount || 0).toLocaleString('en-IN')}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${p.tds_percentage || 0}%</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(p.tds_amount || 0).toLocaleString('en-IN')}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;font-weight:bold;color:#2e7d32;">₹ ${Number(p.net_amount || p.amount || 0).toLocaleString('en-IN')}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${p.payment_mode || '—'}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${p.remarks || '—'}</td>
+        </tr>
+      `).join('');
+
+      const teacherName = teacherDetails ? `${teacherDetails.first_name} ${teacherDetails.last_name}`.trim() : 'Teacher';
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Salary Summary</h2>
+          <p><strong>Teacher:</strong> ${teacherName}</p>
+          <p><strong>Employee Code:</strong> ${teacherDetails?.employee_code || 'N/A'}</p>
+          <p><strong>Total Payments:</strong> ${payments.length}</p>
+          <hr />
+          <div style="display:flex;gap:20px;margin-bottom:15px;">
+            <div><strong>Total Gross:</strong> ₹ ${totalGross.toLocaleString('en-IN')}</div>
+            <div><strong>Total TDS:</strong> ₹ ${totalTDS.toLocaleString('en-IN')}</div>
+            <div><strong>Total Net:</strong> ₹ ${totalNet.toLocaleString('en-IN')}</div>
+          </div>
+          <h3>Payment History</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
+            <thead style="background:#e3f2fd;">
+              <tr>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Date</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Gross</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">TDS %</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">TDS</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Net</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Mode</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Remarks</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: recipientEmail,
+        subject: `My Salary Report - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      toast.success("Report sent to your email.");
+    } catch (err) {
+      console.error("Email error:", err);
+      toast.error("Failed to send report.");
+    }
+  };
+
+  // ─── PDF download handler (unchanged) ─────────────────────────────
   const handleDownloadSlip = (payment) => {
     if (!teacherDetails) return;
     generateSalarySlipPDF(
@@ -89,18 +182,28 @@ export default function MySalary() {
         teacher_name: `${teacherDetails.first_name} ${teacherDetails.last_name}`,
         employee_code: teacherDetails.employee_code,
       },
-      { org, branch, theme }      // <-- pass all three contexts
+      { org, branch, theme }
     );
   };
 
-  if (isLoading) return <><div className="p-8 text-center">Loading...</div></>;
+  if (isLoading) return <div className="p-8 text-center">Loading...</div>;
 
   return (
     <>
       <BackButton to="/teacher" label="Dashboard" />
-      <div className="mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">My Salary</h1>
-        <p className="text-sm text-secondary-dark font-montserrat mt-1">Your salary payment history</p>
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-3xl font-righteous text-primary-dark">My Salary</h1>
+          <p className="text-sm text-secondary-dark font-montserrat mt-1">Your salary payment history</p>
+        </div>
+        {/* 👇 Send Report button */}
+        <button
+          onClick={sendSalaryReport}
+          disabled={payments.length === 0}
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-montserrat flex items-center gap-2 disabled:opacity-50"
+        >
+          <Mail size={16} /> Send Report
+        </button>
       </div>
 
       {payments.length > 0 && (

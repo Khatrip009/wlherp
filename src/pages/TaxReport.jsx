@@ -1,13 +1,15 @@
+// src/pages/TaxReport.jsx
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 
-import { Download, Printer } from "lucide-react";
+import { Download, Printer, Mail } from "lucide-react";
 import toast from "react-hot-toast";
 import Papa from "papaparse";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
+import { sendEmail } from "../services/emailService";
 
 // ─── Helper: load image as base64 ────────────────────────────
 async function loadImageAsBase64(url) {
@@ -29,12 +31,99 @@ export default function TaxReport() {
     new Date().toISOString().split("T")[0]
   );
 
-  // ── Branch & Financial Year context ──
   const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  // Fetch tax_collections – scoped to branch & FY
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!currentOrg?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", currentOrg.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send Report Email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (summaryArray.length === 0) {
+      alert("No tax data to send.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      // Build HTML table rows for summary
+      let tableRows = summaryArray.map(row => `
+        <tr>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${row.name}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${row.rate}%</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${row.count}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${row.totalTax.toLocaleString('en-IN')}</td>
+        </tr>
+      `).join('');
+
+      const orgName = currentOrg?.company_name || "Academy";
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Tax Report</h2>
+          <p><strong>Organization:</strong> ${orgName}</p>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Period:</strong> ${startDate} – ${endDate}</p>
+          <p><strong>Total Tax Collected:</strong> ₹ ${totalTax.toLocaleString('en-IN')}</p>
+          <hr />
+          <h3 style="color:#0D47A1;">Breakdown by Tax Rate</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
+            <thead style="background:#e3f2fd;">
+              <tr>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Tax Rate</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:center;">Rate %</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:center;">Transactions</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Tax Total (₹)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+            <tfoot style="font-weight:bold;background:#f5f5f5;">
+              <tr>
+                <td colspan="3" style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Total</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${totalTax.toLocaleString('en-IN')}</td>
+              </tr>
+            </tfoot>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${orgName}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Tax Report - ${startDate} to ${endDate}`,
+        html: htmlBody,
+        from: currentOrg?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── Data fetching ──────────────────────────────────────────────────
   const { data: taxRecords = [], isLoading } = useQuery({
     queryKey: ["tax-report", startDate, endDate, branchId, financialYearId],
     queryFn: async () => {
@@ -81,7 +170,7 @@ export default function TaxReport() {
 
   const totalTax = summaryArray.reduce((s, r) => s + r.totalTax, 0);
 
-  // CSV Export (unchanged)
+  // ─── CSV Export ─────────────────────────────────────────────────────
   const handleExport = () => {
     if (taxRecords.length === 0) {
       toast.error("No data to export");
@@ -112,11 +201,10 @@ export default function TaxReport() {
       return;
     }
 
-    // 1. Load organization (letterhead) using current org id
     const { data: org } = await supabase
       .from("organization")
       .select("company_name, letterhead_url")
-      .eq("id", currentOrg?.id)   // use current org from context
+      .eq("id", currentOrg?.id)
       .single();
 
     const letterheadUrl = org?.letterhead_url || null;
@@ -131,7 +219,6 @@ export default function TaxReport() {
       }
     }
 
-    // 2. PDF setup (A4 portrait)
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -139,21 +226,18 @@ export default function TaxReport() {
     const sideMargin = 16;
     const bottomMargin = 20;
 
-    // Add letterhead
     if (letterheadBase64) {
       doc.addImage(letterheadBase64, "PNG", 0, 0, pageWidth, pageHeight);
     }
 
     let y = topMargin;
 
-    // Title
     doc.setFont("times", "bold");
     doc.setFontSize(22);
     doc.setTextColor("#0D47A1");
     doc.text("Tax Report", pageWidth / 2, y, { align: "center" });
     y += 12;
 
-    // Period subtitle
     const period = `${startDate} – ${endDate}`;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
@@ -164,14 +248,12 @@ export default function TaxReport() {
     doc.text(`Period: ${period}`, pageWidth / 2, y, { align: "center" });
     y += 12;
 
-    // Total Tax Collected (highlighted)
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
     doc.setTextColor("#0D47A1");
     doc.text(`Total Tax Collected: ₹${totalTax.toLocaleString("en-IN")}`, sideMargin, y);
     y += 10;
 
-    // Summary table
     const headers = [["Tax Rate", "Rate %", "Transactions", "Tax Total (₹)"]];
     const body = summaryArray.map(row => [
       row.name,
@@ -230,7 +312,6 @@ export default function TaxReport() {
       },
     });
 
-    // Final page numbers
     const totalPages = doc.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i);
@@ -245,11 +326,20 @@ export default function TaxReport() {
 
   return (
     <>
-      <div className="mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">Tax Report</h1>
-        <p className="text-sm text-secondary-dark font-montserrat mt-1">
-          Tax collected (from fee payments & income)
-        </p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+        <div>
+          <h1 className="text-3xl font-righteous text-primary-dark">Tax Report</h1>
+          <p className="text-sm text-secondary-dark font-montserrat mt-1">
+            Tax collected (from fee payments & income)
+          </p>
+        </div>
+        {/* 👇 Send Report button */}
+        <button
+          onClick={sendReportEmail}
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+        >
+          <Mail size={16} /> Send Report
+        </button>
       </div>
 
       {/* Date filters & buttons */}

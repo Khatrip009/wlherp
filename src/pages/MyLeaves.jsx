@@ -1,13 +1,15 @@
+// src/pages/MyLeaves.jsx
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { Plus, Calendar, FileText, X, Download } from "lucide-react";
+import { Plus, Calendar, FileText, X, Download, Mail } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../api/supabase";
 import BackButton from "../components/BackButton";
 import { useOrg } from "../context/OrganizationContext";
 import { generateLeaveApplicationPdf } from "../utils/leaveApplicationPdf";
+import { sendEmail } from "../services/emailService";
 
 export default function MyLeaves() {
   const { user } = useAuth();
@@ -18,6 +20,7 @@ export default function MyLeaves() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ start_date: "", end_date: "", reason: "" });
   const [downloading, setDownloading] = useState(null);
+  const [sendingReport, setSendingReport] = useState(false);
 
   // ── Teacher ID ──────────────────────────────────────────────
   const { data: teacherId } = useQuery({
@@ -70,6 +73,111 @@ export default function MyLeaves() {
     enabled: !!teacherId && !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
+
+  // ── Helper: get admin emails ───────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send leave report email ────────────────────────────────
+  const sendLeaveReport = async () => {
+    if (leaves.length === 0) {
+      alert("No leave records to send.");
+      return;
+    }
+
+    setSendingReport(true);
+    try {
+      // Get teacher email from the first leave (or fetch separately)
+      let teacherEmail = leaves[0]?.teachers?.email;
+      if (!teacherEmail && teacherId) {
+        const { data: teacher } = await supabase
+          .from("teachers")
+          .select("email")
+          .eq("id", teacherId)
+          .single();
+        teacherEmail = teacher?.email;
+      }
+      if (!teacherEmail) {
+        alert("No email address found for your account.");
+        setSendingReport(false);
+        return;
+      }
+
+      // Build HTML table rows
+      let tableRows = leaves.map((l) => {
+        const statusColor = l.status === "Approved" ? "#2e7d32" :
+                            l.status === "Rejected" ? "#c62828" : "#e65100";
+        const statusBg = l.status === "Approved" ? "#e8f5e9" :
+                         l.status === "Rejected" ? "#ffebee" : "#fff3e0";
+        return `
+          <tr>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${l.start_date}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${l.end_date}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${l.reason || '—'}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">
+              <span style="background:${statusBg};color:${statusColor};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;">${l.status}</span>
+            </td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${l.admin_remarks || '—'}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const pendingCount = leaves.filter(l => l.status === "Pending").length;
+      const approvedCount = leaves.filter(l => l.status === "Approved").length;
+      const rejectedCount = leaves.filter(l => l.status === "Rejected").length;
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">My Leave History</h2>
+          <p><strong>Teacher:</strong> ${leaves[0]?.teachers?.first_name || ''} ${leaves[0]?.teachers?.last_name || ''}</p>
+          <p><strong>Total Requests:</strong> ${leaves.length}</p>
+          <p><strong>Pending:</strong> ${pendingCount} | <strong>Approved:</strong> ${approvedCount} | <strong>Rejected:</strong> ${rejectedCount}</p>
+          <hr />
+          <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
+            <thead style="background:#e3f2fd;">
+              <tr>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Start Date</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">End Date</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Reason</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Status</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Admin Remarks</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: teacherEmail,
+        subject: `My Leave Report - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      toast.success("Report sent to your email.");
+    } catch (err) {
+      console.error("Email error:", err);
+      toast.error("Failed to send report.");
+    } finally {
+      setSendingReport(false);
+    }
+  };
 
   // ── Create leave mutation ────────────────────────────────
   const createMutation = useMutation({
@@ -134,12 +242,23 @@ export default function MyLeaves() {
           <h1 className="text-3xl font-righteous text-primary-dark">My Leaves</h1>
           <p className="text-sm text-secondary-dark font-montserrat mt-1">Manage your leave requests</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg text-sm font-montserrat flex items-center gap-2"
-        >
-          <Plus size={16} /> Request Leave
-        </button>
+        <div className="flex gap-2">
+          {/* 👇 Send Report button */}
+          <button
+            onClick={sendLeaveReport}
+            disabled={sendingReport || leaves.length === 0}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-montserrat flex items-center gap-2 disabled:opacity-50"
+          >
+            <Mail size={16} />
+            {sendingReport ? "Sending..." : "Send Report"}
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg text-sm font-montserrat flex items-center gap-2"
+          >
+            <Plus size={16} /> Request Leave
+          </button>
+        </div>
       </div>
 
       {leaves.length > 0 && (

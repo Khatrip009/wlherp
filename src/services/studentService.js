@@ -1,5 +1,59 @@
 // src/services/studentService.js
 import { supabase } from "../api/supabase";
+import { sendTemplateEmail } from "./emailService"; // 👈 Added
+
+// ─── Helpers ──────────────────────────────────────────────────────────
+
+async function getOrganizationFromBranch(branchId) {
+  const { data: branch, error: branchError } = await supabase
+    .from("branches")
+    .select("organization_id")
+    .eq("id", branchId)
+    .single();
+  if (branchError) throw branchError;
+
+  const { data: org, error: orgError } = await supabase
+    .from("organization")
+    .select("id, company_name")
+    .eq("id", branch.organization_id)
+    .single();
+  if (orgError) throw orgError;
+  return org;
+}
+
+/**
+ * Send a welcome email to the student.
+ */
+async function sendStudentWelcomeEmail(student, context) {
+  const { branchId, financialYearId } = context;
+  try {
+    if (!student.email) {
+      console.warn(`No email for student ${student.id}, skipping welcome email.`);
+      return;
+    }
+
+    const org = await getOrganizationFromBranch(branchId);
+    const fullName = `${student.first_name} ${student.last_name}`.trim();
+
+    const contextEmail = {
+      academyName: org.company_name,
+      full_name: fullName || 'Student',
+      role: 'Student',
+      login_link: `${window.location.origin}/login`, // adjust to your app's login URL
+    };
+
+    await sendTemplateEmail({
+      to: student.email,
+      organizationId: org.id,
+      slug: "account_welcome", // or "system_announcement" if you prefer
+      context: contextEmail,
+      branchId,
+    });
+    console.log(`✅ Welcome email sent to student ${student.email}`);
+  } catch (error) {
+    console.error("❌ Failed to send student welcome email:", error);
+  }
+}
 
 // Helper: convert empty strings to null for fields that must be integers or dates
 function cleanStudentPayload(payload) {
@@ -162,6 +216,11 @@ export async function createStudent(payload, context) {
     if (batchError) throw batchError;
   }
 
+  // ─── Send welcome email to student ──────────────────────
+  if (email) {
+    await sendStudentWelcomeEmail({ ...student, email }, context);
+  }
+
   return student;
 }
 
@@ -293,4 +352,3 @@ export async function getMediumOptions() {
   if (error) throw error;
   return data || [];
 }
-

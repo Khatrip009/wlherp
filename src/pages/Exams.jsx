@@ -19,7 +19,8 @@ import {
   Award,
   Calendar,
   Layers,
-} from "lucide-react";
+  Mail,
+} from "lucide-react"; // 👈 Added Mail
 import { useNavigate } from "react-router-dom";
 import Papa from "papaparse";
 
@@ -38,6 +39,8 @@ import {
 } from "../services/examService";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
+import { supabase } from "../api/supabase";
+import { sendTemplateEmail, sendEmail } from "../services/emailService"; // 👈 Import
 
 export default function Exams() {
   const { profile } = useAuth();
@@ -48,7 +51,7 @@ export default function Exams() {
 
   const queryClient = useQueryClient();
 
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
@@ -72,9 +75,164 @@ export default function Exams() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [sendingSchedule, setSendingSchedule] = useState(null); // store exam id for loading state
   const fileInputRef = useRef(null);
 
-  // Dropdowns
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send exam schedule emails to students ─────────────────────────
+  const sendExamScheduleEmails = async (examId) => {
+    try {
+      // 1. Fetch exam details with batch info
+      const { data: exam, error: examError } = await supabase
+        .from("exams")
+        .select(`
+          *,
+          batches(batch_name, course_id, courses(course_name)),
+          subjects(subject_name)
+        `)
+        .eq("id", examId)
+        .single();
+      if (examError) throw examError;
+
+      // 2. Fetch active students in the batch
+      const { data: studentBatches, error: studentError } = await supabase
+        .from("student_batches")
+        .select("student_id, students(first_name, last_name, email)")
+        .eq("batch_id", exam.batch_id)
+        .eq("status", "active")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
+      if (studentError) throw studentError;
+
+      if (!studentBatches || studentBatches.length === 0) {
+        toast.error("No active students in this batch.");
+        return;
+      }
+
+      // 3. Send email to each student (or parent)
+      let sentCount = 0;
+      for (const sb of studentBatches) {
+        const student = sb.students;
+        let recipientEmail = student.email;
+
+        // Try to find parent email
+        const { data: parent, error: parentError } = await supabase
+          .from("student_parents")
+          .select("parents!inner(email)")
+          .eq("student_id", student.id)
+          .maybeSingle();
+        if (!parentError && parent && parent.parents?.email) {
+          recipientEmail = parent.parents.email;
+        }
+
+        if (!recipientEmail) continue;
+
+        const context = {
+          academyName: org?.company_name || "Academy",
+          exam_name: exam.exam_name,
+          subject_name: exam.subjects?.subject_name || "",
+          exam_date: exam.exam_date,
+          total_marks: exam.total_marks,
+          batch_name: exam.batches?.batch_name || "",
+        };
+
+        await sendTemplateEmail({
+          to: recipientEmail,
+          organizationId: org?.id,
+          slug: "exam_schedule",
+          context,
+          branchId,
+        });
+        sentCount++;
+      }
+      toast.success(`Exam schedule sent to ${sentCount} student(s).`);
+    } catch (err) {
+      console.error("Send schedule error:", err);
+      toast.error("Failed to send schedule emails.");
+    }
+  };
+
+  // ─── Send Report to Admins ─────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (exams.length === 0) {
+      alert("No exams to send.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      // Build HTML table rows
+      let tableRows = exams.map((e) => `
+        <tr>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${e.exam_name}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${e.batches?.batch_name || ""}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${e.batches?.courses?.course_name || ""}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${e.medium_name || ""}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${e.exam_date}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${e.total_marks || ""}</td>
+        </tr>
+      `).join('');
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Exam Report</h2>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Total Exams:</strong> ${exams.length}</p>
+          <hr />
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:#e3f2fd;">
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Exam</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Batch</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Course</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Medium</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Date</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Total Marks</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Exam Report - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── Dropdowns ──────────────────────────────────────────────────────
   const { data: batches = [] } = useQuery({
     queryKey: ["batches-dropdown", branchId, financialYearId],
     queryFn: () => getBatchOptions(branchId, financialYearId),
@@ -92,7 +250,7 @@ export default function Exams() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Exams list – scoped
+  // ─── Exams list – scoped ──────────────────────────────────────────
   const {
     data,
     isLoading,
@@ -117,6 +275,7 @@ export default function Exams() {
 
   const exams = data?.pages.flatMap((page) => page.data) || [];
 
+  // ─── Mutations ──────────────────────────────────────────────────────
   const createMutation = useMutation({
     mutationFn: (payload) => createExam(payload, ctx),
     onSuccess: () => {
@@ -146,6 +305,7 @@ export default function Exams() {
     onError: () => toast.error("Delete failed"),
   });
 
+  // ─── CSV handlers ──────────────────────────────────────────────────
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -214,8 +374,6 @@ export default function Exams() {
 
   return (
     <div className="space-y-6 px-4 sm:px-6 lg:px-0">
-      
-
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1
@@ -239,6 +397,14 @@ export default function Exams() {
               style={{ fontFamily: "var(--font-body)" }}
             >
               <Award size={18} /> Add Exam
+            </button>
+            {/* 👇 NEW Send Report button */}
+            <button
+              onClick={sendReportEmail}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+              style={{ fontFamily: "var(--font-body)" }}
+            >
+              <Mail size={18} /> Send Report
             </button>
             <button
               onClick={handleCSVExport}
@@ -265,6 +431,7 @@ export default function Exams() {
         )}
       </div>
 
+      {/* Search & Filters (unchanged) */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search
@@ -366,6 +533,7 @@ export default function Exams() {
         </div>
       )}
 
+      {/* Table */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px]">
@@ -426,18 +594,33 @@ export default function Exams() {
                     <td className="text-sm text-gray-700 dark:text-gray-300">{exam.exam_date}</td>
                     <td className="text-sm text-gray-700 dark:text-gray-300">{exam.total_marks || "-"}</td>
                     <td className="text-sm">
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
                         <button
                           onClick={() => navigate(`/results/enter/${exam.id}`)}
                           className="text-purple-600 dark:text-purple-400 hover:underline"
                         >
                           Results
                         </button>
+                        {/* 👇 Send Schedule button */}
+                        <button
+                          onClick={() => {
+                            setSendingSchedule(exam.id);
+                            sendExamScheduleEmails(exam.id).finally(() =>
+                              setSendingSchedule(null)
+                            );
+                          }}
+                          disabled={sendingSchedule === exam.id}
+                          className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 disabled:opacity-50"
+                          title="Send schedule to students"
+                        >
+                          <Mail size={15} />
+                          {sendingSchedule === exam.id ? '...' : ''}
+                        </button>
                         {isAdmin && (
                           <>
                             <button
                               onClick={() => setEditing(exam)}
-                              className="text-blue-600 dark:text-blue-400 hover:underline"
+                              className="text-yellow-600 dark:text-yellow-400 hover:underline"
                             >
                               <Edit3 size={15} />
                             </button>

@@ -17,7 +17,8 @@ import {
   X,
   Award,
   Printer,
-} from "lucide-react";
+  Mail,
+} from "lucide-react"; // 👈 Added Mail
 import Papa from "papaparse";
 import CertificateForm from "../components/CertificateForm";
 import BackButton from "../components/BackButton";
@@ -30,11 +31,12 @@ import {
 import { generateCertificatePdf } from "../utils/certificatePdf";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { sendTemplateEmail, sendEmail } from "../services/emailService"; // 👈 Import
 
 export default function Certificates() {
   const queryClient = useQueryClient();
 
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -42,6 +44,23 @@ export default function Certificates() {
   const [showForm, setShowForm] = useState(false);
   const fileInputRef = useRef(null);
 
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Query ──────────────────────────────────────────────────────────
   const {
     data,
     isLoading,
@@ -59,7 +78,7 @@ export default function Certificates() {
         .from("certificates")
         .select(
           `*,
-          students ( first_name, last_name, admission_no ),
+          students ( first_name, last_name, admission_no, email ),
           courses ( course_name ),
           course_levels ( level_name )`,
           { count: "exact" }
@@ -93,6 +112,7 @@ export default function Certificates() {
 
   const certificates = data?.pages.flatMap((page) => page.data) || [];
 
+  // ─── Mutations ──────────────────────────────────────────────────────
   const createMutation = useMutation({
     mutationFn: (payload) => createCertificate(payload, { branchId, financialYearId }),
     onSuccess: () => {
@@ -112,6 +132,110 @@ export default function Certificates() {
     onError: () => toast.error("Delete failed"),
   });
 
+  // ─── Send certificate email manually ──────────────────────────────
+  const sendCertificateEmailMutation = useMutation({
+    mutationFn: async (cert) => {
+      // Build context similar to what the service does
+      const student = cert.students;
+      const parentEmail = student?.email; // we can also fetch parent later, but we'll use student email
+
+      if (!parentEmail) {
+        throw new Error("No email found for the student.");
+      }
+
+      const context = {
+        academyName: org?.company_name || "Academy",
+        student_name: `${student?.first_name || ''} ${student?.last_name || ''}`.trim(),
+        certificate_no: cert.certificate_no,
+        course_name: cert.courses?.course_name || 'N/A',
+        level_name: cert.course_levels?.level_name || '',
+        issue_date: cert.issue_date,
+        download_link: cert.certificate_url || '',
+      };
+
+      await sendTemplateEmail({
+        to: parentEmail,
+        organizationId: org?.id,
+        slug: "certificate_issued",
+        context,
+        branchId,
+      });
+      return true;
+    },
+    onSuccess: () => {
+      toast.success("Certificate email sent.");
+    },
+    onError: (err) => {
+      toast.error("Failed to send email: " + err.message);
+    },
+  });
+
+  // ─── Send Report to Admins ─────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (certificates.length === 0) {
+      alert("No certificates to send.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      // Build HTML table rows
+      let tableRows = certificates.map((c) => `
+        <tr>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${c.certificate_no}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${c.students?.first_name || ''} ${c.students?.last_name || ''}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${c.students?.admission_no || ''}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${c.courses?.course_name || ''}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${c.course_levels?.level_name || '-'}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${c.issue_date}</td>
+        </tr>
+      `).join('');
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Certificate Report</h2>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Total Certificates:</strong> ${certificates.length}</p>
+          <hr />
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:#e3f2fd;">
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Certificate No</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Student</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Admission No</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Course</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Level</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Issue Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Certificate Report - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── CSV import/export (unchanged) ─────────────────────────────────
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -215,6 +339,13 @@ export default function Certificates() {
             <Award size={18} /> Issue Certificate
           </button>
           <button
+            onClick={sendReportEmail}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            <Mail size={18} /> Send Report
+          </button>
+          <button
             onClick={handleCSVExport}
             className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
             style={{ fontFamily: "var(--font-body)" }}
@@ -257,7 +388,7 @@ export default function Certificates() {
       {/* Certificates Table */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[700px]">
+          <table className="w-full min-w-[800px]">
             <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
                 <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -321,12 +452,22 @@ export default function Certificates() {
                       {cert.issue_date}
                     </td>
                     <td className="text-sm">
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
                         <button
                           onClick={() => handleDownloadPdf(cert)}
                           className="text-primary hover:underline flex items-center gap-1"
+                          title="Download PDF"
                         >
-                          <Download size={16} /> PDF
+                          <Download size={16} />
+                        </button>
+                        <button
+                          onClick={() => sendCertificateEmailMutation.mutate(cert)}
+                          disabled={sendCertificateEmailMutation.isPending}
+                          className="text-blue-600 hover:underline flex items-center gap-1"
+                          title="Send Email"
+                        >
+                          <Mail size={16} />
+                          {sendCertificateEmailMutation.isPending ? '...' : ''}
                         </button>
                         <button
                           onClick={() => {
@@ -334,6 +475,7 @@ export default function Certificates() {
                             deleteMutation.mutate(cert.id);
                           }}
                           className="text-red-600 dark:text-red-400 hover:underline"
+                          title="Delete"
                         >
                           <Trash2 size={15} />
                         </button>

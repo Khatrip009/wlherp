@@ -1,24 +1,25 @@
+// src/pages/StudentFeesPage.jsx
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {
   IndianRupee, FileText, ChevronDown, ChevronUp, Calendar,
-  CheckCircle, AlertCircle, CreditCard, Send, List,
+  CheckCircle, AlertCircle, CreditCard, Send, List, Mail,
 } from "lucide-react";
 
 import BackButton from "../components/BackButton";
-
 import { useStudentId } from "../hooks/useStudentId";
 import { supabase } from "../api/supabase";
 import { submitPaymentRequest } from "../services/feeService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
+import { sendEmail } from "../services/emailService";
 
 export default function StudentFeesPage() {
   const { studentId, isLoading: idLoading } = useStudentId();
   const queryClient = useQueryClient();
+  const { branch, selectedFinancialYear, org } = useOrg();
+  const [sendingReport, setSendingReport] = useState(false);
 
-  // ── Branch & Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
@@ -32,13 +33,171 @@ export default function StudentFeesPage() {
     installment_id: "",
   });
 
-  // Fetch fee records with installments and payments – scoped
+  // ─── Helper: get student email (or parent email) ──────────────────────
+  const getStudentParentEmail = async () => {
+    if (!studentId) return null;
+    // Fetch student email
+    const { data: student, error: studentError } = await supabase
+      .from("students")
+      .select("email, first_name, last_name")
+      .eq("id", studentId)
+      .single();
+    if (studentError) return null;
+
+    // Try to find parent email
+    const { data: parent, error: parentError } = await supabase
+      .from("student_parents")
+      .select("parents!inner(email, father_name, mother_name)")
+      .eq("student_id", studentId)
+      .maybeSingle();
+
+    if (!parentError && parent && parent.parents?.email) {
+      return {
+        email: parent.parents.email,
+        name: parent.parents.father_name || parent.parents.mother_name || `${student.first_name} ${student.last_name}`,
+      };
+    }
+    return {
+      email: student.email,
+      name: `${student.first_name} ${student.last_name}`.trim(),
+    };
+  };
+
+  // ─── Send Report Email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (fees.length === 0) {
+      alert("No fee records to send.");
+      return;
+    }
+
+    setSendingReport(true);
+    try {
+      const recipient = await getStudentParentEmail();
+      if (!recipient || !recipient.email) {
+        toast.error("No email found for this student or parent.");
+        setSendingReport(false);
+        return;
+      }
+
+      // Build a comprehensive HTML report
+      let feeSections = fees.map((fee) => {
+        const courseName = fee.fee_structures?.courses?.course_name || "N/A";
+        const totalFee = Number(fee.final_fee).toLocaleString('en-IN');
+        const paid = Number(fee.total_paid).toLocaleString('en-IN');
+        const pending = Number(fee.pending).toLocaleString('en-IN');
+        const status = fee.status;
+
+        // Installments
+        let installmentsHtml = '';
+        if (fee.installments.length) {
+          installmentsHtml = `
+            <table style="width:100%;border-collapse:collapse;font-size:11px;margin:4px 0;">
+              <thead style="background:#f0f0f0;">
+                <tr>
+                  <th style="padding:2px 8px;border:1px solid #ddd;text-align:left;">#</th>
+                  <th style="padding:2px 8px;border:1px solid #ddd;text-align:right;">Amount</th>
+                  <th style="padding:2px 8px;border:1px solid #ddd;text-align:left;">Due Date</th>
+                  <th style="padding:2px 8px;border:1px solid #ddd;text-align:left;">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${fee.installments.map(inst => `
+                  <tr>
+                    <td style="padding:2px 8px;border:1px solid #ddd;">${inst.installment_number}</td>
+                    <td style="padding:2px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(inst.amount).toLocaleString('en-IN')}</td>
+                    <td style="padding:2px 8px;border:1px solid #ddd;">${inst.due_date || '—'}</td>
+                    <td style="padding:2px 8px;border:1px solid #ddd;">${inst.status}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `;
+        }
+
+        // Payments
+        let paymentsHtml = '';
+        if (fee.payments.length) {
+          paymentsHtml = `
+            <table style="width:100%;border-collapse:collapse;font-size:11px;margin:4px 0;">
+              <thead style="background:#f0f0f0;">
+                <tr>
+                  <th style="padding:2px 8px;border:1px solid #ddd;text-align:left;">Date</th>
+                  <th style="padding:2px 8px;border:1px solid #ddd;text-align:right;">Amount</th>
+                  <th style="padding:2px 8px;border:1px solid #ddd;text-align:left;">Mode</th>
+                  <th style="padding:2px 8px;border:1px solid #ddd;text-align:left;">Transaction</th>
+                  <th style="padding:2px 8px;border:1px solid #ddd;text-align:left;">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${fee.payments.map(p => `
+                  <tr>
+                    <td style="padding:2px 8px;border:1px solid #ddd;">${p.payment_date}</td>
+                    <td style="padding:2px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(p.amount).toLocaleString('en-IN')}</td>
+                    <td style="padding:2px 8px;border:1px solid #ddd;">${p.payment_mode}</td>
+                    <td style="padding:2px 8px;border:1px solid #ddd;">${p.transaction_no || '—'}</td>
+                    <td style="padding:2px 8px;border:1px solid #ddd;">${p.status}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `;
+        }
+
+        return `
+          <div style="border:1px solid #ddd;padding:12px;margin:12px 0;border-radius:6px;">
+            <h3 style="color:#0D47A1;margin:0 0 4px;">${courseName}</h3>
+            <div style="font-size:11px;display:flex;gap:12px;flex-wrap:wrap;">
+              <span><strong>Total:</strong> ₹ ${totalFee}</span>
+              <span><strong>Paid:</strong> ₹ ${paid}</span>
+              <span><strong>Pending:</strong> ₹ ${pending}</span>
+              <span><strong>Status:</strong> ${status}</span>
+            </div>
+            ${installmentsHtml ? `<h4 style="margin:8px 0 2px;">Installments</h4>${installmentsHtml}` : ''}
+            ${paymentsHtml ? `<h4 style="margin:8px 0 2px;">Payment History</h4>${paymentsHtml}` : ''}
+          </div>
+        `;
+      }).join('');
+
+      const totalPending = fees.reduce((s, f) => s + f.pending, 0);
+      const totalPaid = fees.reduce((s, f) => s + f.total_paid, 0);
+      const totalFee = fees.reduce((s, f) => s + Number(f.final_fee), 0);
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">My Fee Summary</h2>
+          <p><strong>Student:</strong> ${recipient.name}</p>
+          <p><strong>Organization:</strong> ${org?.company_name || 'Academy'}</p>
+          <p><strong>Total Fees:</strong> ₹ ${totalFee.toLocaleString('en-IN')}</p>
+          <p><strong>Total Paid:</strong> ₹ ${totalPaid.toLocaleString('en-IN')}</p>
+          <p><strong>Total Pending:</strong> ₹ ${totalPending.toLocaleString('en-IN')}</p>
+          <hr />
+          ${feeSections}
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated fee report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: recipient.email,
+        subject: `My Fee Summary - ${org?.company_name || 'Academy'}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      toast.success(`Fee report sent to ${recipient.email}`);
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      toast.error("Failed to send report.");
+    } finally {
+      setSendingReport(false);
+    }
+  };
+
+  // ─── Data fetching ──────────────────────────────────────────────────
   const { data: fees = [], isLoading } = useQuery({
     queryKey: ["student-fees-list", studentId, branchId, financialYearId],
     queryFn: async () => {
       if (!studentId || !branchId || !financialYearId) return [];
 
-      // Main fee records scoped
       let feeQuery = supabase
         .from("student_fees")
         .select(`*, fee_structures(fee_amount, courses(course_name))`)
@@ -52,7 +211,6 @@ export default function StudentFeesPage() {
 
       const enriched = await Promise.all(
         feeData.map(async (fee) => {
-          // Payments scoped
           let paymentsQuery = supabase
             .from("fee_payments")
             .select("*")
@@ -63,7 +221,6 @@ export default function StudentFeesPage() {
 
           const { data: payments } = await paymentsQuery;
 
-          // Installments scoped
           let installmentsQuery = supabase
             .from("fee_installments")
             .select("*")
@@ -98,13 +255,11 @@ export default function StudentFeesPage() {
     setExpandedFeeId((prev) => (prev === id ? null : id));
   };
 
-  // Open payment form – reset fields
   const openPayModal = (fee) => {
     setPayingFee(fee);
     setPaymentForm({ amount: "", transaction_no: "", remarks: "", installment_id: "" });
   };
 
-  // Auto‑fill amount when an installment is selected
   const selectedInstallment =
     payingFee?.installments.find((inst) => inst.id === Number(paymentForm.installment_id));
 
@@ -133,7 +288,7 @@ export default function StudentFeesPage() {
           remarks: paymentForm.remarks,
           installment_id: paymentForm.installment_id || null,
         },
-        ctx   // pass context with branchId & financialYearId
+        ctx
       );
       toast.success("Payment request submitted for approval");
       setPayingFee(null);
@@ -146,7 +301,7 @@ export default function StudentFeesPage() {
   if (idLoading || isLoading) {
     return (
       <>
-      <BackButton to="/student" label="My Dashboard" />
+        <BackButton to="/student" label="My Dashboard" />
         <div className="p-8 text-center text-secondary">Loading your fees…</div>
       </>
     );
@@ -154,7 +309,22 @@ export default function StudentFeesPage() {
 
   return (
     <>
-      <h1 className="text-3xl font-righteous text-primary-dark mb-6">My Fees</h1>
+      <BackButton to="/student" label="My Dashboard" />
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
+        <h1 className="text-3xl font-righteous text-primary-dark">My Fees</h1>
+        {/* 👇 Send Report button */}
+        {fees.length > 0 && (
+          <button
+            onClick={sendReportEmail}
+            disabled={sendingReport}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+          >
+            <Mail size={16} />
+            {sendingReport ? "Sending..." : "Send Report"}
+          </button>
+        )}
+      </div>
 
       {fees.length === 0 ? (
         <div className="bg-white rounded-xl p-8 shadow-sm border border-secondary-light text-center">

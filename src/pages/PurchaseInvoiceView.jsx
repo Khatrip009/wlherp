@@ -1,6 +1,6 @@
 // src/pages/PurchaseInvoiceView.jsx
 import { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate }from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getPurchaseInvoice,
@@ -10,6 +10,8 @@ import {
 import { getOrganization } from "../services/organizationService";
 import { generateInvoicePDF, numberToWords } from "../utils/invoicePdf";
 import { useOrg } from "../context/OrganizationContext";
+import { supabase } from "../api/supabase";
+import { sendEmail } from "../services/emailService";
 import toast from "react-hot-toast";
 
 import {
@@ -20,6 +22,7 @@ import {
   Trash2,
   Loader,
   FileText,
+  Mail,
 } from "lucide-react";
 
 export default function PurchaseInvoiceView() {
@@ -28,28 +31,178 @@ export default function PurchaseInvoiceView() {
   const queryClient = useQueryClient();
   const [printing, setPrinting] = useState(false);
   const [generatingPDF, setGeneratingPDF] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
-  // ── Organisation, Branch, Financial Year from context ──
   const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
 
-  // Organization details (org‑wide, no branch scoping needed)
+  // Organization details
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
     queryFn: () => getOrganization(currentOrg?.id),
     enabled: !!currentOrg?.id,
   });
 
-  // Purchase invoice – scoped to branch & FY
+  // Purchase invoice
   const { data: invoice, isLoading } = useQuery({
     queryKey: ["purchase-invoice", id, branchId, financialYearId],
     queryFn: () => getPurchaseInvoice(id, branchId, financialYearId),
     enabled: !!id && !!branchId && !!financialYearId,
   });
 
-  // Finalize mutation – uses context
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!currentOrg?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", currentOrg.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send invoice email ────────────────────────────────────────────
+  const sendInvoiceEmail = async () => {
+    if (!invoice) return;
+
+    setSendingEmail(true);
+    try {
+      // Determine recipient
+      const vendorEmail = invoice.vendors?.email;
+      let recipients = [];
+      if (vendorEmail) {
+        recipients = [vendorEmail];
+      } else {
+        // Fallback to admins
+        const admins = await getAdminEmails();
+        if (admins.length === 0) {
+          toast.error("No vendor email or admin emails found.");
+          setSendingEmail(false);
+          return;
+        }
+        recipients = admins;
+      }
+
+      // Build HTML email content
+      const formatCurrency = (amount) =>
+        `₹ ${Number(amount).toLocaleString("en-IN", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`;
+
+      const items = invoice.purchase_invoice_items || [];
+      const totals = {
+        taxable: items.reduce((sum, item) => sum + Number(item.taxable_amount || 0), 0),
+        cgst: items.reduce((sum, item) => sum + Number(item.cgst_amount || 0), 0),
+        sgst: items.reduce((sum, item) => sum + Number(item.sgst_amount || 0), 0),
+        igst: items.reduce((sum, item) => sum + Number(item.igst_amount || 0), 0),
+        total: items.reduce((sum, item) => sum + Number(item.total_amount || 0), 0),
+      };
+      const roundOff = Number(invoice.round_off || 0);
+      const grandTotal = totals.total + roundOff;
+      const words = numberToWords(grandTotal);
+
+      const vendor = invoice.vendors || {};
+      const vendorName = vendor.vendor_name || "N/A";
+      const orgName = org?.company_name || "Academy";
+
+      // Build items table rows
+      let itemsRows = items.map((item, idx) => {
+        const itemName = item.inventory_items?.item_name || item.description || "—";
+        return `
+          <tr>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${idx + 1}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${itemName}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${item.quantity}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${formatCurrency(item.unit_price)}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${formatCurrency(item.taxable_amount)}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${formatCurrency(item.cgst_amount)}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${formatCurrency(item.sgst_amount)}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${formatCurrency(item.igst_amount)}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;font-weight:bold;">${formatCurrency(item.total_amount)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:20px;border:1px solid #ddd;">
+          <h2 style="text-align:center;color:#0D47A1;">PURCHASE INVOICE</h2>
+          <div style="display:flex;justify-content:space-between;margin-bottom:16px;">
+            <div>
+              <strong>Vendor:</strong> ${vendorName}<br/>
+              ${vendor.gstin ? `<strong>GSTIN:</strong> ${vendor.gstin}<br/>` : ''}
+              ${vendor.address ? `<strong>Address:</strong> ${vendor.address}<br/>` : ''}
+              ${vendor.state_code ? `<strong>State Code:</strong> ${vendor.state_code}` : ''}
+            </div>
+            <div style="text-align:right;">
+              <strong>Invoice Details</strong><br/>
+              No: ${invoice.invoice_number}<br/>
+              Date: ${invoice.invoice_date}<br/>
+              Status: ${invoice.status}
+              ${invoice.due_date ? `<br/>Due Date: ${invoice.due_date}` : ''}
+            </div>
+          </div>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:11px;">
+            <thead>
+              <tr style="background:#0D47A1;color:#fff;">
+                <th style="padding:4px 8px;border:1px solid #ccc;text-align:center;">#</th>
+                <th style="padding:4px 8px;border:1px solid #ccc;text-align:left;">Item</th>
+                <th style="padding:4px 8px;border:1px solid #ccc;text-align:center;">Qty</th>
+                <th style="padding:4px 8px;border:1px solid #ccc;text-align:right;">Unit Price</th>
+                <th style="padding:4px 8px;border:1px solid #ccc;text-align:right;">Taxable</th>
+                <th style="padding:4px 8px;border:1px solid #ccc;text-align:right;">CGST</th>
+                <th style="padding:4px 8px;border:1px solid #ccc;text-align:right;">SGST</th>
+                <th style="padding:4px 8px;border:1px solid #ccc;text-align:right;">IGST</th>
+                <th style="padding:4px 8px;border:1px solid #ccc;text-align:right;">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsRows}
+            </tbody>
+          </table>
+          <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+            <div style="width:250px;">
+              <div style="display:flex;justify-content:space-between;"><span>Taxable:</span><span>${formatCurrency(totals.taxable)}</span></div>
+              <div style="display:flex;justify-content:space-between;"><span>CGST:</span><span>${formatCurrency(totals.cgst)}</span></div>
+              <div style="display:flex;justify-content:space-between;"><span>SGST:</span><span>${formatCurrency(totals.sgst)}</span></div>
+              <div style="display:flex;justify-content:space-between;"><span>IGST:</span><span>${formatCurrency(totals.igst)}</span></div>
+              ${roundOff !== 0 ? `<div style="display:flex;justify-content:space-between;"><span>Round Off:</span><span>${formatCurrency(roundOff)}</span></div>` : ''}
+              <div style="display:flex;justify-content:space-between;font-weight:bold;font-size:1.2em;border-top:2px solid #0D47A1;margin-top:4px;padding-top:4px;">
+                <span>Grand Total:</span>
+                <span style="color:#0D47A1;">${formatCurrency(grandTotal)}</span>
+              </div>
+            </div>
+          </div>
+          <div style="margin-bottom:8px;"><strong>Amount in words:</strong> ${words}</div>
+          ${invoice.reverse_charge ? `<div style="color:#CC0000;font-weight:bold;margin-bottom:8px;">** Reverse Charge Applicable – Tax payable by recipient **</div>` : ''}
+          <p style="color:#888;font-size:10px;margin-top:20px;">This is a computer‑generated purchase invoice from ${orgName}.</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: recipients,
+        subject: `Purchase Invoice ${invoice.invoice_number} from ${orgName}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      toast.success(`Invoice sent to ${recipients.length} recipient(s).`);
+    } catch (err) {
+      console.error("Email error:", err);
+      toast.error("Failed to send invoice email.");
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  // ─── Mutations ──────────────────────────────────────────────────────
   const finalizeMutation = useMutation({
     mutationFn: () => finalizePurchaseInvoice(id, ctx),
     onSuccess: () => {
@@ -60,7 +213,6 @@ export default function PurchaseInvoiceView() {
     onError: (err) => toast.error(err.message),
   });
 
-  // Delete mutation – scoped to branch & FY
   const deleteMutation = useMutation({
     mutationFn: () => deletePurchaseInvoice(id, branchId, financialYearId),
     onSuccess: () => {
@@ -70,6 +222,7 @@ export default function PurchaseInvoiceView() {
     onError: (err) => toast.error(err.message),
   });
 
+  // ─── Print and PDF handlers ──────────────────────────────────────
   const handlePrint = () => {
     const printContent = document.getElementById("invoice-print");
     if (!printContent) return;
@@ -232,19 +385,11 @@ export default function PurchaseInvoiceView() {
   };
 
   if (isLoading) {
-    return (
-      <>
-        <div className="p-8 text-center">Loading invoice…</div>
-      </>
-    );
+    return <div className="p-8 text-center">Loading invoice…</div>;
   }
 
   if (!invoice) {
-    return (
-      <>
-        <div className="p-8 text-center text-red-600">Invoice not found</div>
-      </>
-    );
+    return <div className="p-8 text-center text-red-600">Invoice not found</div>;
   }
 
   const orgName = org?.company_name || "ShreeVidhya Academy";
@@ -265,7 +410,6 @@ export default function PurchaseInvoiceView() {
 
   const items = invoice.purchase_invoice_items || [];
 
-  // Compute totals from items
   const totals = {
     taxable: items.reduce((sum, item) => sum + Number(item.taxable_amount || 0), 0),
     cgst: items.reduce((sum, item) => sum + Number(item.cgst_amount || 0), 0),
@@ -289,6 +433,14 @@ export default function PurchaseInvoiceView() {
           <ArrowLeft size={18} /> Back to Purchase Invoices
         </button>
         <div className="flex gap-2">
+          {/* 👇 Email Invoice button */}
+          <button
+            onClick={sendInvoiceEmail}
+            disabled={sendingEmail}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50"
+          >
+            <Mail size={16} /> {sendingEmail ? "Sending..." : "Email Invoice"}
+          </button>
           <button
             onClick={handleDownloadPDF}
             disabled={generatingPDF}

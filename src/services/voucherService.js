@@ -1,5 +1,83 @@
 // src/services/voucherService.js
 import { supabase } from "../api/supabase";
+import { sendTemplateEmail } from "./emailService"; // 👈 Added
+
+// ─── Helpers ──────────────────────────────────────────────────────────
+
+async function getOrganizationFromBranch(branchId) {
+  const { data: branch, error: branchError } = await supabase
+    .from("branches")
+    .select("organization_id")
+    .eq("id", branchId)
+    .single();
+  if (branchError) throw branchError;
+
+  const { data: org, error: orgError } = await supabase
+    .from("organization")
+    .select("id, company_name")
+    .eq("id", branch.organization_id)
+    .single();
+  if (orgError) throw orgError;
+  return org;
+}
+
+async function getAdminEmails(organizationId) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("email")
+    .eq("organization_id", organizationId)
+    .in("role", ["admin", "super_admin", "organization_admin"])
+    .eq("is_active", true);
+  if (error) throw error;
+  return data?.map(p => p.email).filter(Boolean) || [];
+}
+
+/**
+ * Send voucher creation notification to admins.
+ */
+async function sendVoucherNotification(voucher, context) {
+  const { branchId, financialYearId } = context;
+  try {
+    const org = await getOrganizationFromBranch(branchId);
+    const adminEmails = await getAdminEmails(org.id);
+    if (adminEmails.length === 0) {
+      console.warn('No admin emails found, skipping voucher notification.');
+      return;
+    }
+
+    // Get voucher type name
+    const { data: vtype, error: vtypeError } = await supabase
+      .from("voucher_types")
+      .select("name, abbreviation")
+      .eq("id", voucher.voucher_type_id)
+      .single();
+    if (vtypeError) throw vtypeError;
+
+    const message = `A new voucher has been created:\n` +
+      `Voucher #: ${voucher.voucher_no}\n` +
+      `Type: ${vtype.name} (${vtype.abbreviation})\n` +
+      `Date: ${voucher.entry_date}\n` +
+      `Reference: ${voucher.reference || 'N/A'}\n` +
+      `Description: ${voucher.description || 'N/A'}\n` +
+      `Journal Entry ID: ${voucher.journal_entry_id}`;
+
+    await sendTemplateEmail({
+      to: adminEmails,
+      organizationId: org.id,
+      slug: "system_announcement",
+      context: {
+        academyName: org.company_name,
+        title: `New Voucher: ${voucher.voucher_no}`,
+        message,
+        target_type: "Admin",
+      },
+      branchId,
+    });
+    console.log(`✅ Voucher notification sent to admins for ${voucher.voucher_no}`);
+  } catch (error) {
+    console.error("❌ Failed to send voucher notification:", error);
+  }
+}
 
 // ---------- Helpers ----------
 function cleanPayload(payload) {
@@ -113,6 +191,9 @@ export async function createVoucher(payload, context) {
     .insert(voucherPayload)
     .select()
     .single();
+
+  // ─── Send voucher notification to admins ──────────────────────────
+  await sendVoucherNotification(voucher, context);
 
   return voucher;
 }

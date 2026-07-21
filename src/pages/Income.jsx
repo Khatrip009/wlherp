@@ -22,6 +22,7 @@ import {
   CreditCard,
   FileText,
   Receipt,
+  Mail,
 } from "lucide-react";
 import Papa from "papaparse";
 
@@ -36,14 +37,14 @@ import {
 } from "../services/financeService";
 import { supabase } from "../api/supabase";
 import { useOrgDarkLogo } from "../hooks/useOrgDarkLogo";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
+import { sendEmail } from "../services/emailService";
 
 export default function Income() {
   const queryClient = useQueryClient();
   const darkLogo = useOrgDarkLogo();
 
-  // ── Branch & Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const { branch, selectedFinancialYear, org } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
@@ -71,7 +72,102 @@ export default function Income() {
   });
   const fileInputRef = useRef(null);
 
-  // Fetch tax rates – scoped
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send Report Email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (incomes.length === 0) {
+      alert("No income records to send.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      // Build HTML table rows
+      let tableRows = incomes.map((item) => `
+        <tr>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${item.income_date}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${item.category}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(item.base_amount || item.amount).toLocaleString('en-IN')}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${item.tax_amount ? '₹ ' + Number(item.tax_amount).toLocaleString('en-IN') : '-'}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;font-weight:bold;">₹ ${Number(item.amount).toLocaleString('en-IN')}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${item.payment_mode}</td>
+        </tr>
+      `).join('');
+
+      const totalBase = incomes.reduce((s, i) => s + Number(i.base_amount || i.amount), 0);
+      const totalTax = incomes.reduce((s, i) => s + (i.tax_amount || 0), 0);
+      const totalAmount = incomes.reduce((s, i) => s + Number(i.amount), 0);
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Income Report</h2>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Period:</strong> ${startDate || 'Start'} – ${endDate || 'End'}</p>
+          <p><strong>Total Records:</strong> ${incomes.length}</p>
+          <hr />
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:#e3f2fd;">
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Date</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Category</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Base</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Tax</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Total</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Mode</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+            <tfoot style="font-weight:bold;background:#f5f5f5;">
+              <tr>
+                <td colspan="2" style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Totals</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${totalBase.toLocaleString('en-IN')}</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${totalTax.toLocaleString('en-IN')}</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${totalAmount.toLocaleString('en-IN')}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Income Report - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── Fetch tax rates ──────────────────────────────────────────────
   const { data: taxRates = [] } = useQuery({
     queryKey: ["tax-rates", branchId, financialYearId],
     queryFn: async () => {
@@ -90,7 +186,7 @@ export default function Income() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Auto-calculate tax when amount or tax rate changes
+  // Auto-calculate tax
   useEffect(() => {
     if (!form.amount || !form.tax_rate_id) {
       setForm((prev) => ({
@@ -109,11 +205,9 @@ export default function Income() {
 
     let baseAmount, taxAmount;
     if (form.tax_inclusive) {
-      // Amount includes tax
       baseAmount = amount / (1 + rate);
       taxAmount = amount - baseAmount;
     } else {
-      // Tax added on top
       baseAmount = amount;
       taxAmount = amount * rate;
     }
@@ -125,7 +219,7 @@ export default function Income() {
     }));
   }, [form.amount, form.tax_rate_id, form.tax_inclusive, taxRates]);
 
-  // Infinite query – scoped
+  // ─── Infinite query ─────────────────────────────────────────────────
   const {
     data,
     isLoading,
@@ -150,7 +244,7 @@ export default function Income() {
 
   const incomes = data?.pages.flatMap((page) => page.data) || [];
 
-  // Mutations – now pass context
+  // ─── Mutations ──────────────────────────────────────────────────────
   const createMutation = useMutation({
     mutationFn: (payload) => createIncome(payload, ctx),
     onSuccess: () => {
@@ -180,7 +274,7 @@ export default function Income() {
     onError: () => toast.error("Delete failed"),
   });
 
-  // CSV Import (updated to use context)
+  // ─── CSV handlers ──────────────────────────────────────────────────
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -200,7 +294,7 @@ export default function Income() {
               tax_rate_id: row.tax_rate_id ? Number(row.tax_rate_id) : null,
               tax_inclusive: row.tax_inclusive ? row.tax_inclusive === "true" : true,
             };
-            await createIncome(payload, ctx);   // pass context
+            await createIncome(payload, ctx);
             successCount++;
           } catch (err) {
             console.error(err);
@@ -213,7 +307,6 @@ export default function Income() {
     });
   }
 
-  // CSV Export – now scoped
   async function handleCSVExport() {
     try {
       const allData = await getAllIncomesForExport(allFilters, branchId, financialYearId);
@@ -230,7 +323,7 @@ export default function Income() {
     }
   }
 
-  // Form helpers
+  // ─── Form helpers ──────────────────────────────────────────────────
   function openCreate() {
     setForm({
       income_date: new Date().toISOString().split("T")[0],
@@ -290,6 +383,7 @@ export default function Income() {
   return (
     <>
       <BackButton to="/accounting" label="Finance & Accounting" />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
@@ -299,6 +393,13 @@ export default function Income() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {/* 👇 Send Report button */}
+          <button
+            onClick={sendReportEmail}
+            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+          >
+            <Mail size={18} /> Send Report
+          </button>
           <button
             onClick={openCreate}
             className="bg-accent hover:bg-accent-light text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
@@ -491,7 +592,7 @@ export default function Income() {
         </div>
       )}
 
-      {/* Income Form Modal with Tax */}
+      {/* Income Form Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">

@@ -10,6 +10,7 @@ import {
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
 import toast from "react-hot-toast";
+import { sendEmail } from "../services/emailService";
 
 import {
   Search,
@@ -19,6 +20,7 @@ import {
   Trash2,
   CheckCircle,
   Loader,
+  Mail,
 } from "lucide-react";
 
 export default function PurchaseInvoices() {
@@ -27,13 +29,114 @@ export default function PurchaseInvoices() {
   const [statusFilter, setStatusFilter] = useState("");
   const [vendorFilter, setVendorFilter] = useState("");
 
-  // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
 
-  // Vendors dropdown – now scoped
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send report email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (invoices.length === 0) {
+      alert("No invoices to send.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      // Build HTML table rows
+      let tableRows = invoices.map((inv) => {
+        const vendorName = inv.vendors?.vendor_name || "—";
+        const statusColor = inv.status === "Final" ? "#2e7d32" :
+                            inv.status === "Draft" ? "#e65100" : "#c62828";
+        const statusBg = inv.status === "Final" ? "#e8f5e9" :
+                         inv.status === "Draft" ? "#fff3e0" : "#ffebee";
+        return `
+          <tr>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${inv.invoice_number}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${vendorName}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${inv.invoice_date}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(inv.grand_total).toLocaleString('en-IN')}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">
+              <span style="background:${statusBg};color:${statusColor};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;">${inv.status}</span>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      const totalAmount = invoices.reduce((sum, inv) => sum + Number(inv.grand_total), 0);
+      const draftCount = invoices.filter(inv => inv.status === "Draft").length;
+      const finalCount = invoices.filter(inv => inv.status === "Final").length;
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Purchase Invoice Report</h2>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Filters:</strong> Status: ${statusFilter || 'All'} | Vendor: ${vendorFilter || 'All'} | Search: ${search || 'None'}</p>
+          <p><strong>Total Invoices:</strong> ${invoices.length}</p>
+          <p><strong>Total Amount:</strong> ₹ ${totalAmount.toLocaleString('en-IN')}</p>
+          <p><strong>Draft:</strong> ${draftCount} | <strong>Final:</strong> ${finalCount}</p>
+          <hr />
+          <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
+            <thead style="background:#e3f2fd;">
+              <tr>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Invoice No</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Vendor</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Date</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Grand Total</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+            <tfoot style="font-weight:bold;background:#f5f5f5;">
+              <tr>
+                <td colspan="3" style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Grand Total</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${totalAmount.toLocaleString('en-IN')}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Purchase Invoice Report - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── Vendors dropdown ──────────────────────────────────────────────
   const { data: vendors = [] } = useQuery({
     queryKey: ["vendors-dropdown", branchId, financialYearId],
     queryFn: async () => {
@@ -50,7 +153,7 @@ export default function PurchaseInvoices() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Purchase invoices – scoped
+  // ─── Purchase invoices ─────────────────────────────────────────────
   const {
     data: invoices = [],
     isLoading,
@@ -73,7 +176,7 @@ export default function PurchaseInvoices() {
     staleTime: 2 * 60 * 1000,
   });
 
-  // Delete mutation – scoped
+  // ─── Mutations ──────────────────────────────────────────────────────
   const deleteMutation = useMutation({
     mutationFn: (id) =>
       deletePurchaseInvoice(id, branchId, financialYearId),
@@ -84,7 +187,6 @@ export default function PurchaseInvoices() {
     onError: (err) => toast.error(err.message),
   });
 
-  // Finalize mutation – already passes context
   const finalizeMutation = useMutation({
     mutationFn: (id) => finalizePurchaseInvoice(id, ctx),
     onSuccess: () => {
@@ -110,16 +212,24 @@ export default function PurchaseInvoices() {
 
   return (
     <>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
         <h1 className="text-3xl font-righteous text-primary-dark">
           Purchase Invoices
         </h1>
-        <Link
-          to="/purchase-invoices/new"
-          className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
-        >
-          <Plus size={16} /> New Invoice
-        </Link>
+        <div className="flex gap-2">
+          <button
+            onClick={sendReportEmail}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          >
+            <Mail size={16} /> Send Report
+          </button>
+          <Link
+            to="/purchase-invoices/new"
+            className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          >
+            <Plus size={16} /> New Invoice
+          </Link>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">

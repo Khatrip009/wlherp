@@ -1,12 +1,13 @@
 // src/pages/AgedReceivables.jsx
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Printer, Filter } from "lucide-react";
+import { Printer, Filter, Mail } from "lucide-react";
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
-import { getCourseOptions } from "../services/batchService";   // organisation‑wide
-import { getActiveBatches } from "../services/batchService";   // scoped
+import { getCourseOptions } from "../services/batchService";
+import { getActiveBatches } from "../services/batchService";
 import { useOrg } from "../context/OrganizationContext";
+import { sendEmail } from "../services/emailService";
 
 const AGE_BUCKETS = [
   { label: "0‑30 days", min: 0, max: 30 },
@@ -20,7 +21,6 @@ export default function AgedReceivables() {
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  // Fetch organization details
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
     queryFn: () => getOrganization(currentOrg?.id),
@@ -55,7 +55,7 @@ export default function AgedReceivables() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Main receivables query (unchanged logic)
+  // ─── Main receivables query ────────────────────────────────────────────
   const { data: receivables = [], isLoading } = useQuery({
     queryKey: ["aged-receivables", courseFilter, batchFilter, mediumFilter, branchId, financialYearId],
     queryFn: async () => {
@@ -238,6 +238,106 @@ export default function AgedReceivables() {
     return s + (isNaN(amt) ? 0 : amt);
   }, 0);
 
+  // ─── Helper: get admin emails ─────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!currentOrg?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", currentOrg.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send report email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (receivables.length === 0) {
+      alert("No data to send.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found to send the report.");
+        return;
+      }
+
+      // Build HTML table rows
+      let tableRows = receivables.map(r => `
+        <tr>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${r.admission_no}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${r.student_name}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${r.course}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${r.batch}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${r.balance.toLocaleString('en-IN')}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${r.ageDays}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${r.bucket}</td>
+        </tr>
+      `).join('');
+
+      // Build full HTML email body
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Aged Receivables Report</h2>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Date:</strong> ${new Date().toLocaleString()}</p>
+          <h3>Bucket Summaries</h3>
+          <ul>
+            ${AGE_BUCKETS.map(b =>
+              `<li><strong>${b.label}:</strong> ₹ ${(bucketTotals[b.label]?.amount || 0).toLocaleString('en-IN')} (${bucketTotals[b.label]?.count || 0} students)</li>`
+            ).join('')}
+          </ul>
+          <p><strong>Grand Total Outstanding:</strong> ₹ ${grandTotal.toLocaleString('en-IN')}</p>
+          <hr />
+          <h3>Detailed Outstanding Fees</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:#e3f2fd;">
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Admission No</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Student</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Course</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Batch</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Balance</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Age (Days)</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Bucket</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+            <tfoot>
+              <tr style="font-weight:bold;background:#f5f5f5;">
+                <td colspan="4" style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Grand Total</td>
+                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${grandTotal.toLocaleString('en-IN')}</td>
+                <td colspan="2"></td>
+              </tr>
+            </tfoot>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Aged Receivables Report - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── Print handler ─────────────────────────────────────────────────
   const handlePrint = () => {
     const printContent = document.getElementById("aged-table")?.outerHTML;
     if (!printContent) return;
@@ -288,13 +388,22 @@ export default function AgedReceivables() {
             Outstanding student fee balances by ageing bucket
           </p>
         </div>
-        <button
-          onClick={handlePrint}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
-          style={{ fontFamily: "var(--font-body)" }}
-        >
-          <Printer size={16} /> Print
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={sendReportEmail}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            <Mail size={16} /> Send Report
+          </button>
+          <button
+            onClick={handlePrint}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            <Printer size={16} /> Print
+          </button>
+        </div>
       </div>
 
       {/* Filter toggle */}
@@ -315,7 +424,6 @@ export default function AgedReceivables() {
             value={courseFilter}
             onChange={(e) => setCourseFilter(e.target.value)}
             className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
-            style={{ fontFamily: "var(--font-body)" }}
           >
             <option value="">All Courses</option>
             {courses.map((c) => (
@@ -326,7 +434,6 @@ export default function AgedReceivables() {
             value={batchFilter}
             onChange={(e) => setBatchFilter(e.target.value)}
             className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
-            style={{ fontFamily: "var(--font-body)" }}
           >
             <option value="">All Batches</option>
             {batches.map((b) => (
@@ -337,7 +444,6 @@ export default function AgedReceivables() {
             value={mediumFilter}
             onChange={(e) => setMediumFilter(e.target.value)}
             className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
-            style={{ fontFamily: "var(--font-body)" }}
           >
             <option value="">All Mediums</option>
             {mediums.map((m) => (

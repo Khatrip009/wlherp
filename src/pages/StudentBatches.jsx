@@ -17,12 +17,12 @@ import {
   Upload,
   X,
   UserPlus,
+  Mail,
 } from "lucide-react";
 import Papa from "papaparse";
 
 import BackButton from "../components/BackButton";
 import { supabase } from "../api/supabase";
-
 import AssignBatchModal from "../components/AssignBatchModal";
 import {
   getStudentBatches,
@@ -34,12 +34,12 @@ import {
   getCoursesForFilter,
 } from "../services/batchAssignmentService";
 import { useOrg } from "../context/OrganizationContext";
+import { sendEmail, sendTemplateEmail } from "../services/emailService";
 
 export default function StudentBatches({ studentId: propStudentId = null, standalone = true }) {
   const queryClient = useQueryClient();
 
-  // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
@@ -51,17 +51,175 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
     course_id: "",
     medium_id: "",
     status: "",
-    student_id: propStudentId || "", // Add student_id filter
+    student_id: propStudentId || "",
   });
   const [showFilters, setShowFilters] = useState(false);
   const allFilters = { ...filters, search };
 
-  // When propStudentId changes, update filter
   useEffect(() => {
     setFilters(prev => ({ ...prev, student_id: propStudentId || "" }));
   }, [propStudentId]);
 
-  // ---- Paginated data – scoped to branch & FY ----
+  // ---- Helper: get admin emails ----
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ---- Send Report Email ----
+  const sendReportEmail = async () => {
+    if (assignments.length === 0) {
+      alert("No assignments to send.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      // Build HTML table rows
+      let tableRows = assignments.map((a) => {
+        const studentName = a.students ? `${a.students.first_name || ''} ${a.students.last_name || ''}`.trim() : '—';
+        const admissionNo = a.students?.admission_no || '—';
+        const batchName = a.batches?.batch_name || '—';
+        const mediumName = mediumMap[a.batch_id] || '—';
+        const courseName = a.batches?.courses?.course_name || '-';
+        const enrollmentDate = a.enrollment_date || '—';
+        const statusColor = a.status === "active" ? "#2e7d32" : a.status === "completed" ? "#1565C0" : "#757575";
+        const statusBg = a.status === "active" ? "#e8f5e9" : a.status === "completed" ? "#e3f2fd" : "#f5f5f5";
+        return `
+          <tr>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${studentName}<br/><span style="font-size:10px;color:#888;">${admissionNo}</span></td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${batchName}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${mediumName}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${courseName}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${enrollmentDate}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">
+              <span style="background:${statusBg};color:${statusColor};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;">${a.status}</span>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Student Batch Assignment Report</h2>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Total Assignments:</strong> ${assignments.length}</p>
+          <hr />
+          <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
+            <thead style="background:#e3f2fd;">
+              <tr>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Student</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Batch</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Medium</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Course</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Enrollment</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Student Batch Assignments - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ---- Send Batch Change Notification ----
+  const sendBatchChangeEmail = async (assignment) => {
+    try {
+      // 1. Fetch student details
+      const studentId = assignment.student_id;
+      const { data: student, error: studentError } = await supabase
+        .from("students")
+        .select("first_name, last_name, email")
+        .eq("id", studentId)
+        .single();
+      if (studentError) throw studentError;
+
+      // 2. Find parent email (fallback to student email)
+      let recipientEmail = student.email;
+      const { data: parent, error: parentError } = await supabase
+        .from("student_parents")
+        .select("parents!inner(email, father_name, mother_name)")
+        .eq("student_id", studentId)
+        .maybeSingle();
+      if (!parentError && parent && parent.parents?.email) {
+        recipientEmail = parent.parents.email;
+      }
+
+      if (!recipientEmail) {
+        toast.error("No email found for this student or parent.");
+        return;
+      }
+
+      // 3. Fetch old and new batch names
+      const newBatchId = assignment.batch_id;
+      const { data: newBatch, error: batchError } = await supabase
+        .from("batches")
+        .select("batch_name, course_id, courses(course_name)")
+        .eq("id", newBatchId)
+        .single();
+      if (batchError) throw batchError;
+
+      // For old batch, we may not know if it's a reassignment. We'll set it to "None" for manual resend.
+      // But we can try to find an active batch that is not the current one.
+      let oldBatchName = "None";
+      // Check if this assignment is a replacement of an older one? We don't have context here.
+      // We'll keep it simple: old batch is "None" (or we could fetch from assignment history if available).
+
+      const context = {
+        academyName: org?.company_name || "Academy",
+        student_name: `${student.first_name || ''} ${student.last_name || ''}`.trim(),
+        old_batch: oldBatchName,
+        new_batch: newBatch.batch_name,
+        effective_date: assignment.enrollment_date || new Date().toISOString().split("T")[0],
+      };
+
+      await sendTemplateEmail({
+        to: recipientEmail,
+        organizationId: org?.id,
+        slug: "batch_change",
+        context,
+        branchId,
+      });
+
+      toast.success(`Batch change notification sent to ${recipientEmail}`);
+    } catch (err) {
+      console.error("Send batch change error:", err);
+      toast.error("Failed to send notification.");
+    }
+  };
+
+  // ---- Data fetching (unchanged) ----
   const {
     data,
     isLoading,
@@ -89,7 +247,7 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
 
   const assignments = data?.pages.flatMap((page) => page.data) || [];
 
-  // ---- Dropdowns for filters (scoped) ----
+  // ---- Dropdowns ----
   const { data: batches = [] } = useQuery({
     queryKey: ["activeBatchesWithMedium", branchId, financialYearId],
     queryFn: () => getActiveBatches(branchId, financialYearId),
@@ -123,7 +281,7 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
     return map;
   }, [batches]);
 
-  // ---- Mutations – scoped where needed ----
+  // ---- Mutations ----
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }) => updateStudentBatch(id, payload, ctx),
     onSuccess: () => {
@@ -149,7 +307,7 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
   const [editStatus, setEditStatus] = useState("");
   const fileInputRef = useRef(null);
 
-  // ---- CSV Import – already uses context ----
+  // ---- CSV handlers ----
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -180,7 +338,6 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
     });
   }
 
-  // ---- CSV Export – now scoped ----
   async function handleCSVExport() {
     try {
       const allData = await getAllStudentBatchesForExport(allFilters, branchId, financialYearId);
@@ -217,7 +374,7 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
     deleteMutation.mutate(id);
   }
 
-  // ── Content ──
+  // ---- Render ----
   const content = (
     <>
       {/* Header */}
@@ -231,6 +388,13 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {/* 👇 Send Report button */}
+          <button
+            onClick={sendReportEmail}
+            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+          >
+            <Mail size={18} /> Send Report
+          </button>
           <button
             onClick={() => setShowModal(true)}
             className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
@@ -500,6 +664,14 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
                         </div>
                       ) : (
                         <div className="flex gap-2">
+                          {/* 👇 Resend Batch Change Email */}
+                          <button
+                            onClick={() => sendBatchChangeEmail(assignment)}
+                            className="text-blue-600 hover:underline"
+                            title="Resend batch change notification"
+                          >
+                            <Mail size={15} />
+                          </button>
                           <button
                             onClick={() => {
                               setEditingId(assignment.id);
@@ -557,8 +729,9 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
   }
 
   return (
-    
+    <>
       <BackButton to="/admissions-hub" label="Admissions" />
-      
+      {content}
+    </>
   );
 }

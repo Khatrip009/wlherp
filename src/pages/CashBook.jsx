@@ -1,10 +1,11 @@
 // src/pages/CashBook.jsx
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Printer } from "lucide-react";
+import { Printer, Mail } from "lucide-react"; // 👈 Added Mail
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
 import { useOrg } from "../context/OrganizationContext";
+import { sendEmail } from "../services/emailService"; // 👈 Import
 
 export default function CashBook() {
   const today = new Date().toISOString().split("T")[0];
@@ -151,6 +152,111 @@ export default function CashBook() {
   const totalReceipts = entries.reduce((s, e) => s + (parseFloat(e.debit) || 0), 0);
   const totalPayments = entries.reduce((s, e) => s + (parseFloat(e.credit) || 0), 0);
 
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!currentOrg?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", currentOrg.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send Report Email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (entries.length === 0) {
+      alert("No transactions found for the selected period.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found to send the report.");
+        return;
+      }
+
+      // Build HTML table rows
+      let tableRows = ledgerWithBalance.map((entry) => {
+        const date = entry.journal_entries?.entry_date || "";
+        const ref = entry.journal_entries?.reference || "—";
+        const desc = entry.description || "";
+        const debit = entry.debit > 0 ? `₹ ${Number(entry.debit).toLocaleString('en-IN')}` : "—";
+        const credit = entry.credit > 0 ? `₹ ${Number(entry.credit).toLocaleString('en-IN')}` : "—";
+        const balance = `₹ ${entry.balance.toLocaleString('en-IN')}`;
+        return `
+          <tr>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${date}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${entry.voucherNo || "—"}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${ref}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${desc}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${debit}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${credit}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;font-weight:bold;">${balance}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const accountLabel = selectedAccount === "all" ? "All Cash & Bank" :
+                           selectedAccount === "cash" ? "Cash in Hand" :
+                           selectedAccount === "bank" ? "Bank Accounts" :
+                           cashBankAccounts.find(a => a.id == selectedAccount)?.account_name || "Selected Account";
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Cash / Bank Book</h2>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Period:</strong> ${startDate} – ${endDate}</p>
+          <p><strong>Account:</strong> ${accountLabel}</p>
+          <hr />
+          <div style="display:flex;justify-content:space-around;margin-bottom:20px;flex-wrap:wrap;">
+            <div><strong>Opening Balance:</strong> ₹ ${openingBalance.toLocaleString('en-IN')}</div>
+            <div><strong>Total Receipts:</strong> ₹ ${totalReceipts.toLocaleString('en-IN')}</div>
+            <div><strong>Total Payments:</strong> ₹ ${totalPayments.toLocaleString('en-IN')}</div>
+            <div><strong>Closing Balance:</strong> ₹ ${closingBalance.toLocaleString('en-IN')}</div>
+          </div>
+          <h3>Transaction Details</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;">
+            <thead>
+              <tr style="background:#e3f2fd;">
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Date</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Voucher No</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Reference</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Description</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Receipt (₹)</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Payment (₹)</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Balance (₹)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Cash/Bank Book Report - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── Print handler ─────────────────────────────────────────────────
   const handlePrint = () => {
     const printContent = document.getElementById("cash-book-table")?.outerHTML;
     if (!printContent) return;
@@ -222,13 +328,22 @@ export default function CashBook() {
             Day‑wise cash and bank transaction summary
           </p>
         </div>
-        <button
-          onClick={handlePrint}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
-          style={{ fontFamily: "var(--font-body)" }}
-        >
-          <Printer size={16} /> Print
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={sendReportEmail}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            <Mail size={16} /> Send Report
+          </button>
+          <button
+            onClick={handlePrint}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            <Printer size={16} /> Print
+          </button>
+        </div>
       </div>
 
       {/* Controls */}

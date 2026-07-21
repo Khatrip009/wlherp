@@ -36,10 +36,11 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
 import { supabase } from "../api/supabase";
+import { sendTemplateEmail } from "../services/emailService"; // 👈 Added
 
 export default function Attendance({ studentId: propStudentId = null, standalone = true }) {
   const { profile, loading: authLoading } = useAuth();
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -94,6 +95,60 @@ export default function Attendance({ studentId: propStudentId = null, standalone
   const [confirmDelete, setConfirmDelete] = useState(null);
   const fileInputRef = useRef(null);
 
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Email notification on session creation ──────────────────────
+  const sendSessionCreatedNotification = async (session) => {
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) return;
+
+      // Fetch batch name
+      const { data: batch, error: batchError } = await supabase
+        .from("batches")
+        .select("batch_name")
+        .eq("id", session.batch_id)
+        .single();
+      if (batchError) throw batchError;
+
+      const message =
+        `A new attendance session has been created:\n` +
+        `Batch: ${batch?.batch_name || 'N/A'}\n` +
+        `Date: ${session.attendance_date}\n` +
+        `Topic: ${session.topic_covered || 'N/A'}\n` +
+        `Created by: ${profile?.full_name || 'System'}`;
+
+      await sendTemplateEmail({
+        to: adminEmails,
+        organizationId: org.id,
+        slug: "system_announcement",
+        context: {
+          academyName: org?.company_name || "Academy",
+          title: "New Attendance Session Created",
+          message,
+          target_type: "Admin",
+        },
+        branchId,
+      });
+    } catch (error) {
+      console.error("Failed to send attendance notification:", error);
+    }
+  };
+
   // Dropdowns – scoped
   const { data: batches = [] } = useQuery({
     queryKey: ["batches-dropdown", branchId, financialYearId],
@@ -139,10 +194,15 @@ export default function Attendance({ studentId: propStudentId = null, standalone
   // Mutations
   const createMutation = useMutation({
     mutationFn: (payload) => createAttendanceSession(payload, branchId, financialYearId),
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success("Session created");
       queryClient.invalidateQueries({ queryKey: ["attendance-sessions"] });
       setShowForm(false);
+
+      // ─── Send email notification ──────────────────────────────
+      if (data) {
+        sendSessionCreatedNotification(data);
+      }
     },
     onError: () => toast.error("Failed to create session"),
   });

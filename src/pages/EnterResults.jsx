@@ -12,7 +12,8 @@ import {
   Download,
   Upload,
   FileDown,
-} from "lucide-react";
+  Mail,
+} from "lucide-react"; // 👈 Added Mail
 import Papa from "papaparse";
 
 import {
@@ -22,12 +23,14 @@ import {
   saveResults,
 } from "../services/examService";
 import { useOrg } from "../context/OrganizationContext";
+import { supabase } from "../api/supabase";
+import { sendTemplateEmail } from "../services/emailService"; // 👈 Import
 
 export default function EnterResults() {
   const { examId } = useParams();
   const navigate = useNavigate();
 
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
   const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
   const branchId = ctx.branchId;
   const financialYearId = ctx.financialYearId;
@@ -44,6 +47,7 @@ export default function EnterResults() {
   const [remarks, setRemarks] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
   const fileInputRef = useRef(null);
 
   const courseName = exam?.batches?.courses?.course_name || "—";
@@ -93,6 +97,97 @@ export default function EnterResults() {
     setRemarks((prev) => ({ ...prev, [studentId]: value }));
   }
 
+  // ─── Email Sending ──────────────────────────────────────────────────
+  async function sendResultsEmail() {
+    if (allStudents.length === 0) {
+      toast.error("No students in this batch.");
+      return;
+    }
+
+    setSendingEmail(true);
+    try {
+      // Fetch student emails
+      const studentIds = allStudents.map((s) => s.id);
+      const { data: studentEmails, error } = await supabase
+        .from("students")
+        .select("id, email, first_name, last_name")
+        .in("id", studentIds)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId);
+
+      if (error) throw error;
+
+      // Build a map of student email by id
+      const emailMap = {};
+      studentEmails.forEach((s) => {
+        emailMap[s.id] = s.email;
+      });
+
+      // Fetch subject name
+      let subjectName = "";
+      if (exam.subject_id) {
+        const { data: subjectData } = await supabase
+          .from("subjects")
+          .select("subject_name")
+          .eq("id", exam.subject_id)
+          .single();
+        subjectName = subjectData?.subject_name || "";
+      }
+
+      const totalMarks = exam.total_marks || 0;
+      let sentCount = 0;
+
+      for (const student of allStudents) {
+        const studentEmail = emailMap[student.id];
+        if (!studentEmail) continue;
+
+        const marksObtained = parseFloat(marks[student.id]) || 0;
+        const remark = remarks[student.id] || "";
+
+        // Compute simple grade (optional)
+        let grade = "";
+        if (totalMarks > 0) {
+          const percentage = (marksObtained / totalMarks) * 100;
+          if (percentage >= 90) grade = "A+";
+          else if (percentage >= 80) grade = "A";
+          else if (percentage >= 70) grade = "B+";
+          else if (percentage >= 60) grade = "B";
+          else if (percentage >= 50) grade = "C";
+          else grade = "D";
+        }
+
+        const context = {
+          academyName: org?.company_name || "Academy",
+          student_name: `${student.first_name} ${student.last_name}`.trim(),
+          exam_name: exam.exam_name,
+          subject_name: subjectName,
+          marks_obtained: marksObtained,
+          total_marks: totalMarks,
+          grade: grade,
+          remarks: remark || "No remarks",
+        };
+
+        await sendTemplateEmail({
+          to: studentEmail,
+          organizationId: org?.id,
+          slug: "results_published",
+          context,
+          branchId,
+        });
+
+        sentCount++;
+      }
+
+      toast.success(`Results email sent to ${sentCount} student(s).`);
+    } catch (err) {
+      console.error("Email error:", err);
+      toast.error("Failed to send emails: " + err.message);
+    } finally {
+      setSendingEmail(false);
+    }
+  }
+
+  // ─── CSV Export/Import ─────────────────────────────────────────────
   function handleExportCSV() {
     const data = allStudents.map((s) => ({
       admission_no: s.admission_no,
@@ -314,6 +409,16 @@ export default function EnterResults() {
             <User size={18} />
             Students ({allStudents.length})
           </h2>
+          {/* 👇 Send Results Email button */}
+          <button
+            onClick={sendResultsEmail}
+            disabled={sendingEmail || allStudents.length === 0}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            <Mail size={16} />
+            {sendingEmail ? "Sending..." : "Send Results Email"}
+          </button>
         </div>
 
         <div className="overflow-x-auto">

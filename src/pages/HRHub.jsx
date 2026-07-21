@@ -16,8 +16,10 @@ import {
   X,
   AlertCircle,
   TrendingUp,
-  ListChecks, BarChart2,
-} from "lucide-react";
+  ListChecks,
+  BarChart2,
+  Mail,
+} from "lucide-react"; // 👈 Added Mail
 import toast from "react-hot-toast";
 import TeacherForm from "../components/TeacherForm";
 import { getActiveTeachers, createTeacher } from "../services/teacherService";
@@ -25,10 +27,11 @@ import { getSalaryPayments } from "../services/salaryService";
 import { getLeaves, updateLeaveStatus } from "../services/leaveService";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { sendEmail } from "../services/emailService"; // 👈 Import
 
 export default function HRHub() {
   const queryClient = useQueryClient();
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
@@ -114,6 +117,122 @@ export default function HRHub() {
     onError: (err) => toast.error(err.message || "Failed to create employee"),
   });
 
+  // ─── Helper: get admin emails ────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send Report Email ──────────────────────────────────
+  const sendReportEmail = async () => {
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      // Build leave table rows
+      let leaveRows = pendingLeaves.slice(0, 10).map((leave) => `
+        <tr>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${leave.teachers?.first_name || ''} ${leave.teachers?.last_name || ''}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${leave.start_date} → ${leave.end_date}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${leave.reason || '—'}</td>
+        </tr>
+      `).join('');
+
+      // Build salary rows
+      let salaryRows = recentPayments.map((p) => `
+        <tr>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${p.teachers?.first_name || ''} ${p.teachers?.last_name || ''}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${p.payment_date}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(p.amount).toLocaleString('en-IN')}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(p.net_amount).toLocaleString('en-IN')}</td>
+        </tr>
+      `).join('');
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">HR Dashboard Report</h2>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Date:</strong> ${new Date().toLocaleString()}</p>
+          <hr />
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:15px;">
+            <div style="border:1px solid #ddd;padding:8px 12px;border-radius:6px;background:#f9f9f9;text-align:center;">
+              <div style="font-size:10px;color:#888;">Total Employees</div>
+              <div style="font-size:18px;font-weight:700;">${teachersLoading ? '...' : teachers.length}</div>
+            </div>
+            <div style="border:1px solid #ddd;padding:8px 12px;border-radius:6px;background:#f9f9f9;text-align:center;">
+              <div style="font-size:10px;color:#888;">Present Today</div>
+              <div style="font-size:18px;font-weight:700;color:#2e7d32;">${attendanceLoading ? '...' : presentToday}</div>
+            </div>
+            <div style="border:1px solid #ddd;padding:8px 12px;border-radius:6px;background:#f9f9f9;text-align:center;">
+              <div style="font-size:10px;color:#888;">On Leave Today</div>
+              <div style="font-size:18px;font-weight:700;color:#e65100;">${attendanceLoading ? '...' : onLeaveToday}</div>
+            </div>
+            <div style="border:1px solid #ddd;padding:8px 12px;border-radius:6px;background:#f9f9f9;text-align:center;">
+              <div style="font-size:10px;color:#888;">Pending Leaves</div>
+              <div style="font-size:18px;font-weight:700;color:#d32f2f;">${leavesLoading ? '...' : pendingLeaves.length}</div>
+            </div>
+          </div>
+
+          <h3 style="color:#0D47A1;">Recent Leave Requests (${pendingLeaves.length} pending)</h3>
+          ${pendingLeaves.length > 0 ? `
+            <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #ddd;">
+              <thead style="background:#e3f2fd;">
+                <tr>
+                  <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Teacher</th>
+                  <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Dates</th>
+                  <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Reason</th>
+                </tr>
+              </thead>
+              <tbody>${leaveRows || '<tr><td colspan="3" style="padding:8px;text-align:center;">No pending leaves</td></tr>'}</tbody>
+            </table>
+          ` : `<p>No pending leaves.</p>`}
+
+          <h3 style="color:#0D47A1;margin-top:20px;">Recent Salary Payments</h3>
+          ${recentPayments.length > 0 ? `
+            <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #ddd;">
+              <thead style="background:#e3f2fd;">
+                <tr>
+                  <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Teacher</th>
+                  <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Date</th>
+                  <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Gross</th>
+                  <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Net</th>
+                </tr>
+              </thead>
+              <tbody>${salaryRows || '<tr><td colspan="4" style="padding:8px;text-align:center;">No recent payments</td></tr>'}</tbody>
+            </table>
+          ` : `<p>No recent salary payments.</p>`}
+
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated HR report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `HR Dashboard Report - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("HR report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send HR report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
   // ─── Quick action cards ─────────────────────────────────
   const quickActions = [
     {
@@ -195,13 +314,22 @@ export default function HRHub() {
             Complete employee management dashboard
           </p>
         </div>
-        <button
-          onClick={() => setShowAddEmployee(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
-          style={{ fontFamily: "var(--font-body)" }}
-        >
-          <UserPlus size={18} /> Add Employee
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={sendReportEmail}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            <Mail size={18} /> Send Report
+          </button>
+          <button
+            onClick={() => setShowAddEmployee(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            <UserPlus size={18} /> Add Employee
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -232,7 +360,7 @@ export default function HRHub() {
         ))}
       </div>
 
-      {/* Quick Actions Grid */}
+      {/* Quick Actions Grid (unchanged) */}
       <div>
         <h2
           className="text-lg font-semibold mb-3"
@@ -265,7 +393,7 @@ export default function HRHub() {
         </div>
       </div>
 
-      {/* Two-column: Recent Leaves + Recent Payments */}
+      {/* Two-column: Recent Leaves + Recent Payments (unchanged) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Leave Requests */}
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -401,7 +529,7 @@ export default function HRHub() {
         </div>
       </div>
 
-      {/* Add Employee Modal */}
+      {/* Add Employee Modal (unchanged) */}
       {showAddEmployee && (
         <TeacherForm
           onSubmit={handleTeacherSubmit}

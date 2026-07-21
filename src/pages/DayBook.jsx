@@ -2,17 +2,18 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Printer, Calendar, ChevronDown, ChevronRight } from "lucide-react";
+import { Printer, Calendar, ChevronDown, ChevronRight, Mail } from "lucide-react"; // 👈 Added Mail
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
 import { useOrg } from "../context/OrganizationContext";
+import { sendEmail } from "../services/emailService"; // 👈 Import
 
 export default function DayBook() {
   const today = new Date().toISOString().split("T")[0];
   const [selectedDate, setSelectedDate] = useState(today);
   const [expandedVoucher, setExpandedVoucher] = useState(null);
 
-  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const { org: currentOrg, branch, selectedFinancialYear } = useOrg(); // 👈 Added org
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -22,7 +23,23 @@ export default function DayBook() {
     enabled: !!currentOrg?.id,
   });
 
-  // Fetch vouchers for the selected date – scoped
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!currentOrg?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", currentOrg.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Query ──────────────────────────────────────────────────────────
   const { data: vouchers = [], isLoading } = useQuery({
     queryKey: ["day-book", selectedDate, branchId, financialYearId],
     queryFn: async () => {
@@ -72,6 +89,90 @@ export default function DayBook() {
     return s + (v.journal_entries?.journal_entry_lines || []).reduce((sum, l) => sum + (parseFloat(l.credit) || 0), 0);
   }, 0);
 
+  // ─── Send Report Email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (vouchers.length === 0) {
+      alert("No vouchers found for this date.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      // Build HTML for each voucher group
+      let voucherHtml = '';
+      for (const [type, vouchs] of Object.entries(groupedVouchers)) {
+        voucherHtml += `<h3 style="color:#0D47A1; margin:12px 0 5px;">${type}</h3>`;
+        vouchs.forEach(v => {
+          const lines = v.journal_entries?.journal_entry_lines || [];
+          let linesHtml = lines.map(l => `
+            <tr>
+              <td style="padding:4px 8px;border:1px solid #ddd;">${l.chart_of_accounts?.account_name || "—"}</td>
+              <td style="padding:4px 8px;border:1px solid #ddd;">${l.description || ""}</td>
+              <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${l.debit > 0 ? '₹' + Number(l.debit).toLocaleString('en-IN') : ''}</td>
+              <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${l.credit > 0 ? '₹' + Number(l.credit).toLocaleString('en-IN') : ''}</td>
+            </tr>
+          `).join('');
+
+          voucherHtml += `
+            <div style="border:1px solid #ddd;padding:8px;margin-bottom:8px;">
+              <div style="font-weight:700;color:#0D47A1;margin-bottom:4px;">
+                ${v.voucher_no} – ${v.reference || "—"}
+                <span style="font-weight:normal;color:#666;"> (${v.description || ""})</span>
+              </div>
+              <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
+                <thead>
+                  <tr style="background:#e3f2fd;">
+                    <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Account</th>
+                    <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Description</th>
+                    <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Debit</th>
+                    <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Credit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${linesHtml}
+                </tbody>
+              </table>
+            </div>
+          `;
+        });
+      }
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Day Book</h2>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Date:</strong> ${selectedDate}</p>
+          <p><strong>Total Vouchers:</strong> ${vouchers.length}</p>
+          <div style="display:flex;gap:20px;margin:10px 0;">
+            <div><strong>Total Debit:</strong> ₹ ${totalDebit.toLocaleString('en-IN')}</div>
+            <div><strong>Total Credit:</strong> ₹ ${totalCredit.toLocaleString('en-IN')}</div>
+          </div>
+          <hr />
+          ${voucherHtml}
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated day book from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Day Book - ${selectedDate}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── Print handler (unchanged) ─────────────────────────────────────
   const handlePrint = () => {
     const logoUrl = org?.logo_dark_url || "/ShreeVidhyaDark.png";
     const orgName = org?.company_name || "ShreeVidhya Academy";
@@ -174,13 +275,22 @@ export default function DayBook() {
             View and print daily voucher entries
           </p>
         </div>
-        <button
-          onClick={handlePrint}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
-          style={{ fontFamily: "var(--font-body)" }}
-        >
-          <Printer size={16} /> Print
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={sendReportEmail}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            <Mail size={16} /> Send Report
+          </button>
+          <button
+            onClick={handlePrint}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            <Printer size={16} /> Print
+          </button>
+        </div>
       </div>
 
       {/* Date selector */}

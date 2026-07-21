@@ -1,7 +1,7 @@
 // src/pages/ProfitLoss.jsx
 import { useState, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Printer } from "lucide-react";
+import { Printer, Mail } from "lucide-react";
 import html2canvas from "html2canvas";
 import {
   BarChart,
@@ -20,6 +20,7 @@ import {
 import { supabase } from "../api/supabase";
 import { getOrganization } from "../services/organizationService";
 import { useOrg } from "../context/OrganizationContext";
+import { sendEmail } from "../services/emailService";
 
 const GROUP_CONFIG = {
   "Direct Income": { parent: 4000, type: "income" },
@@ -39,7 +40,6 @@ export default function ProfitLoss() {
   const [startDate, setStartDate] = useState(firstOfMonth);
   const [endDate, setEndDate] = useState(today);
 
-  // ── Organisation, Branch & Financial Year context ──
   const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
@@ -52,7 +52,7 @@ export default function ProfitLoss() {
 
   const chartRef = useRef(null);
 
-  // Profit & Loss data – now scoped with branch & FY
+  // ─── Profit & Loss data ─────────────────────────────────────────────
   const { data: accounts = [], isLoading } = useQuery({
     queryKey: ["profit-loss", startDate, endDate, branchId, financialYearId],
     queryFn: async () => {
@@ -113,7 +113,6 @@ export default function ProfitLoss() {
     .reduce((s, [_, g]) => s + g.total, 0);
   const netProfit = totalIncome - totalExpenses;
 
-  // Prepare chart data
   const incomeVsExpenseData = [
     { name: "Income", value: totalIncome },
     { name: "Expenses", value: totalExpenses },
@@ -129,7 +128,152 @@ export default function ProfitLoss() {
     .map(([name, group]) => ({ name, value: group.total }))
     .filter((item) => item.value > 0);
 
-  // ── Print function with chart capture ──
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!currentOrg?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", currentOrg.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send report email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (Object.keys(groups).length === 0) {
+      alert("No data to send.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      // 1. Capture charts as images
+      const chartsContainer = document.getElementById("pl-charts");
+      let chartImage = null;
+      if (chartsContainer) {
+        const canvas = await html2canvas(chartsContainer, { scale: 1.5, useCORS: true });
+        chartImage = canvas.toDataURL("image/png");
+      }
+
+      // 2. Build HTML for email
+      const formatCurrency = (val) => `₹ ${Math.abs(val).toLocaleString("en-IN")}`;
+
+      // Build income tables HTML
+      let incomeHtml = "";
+      Object.entries(groups)
+        .filter(([name]) => name.toLowerCase().includes("income"))
+        .forEach(([name, group]) => {
+          incomeHtml += `
+            <h4 style="margin:10px 0 4px;">${name}</h4>
+            <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;">
+              <thead>
+                <tr style="background:#f0f0f0;">
+                  <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Account</th>
+                  <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${group.items.map(item => `
+                  <tr>
+                    <td style="padding:4px 8px;border:1px solid #ddd;">${item.account_name}</td>
+                    <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${formatCurrency(item.balance)}</td>
+                  </tr>
+                `).join('')}
+                <tr style="font-weight:bold;background:#e8f5e9;">
+                  <td style="padding:4px 8px;border:1px solid #ddd;">Total ${name}</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${formatCurrency(group.total)}</td>
+                </tr>
+              </tbody>
+            </table>
+          `;
+        });
+
+      // Build expense tables HTML
+      let expenseHtml = "";
+      Object.entries(groups)
+        .filter(([name]) => name.toLowerCase().includes("expense"))
+        .forEach(([name, group]) => {
+          expenseHtml += `
+            <h4 style="margin:10px 0 4px;">${name}</h4>
+            <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;">
+              <thead>
+                <tr style="background:#f0f0f0;">
+                  <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Account</th>
+                  <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${group.items.map(item => `
+                  <tr>
+                    <td style="padding:4px 8px;border:1px solid #ddd;">${item.account_name}</td>
+                    <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${formatCurrency(item.balance)}</td>
+                  </tr>
+                `).join('')}
+                <tr style="font-weight:bold;background:#ffebee;">
+                  <td style="padding:4px 8px;border:1px solid #ddd;">Total ${name}</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${formatCurrency(group.total)}</td>
+                </tr>
+              </tbody>
+            </table>
+          `;
+        });
+
+      const orgName = org?.company_name || "Academy";
+      const isProfit = netProfit >= 0;
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Profit & Loss Statement</h2>
+          <p><strong>Organization:</strong> ${orgName}</p>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Period:</strong> ${startDate} – ${endDate}</p>
+          <hr />
+          ${chartImage ? `<div style="text-align:center;margin:15px 0;"><img src="${chartImage}" alt="Charts" style="max-width:100%;height:auto;"/></div>` : ''}
+          <h3 style="color:#2e7d32;">Income</h3>
+          ${incomeHtml}
+          <div style="font-size:16px;font-weight:bold;border-top:2px solid #2e7d32;padding-top:6px;margin-top:12px;">
+            Total Income: ${formatCurrency(totalIncome)}
+          </div>
+          <h3 style="color:#c62828;margin-top:20px;">Expenses</h3>
+          ${expenseHtml}
+          <div style="font-size:16px;font-weight:bold;border-top:2px solid #c62828;padding-top:6px;margin-top:12px;">
+            Total Expenses: ${formatCurrency(totalExpenses)}
+          </div>
+          <div style="margin-top:20px;padding:16px;border-radius:8px;border:2px solid ${isProfit ? '#2e7d32' : '#c62828'};background:${isProfit ? '#e8f5e9' : '#ffebee'};text-align:center;">
+            <p style="font-size:18px;font-weight:bold;color:${isProfit ? '#2e7d32' : '#c62828'};">
+              ${isProfit ? 'Net Profit' : 'Net Loss'}: ${formatCurrency(netProfit)}
+            </p>
+          </div>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${orgName}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Profit & Loss Statement - ${startDate} to ${endDate}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── Print handler (unchanged) ─────────────────────────────────────
   const handlePrint = async () => {
     const printArea = document.getElementById("pl-print-area");
     if (!printArea) return;
@@ -199,12 +343,20 @@ export default function ProfitLoss() {
     <>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">Profit & Loss Statement</h1>
-        <button
-          onClick={handlePrint}
-          className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
-        >
-          <Printer size={16} /> Print
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={sendReportEmail}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          >
+            <Mail size={16} /> Send Report
+          </button>
+          <button
+            onClick={handlePrint}
+            className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          >
+            <Printer size={16} /> Print
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-4 mb-6">

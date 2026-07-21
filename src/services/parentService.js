@@ -1,5 +1,55 @@
 // src/services/parentService.js
 import { supabase } from "../api/supabase";
+import { sendTemplateEmail } from "./emailService"; // 👈 Added
+
+// ─── Helpers ──────────────────────────────────────────────────────────
+
+async function getOrganizationFromBranch(branchId) {
+  const { data: branch, error: branchError } = await supabase
+    .from("branches")
+    .select("organization_id")
+    .eq("id", branchId)
+    .single();
+  if (branchError) throw branchError;
+
+  const { data: org, error: orgError } = await supabase
+    .from("organization")
+    .select("id, company_name")
+    .eq("id", branch.organization_id)
+    .single();
+  if (orgError) throw orgError;
+  return org;
+}
+
+/**
+ * Send a welcome/activation email to the parent with login credentials.
+ */
+async function sendParentWelcomeEmail(parent, email, password, context) {
+  const { branchId, financialYearId } = context;
+  try {
+    const org = await getOrganizationFromBranch(branchId);
+    const fullName = parent.father_name || parent.mother_name || "Parent";
+
+    const contextEmail = {
+      academyName: org.company_name,
+      full_name: fullName,
+      email: email,
+      temp_password: password,
+      login_link: `${window.location.origin}/login`, // adjust to your app's login URL
+    };
+
+    await sendTemplateEmail({
+      to: email,
+      organizationId: org.id,
+      slug: "account_activation", // or "account_welcome" – choose your template
+      context: contextEmail,
+      branchId,
+    });
+    console.log(`✅ Welcome email sent to parent ${email}`);
+  } catch (error) {
+    console.error("❌ Failed to send parent welcome email:", error);
+  }
+}
 
 /**
  * Helper: create an auth user + update profile role.
@@ -136,6 +186,11 @@ export async function createParent(payload, studentId = null, context) {
         financial_year_id: financialYearId,
       });
     if (linkError) throw linkError;
+  }
+
+  // ─── Send welcome email ──────────────────────────────────────
+  if (email && password) {
+    await sendParentWelcomeEmail(parent, email, password, context);
   }
 
   return parent;

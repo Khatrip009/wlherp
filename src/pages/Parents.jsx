@@ -14,6 +14,7 @@ import {
   Download,
   Upload,
   Users,
+  Mail,
 } from "lucide-react";
 import Papa from "papaparse";
 
@@ -26,13 +27,14 @@ import {
   deleteParent,
   getAllParentsForExport,
 } from "../services/parentService";
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
+import { supabase } from "../api/supabase";
+import { sendEmail, sendTemplateEmail } from "../services/emailService";
 
 export default function Parents() {
   const queryClient = useQueryClient();
 
-  // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
@@ -44,9 +46,133 @@ export default function Parents() {
   // UI state
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [sendingEmailId, setSendingEmailId] = useState(null);
   const fileInputRef = useRef(null);
 
-  // Infinite query – now scoped
+  // ─── Helper: get admin emails ──────────────────────────────────────
+  const getAdminEmails = async () => {
+    if (!org?.id) return [];
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("organization_id", org.id)
+      .in("role", ["admin", "super_admin", "organization_admin"])
+      .eq("is_active", true);
+    if (error) {
+      console.error("Failed to fetch admin emails:", error);
+      return [];
+    }
+    return data?.map(p => p.email).filter(Boolean) || [];
+  };
+
+  // ─── Send Report Email ─────────────────────────────────────────────
+  const sendReportEmail = async () => {
+    if (parents.length === 0) {
+      alert("No parents to send.");
+      return;
+    }
+
+    try {
+      const adminEmails = await getAdminEmails();
+      if (adminEmails.length === 0) {
+        alert("No admin emails found.");
+        return;
+      }
+
+      // Build HTML table rows
+      let tableRows = parents.map((p) => {
+        const linkedStudents = p.linked_students?.map(s => `${s.first_name} ${s.last_name}`).join(', ') || '—';
+        return `
+          <tr>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${p.father_name || '—'}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${p.mother_name || '—'}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${p.mobile || '—'}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${p.whatsapp || '—'}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${p.email || '—'}</td>
+            <td style="padding:4px 8px;border:1px solid #ddd;">${linkedStudents}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
+          <h2 style="color:#0D47A1;">Parent Report</h2>
+          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
+          <p><strong>Total Parents:</strong> ${parents.length}</p>
+          <hr />
+          <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
+            <thead style="background:#e3f2fd;">
+              <tr>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Father</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Mother</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Mobile</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">WhatsApp</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Email</th>
+                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Linked Students</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: adminEmails,
+        subject: `Parent Report - ${new Date().toLocaleDateString()}`,
+        html: htmlBody,
+        from: org?.email || undefined,
+      });
+
+      alert("Report sent to admins.");
+    } catch (err) {
+      console.error("Failed to send report:", err);
+      alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── Resend welcome email to a parent ─────────────────────────────
+  const resendWelcomeEmail = async (parent) => {
+    // Only send if the parent has an email and a user_id
+    if (!parent.email) {
+      toast.error("No email address on file.");
+      return;
+    }
+    if (!parent.user_id) {
+      toast.error("This parent does not have a user account.");
+      return;
+    }
+
+    setSendingEmailId(parent.id);
+    try {
+      const fullName = parent.father_name || parent.mother_name || "Parent";
+      const context = {
+        academyName: org?.company_name || "Academy",
+        full_name: fullName,
+        email: parent.email,
+        temp_password: "Please use the 'Forgot Password' link to reset your password.",
+        login_link: `${window.location.origin}/login`,
+      };
+
+      await sendTemplateEmail({
+        to: parent.email,
+        organizationId: org?.id,
+        slug: "account_activation",
+        context,
+        branchId,
+      });
+      toast.success(`Welcome email sent to ${parent.email}`);
+    } catch (err) {
+      console.error("Resend error:", err);
+      toast.error("Failed to send email.");
+    } finally {
+      setSendingEmailId(null);
+    }
+  };
+
+  // ─── Infinite query ─────────────────────────────────────────────────
   const {
     data,
     isLoading,
@@ -71,7 +197,7 @@ export default function Parents() {
 
   const parents = data?.pages.flatMap((page) => page.data) || [];
 
-  // Mutations – already using context, no change
+  // ─── Mutations ──────────────────────────────────────────────────────
   const createMutation = useMutation({
     mutationFn: ({ form, studentId }) => createParent(form, studentId, ctx),
     onSuccess: () => {
@@ -102,7 +228,7 @@ export default function Parents() {
       toast.error("Deletion failed. The parent may be linked to students."),
   });
 
-  // CSV Import – already uses context
+  // ─── CSV handlers ──────────────────────────────────────────────────
   async function handleCSVImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -122,7 +248,7 @@ export default function Parents() {
               occupation: row.occupation || null,
               address: row.address || null,
             };
-            await createParent(payload, null, ctx);  // pass context
+            await createParent(payload, null, ctx);
             successCount++;
           } catch (err) {
             console.error(err);
@@ -135,7 +261,6 @@ export default function Parents() {
     });
   }
 
-  // CSV Export – now scoped
   async function handleCSVExport() {
     try {
       const allData = await getAllParentsForExport(allFilters, branchId, financialYearId);
@@ -152,14 +277,12 @@ export default function Parents() {
     }
   }
 
-  // Handlers for the form callbacks
+  // ─── Form callbacks ─────────────────────────────────────────────────
   function handleCreate(payload) {
-    // payload is { form, studentId, parent }
     createMutation.mutate({ form: payload.form, studentId: payload.studentId });
   }
 
   function handleUpdate(updatedFields) {
-    // updatedFields is just the form object
     updateMutation.mutate({ id: editing.id, payload: updatedFields });
   }
 
@@ -171,6 +294,7 @@ export default function Parents() {
   return (
     <>
       <BackButton to="/admissions-hub" label="Admissions Hub" />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
@@ -180,6 +304,13 @@ export default function Parents() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {/* 👇 Send Report button */}
+          <button
+            onClick={sendReportEmail}
+            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+          >
+            <Mail size={18} /> Send Report
+          </button>
           <button
             onClick={() => setShowForm(true)}
             className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
@@ -281,9 +412,19 @@ export default function Parents() {
                     </td>
                     <td className="text-sm">
                       <div className="flex gap-2">
+                        {/* 👇 Resend Welcome Email button */}
+                        <button
+                          onClick={() => resendWelcomeEmail(parent)}
+                          disabled={sendingEmailId === parent.id || !parent.email || !parent.user_id}
+                          className={`text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50`}
+                          title="Resend welcome email"
+                        >
+                          <Mail size={15} />
+                          {sendingEmailId === parent.id ? '...' : ''}
+                        </button>
                         <button
                           onClick={() => setEditing(parent)}
-                          className="text-blue-600 hover:underline"
+                          className="text-yellow-600 hover:underline"
                         >
                           <Edit3 size={15} />
                         </button>
