@@ -1,0 +1,102 @@
+Below is a **comprehensive list of email templates** your ERP should eventually support, based on the database schema and common school‑management workflows.  
+Templates are grouped by module. For each, we give the event, who receives it, what triggers it, and the key dynamic fields.
+
+---
+
+## 📧 Email Template Master List
+
+### 1. Admissions / Inquiries
+| # | Template | Recipient | Trigger | Dynamic Fields |
+|---|----------|-----------|---------|----------------|
+| 1 | Inquiry Confirmation | Inquirer (Parent/Student) | After `inquiries` record created | `inquiry_no`, `student_name`, `parent_name`, `mobile`, `course_name` |
+| 2 | Demo Scheduled | Inquirer | `inquiries.demo_scheduled_at` set | `student_name`, `demo_datetime`, `course_name`, `branch_name` |
+| 3 | Inquiry Status Change | Inquirer | `inquiries.status` updated | `student_name`, `old_status`, `new_status`, `rejection_reason` (if rejected) |
+| 4 | Admission Confirmation | Student + Parent (if `user_id` linked) | After `students` record created with `user_id` | `admission_no`, `student_name`, `batch_name`, `course_name`, `joining_date`, `branch_name` |
+| 5 | Student/Parent Account Activation | Student or Parent (when `user_id` is assigned) | After `students.user_id` or `parents.user_id` is set and `auth.users` created | `full_name`, `email`, temporary password (optional), login link |
+
+### 2. Attendance
+| # | Template | Recipient | Trigger | Dynamic Fields |
+|---|----------|-----------|---------|----------------|
+| 6 | Low Attendance Alert | Student + Parent | When `attendance_summary.percentage` drops below a threshold (e.g., 75%) | `student_name`, `attendance_percentage`, `batch_name`, `month_year` |
+| 7 | Daily Absent Report | Parents | Scheduled / real-time after daily attendance marked | `student_name`, `date`, `status` |
+
+### 3. Fees
+| # | Template | Recipient | Trigger | Dynamic Fields |
+|---|----------|-----------|---------|----------------|
+| 8 | Fee Payment Receipt | Student + Parent | After `fee_payments` record created | `receipt_number`, `student_name`, `amount`, `payment_date`, `payment_mode`, `transaction_no`, `balance_due` |
+| 9 | Fee Reminder | Student + Parent | Scheduled based on `fee_installments.due_date` approaching (e.g., 7 days before) | `student_name`, `due_date`, `amount`, `installment_number`, `batch_name` |
+| 10 | Fee Overdue Notice | Student + Parent | `fee_installments.due_date` passed and status = 'Pending' | `student_name`, `due_date`, `amount`, `installment_number`, `outstanding_total` |
+| 11 | Fee Structure Update | All students of a course/batch (optional) | When `fee_structures` is created or updated | `course_name`, `new_fee_amount`, `effective_from` |
+
+### 4. Exams & Results
+| # | Template | Recipient | Trigger | Dynamic Fields |
+|---|----------|-----------|---------|----------------|
+| 12 | Exam Schedule Announcement | Students + Parents of a batch | After `exams` records created for a batch | `batch_name`, `exam_name`, `exam_date`, `subject_name`, `total_marks` |
+| 13 | Results Published | Student + Parent | After `student_results` inserted or `exams` status changed to "published" | `student_name`, `exam_name`, `subject_name`, `marks_obtained`, `total_marks`, `grade`, `remarks` |
+| 14 | Grade Report Card | Student + Parent | End‑of‑term / on demand | `student_name`, `batch_name`, `term`, list of subjects with marks/grades, overall percentage |
+
+### 5. Homework
+| # | Template | Recipient | Trigger | Dynamic Fields |
+|---|----------|-----------|---------|----------------|
+| 15 | New Homework Assignment | Students of a batch | After `homework` record created | `batch_name`, `subject_name`, `title`, `description`, `due_date`, `attachment_url` (if any) |
+| 16 | Homework Submission Reminder | Students who haven’t submitted | X hours before `homework.due_date` | `title`, `due_date`, `subject_name` |
+
+### 6. Certificates
+| # | Template | Recipient | Trigger | Dynamic Fields |
+|---|----------|-----------|---------|----------------|
+| 17 | Certificate Issued | Student + Parent | After `certificates` record created | `student_name`, `certificate_no`, `course_name`, `level_name`, `issue_date`, `download_link` (if available) |
+
+### 7. Teachers / HR
+| # | Template | Recipient | Trigger | Dynamic Fields |
+|---|----------|-----------|---------|----------------|
+| 18 | Salary Slip | Teacher | After `salary_payments` record created (or on demand) | `teacher_name`, `employee_code`, `payment_date`, `gross_amount`, `tds`, `net_amount` (can attach PDF) |
+| 19 | Leave Application Submitted | Admin / HR | After `leaves` record created with `teacher_id` | `teacher_name`, `leave_dates`, `reason`, `status` |
+| 20 | Leave Status Update | Teacher | After `leaves.status` updated | `teacher_name`, `leave_dates`, `new_status`, `admin_remarks` |
+| 21 | New Teacher Onboarding | New Teacher (`user_id` linked) | After `teachers.user_id` set and auth user created | `teacher_name`, `employee_code`, `login_details` |
+
+### 8. General / Notifications
+| # | Template | Recipient | Trigger | Dynamic Fields |
+|---|----------|-----------|---------|----------------|
+| 22 | System Announcement | All / Specific role / Batch | Admin manually triggers or via `notifications` table (if email flag added) | `title`, `message`, `target_type` |
+| 23 | Account Creation / Welcome | Any new user (`profiles` created) | After `auth.users` created and `profiles` inserted | `full_name`, `role`, `login_link` |
+| 24 | Password Reset | Any user (via Supabase Auth) | Supabase’s built‑in email – no custom template needed | – |
+| 25 | Batch Change Notification | Student + Parent | When `student_batches` inserted or updated | `student_name`, `old_batch`, `new_batch`, `effective_date` |
+
+### 9. Inventory / Purchase
+| # | Template | Recipient | Trigger | Dynamic Fields |
+|---|----------|-----------|---------|----------------|
+| 26 | Purchase Order Sent | Vendor (if email stored in `vendors`) | After `purchase_orders` status changed to “Sent” | `po_number`, `vendor_name`, `order_date`, `expected_date`, `total_amount`, items list |
+| 27 | Purchase Invoice Received | Admin / Accountant | After `purchase_invoices` created (internal notification) | `invoice_number`, `vendor_name`, `grand_total`, `invoice_date` |
+
+### 10. Online Classes
+| # | Template | Recipient | Trigger | Dynamic Fields |
+|---|----------|-----------|---------|----------------|
+| 28 | Online Class Scheduled | Students of batch + Teacher | After `online_classes` record created | `batch_name`, `title`, `start_time`, `duration`, `room_link` |
+
+---
+
+## 📌 Notes & Recommendations
+
+- **Supabase Auth emails** (confirm, reset, magic link) are handled by Supabase – you only need to customize the templates in the Supabase dashboard.
+- **Fee receipts** and **salary slips** should ideally attach a PDF (you already have the generators).
+- **Attendance alerts** and **fee reminders** can be implemented as **scheduled Edge Functions** (cron jobs) that run daily and send emails.
+- The `sendEmailToRole` and `sendEmailToUsers` functions you already created can be used for all of these templates.
+- For large lists (e.g., all students in a batch), batching (max 50 recipients per Resend call) is already built into your service.
+
+---
+
+## 🚀 Suggested Implementation Order (Priority)
+
+1. **Fee Payment Receipt** (most immediate value)
+2. **Salary Slip** (teacher satisfaction)
+3. **Admission Confirmation** (with login details)
+4. **Results Published** / **Exam Schedule**
+5. **Low Attendance Alert**
+6. **Fee Reminder** / **Overdue Notice**
+7. **Online Class Scheduled**
+8. **Leave Status Update**
+9. **General Announcement** (bulk email)
+10. Others on demand
+
+Start by building the HTML templates for the top 5, then integrate them into the appropriate service hooks/mutations.  
+You can store templates as simple JS functions that return HTML strings, or use Resend’s React email templates later.

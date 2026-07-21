@@ -162,6 +162,8 @@ import Branches from "./pages/Branches";
 import MasterData from "./pages/MasterData";
 import FinanceHub from "./pages/FinanceHub";
 
+import EmailTest from "./pages/EmailTest";
+
 // ── Role‑based dashboard component ──
 import { useAuth } from "./context/AuthContext";
 
@@ -367,6 +369,8 @@ function App() {
 
                   <Route path="/master-data" element={<MasterData />} />
                   <Route path="/Home/FinanceHub" element={<FinanceHub />} />
+
+                  <Route path="/email-test" element={<EmailTest />} />
                 </Route>
 
                 {/* Catch-all */}

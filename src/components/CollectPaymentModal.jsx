@@ -24,6 +24,7 @@ import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
 import { generateReceiptPdf } from "../utils/receiptPdf";
 import { generateInvoicePDF } from "../utils/invoicePdf";
+import { sendFeeReceiptEmail } from "../services/emailService";
 
 export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
   const [form] = Form.useForm();
@@ -280,38 +281,13 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
     };
 
     try {
-      // ── Determine invoice ID ──
-      let finalInvoiceId = selectedInvoiceId;
-      if (createNewInvoice || !finalInvoiceId) {
-        setCreatingInvoice(true);
-        try {
-          finalInvoiceId = await createInvoiceForFee();
-          message.success("Invoice created");
-        } catch (err) {
-          // If duplicate, try to fetch existing
-          if (err?.code === '23505' || err?.message?.includes('duplicate key')) {
-            const { data: existing } = await supabase
-              .from("invoices")
-              .select("id")
-              .eq("student_fee_id", fee.id)
-              .eq("fee_installment_id", null)
-              .eq("branch_id", branchId)
-              .eq("financial_year_id", financialYearId)
-              .maybeSingle();
-            if (existing) {
-              finalInvoiceId = existing.id;
-              message.info("Using existing invoice");
-            } else {
-              throw new Error("Invoice generation failed and no existing found.");
-            }
-          } else {
-            throw err;
-          }
-        } finally {
-          setCreatingInvoice(false);
-        }
-      }
-
+  // Determine invoice ID
+let finalInvoiceId = selectedInvoiceId;
+if (createNewInvoice || !finalInvoiceId) {
+  setCreatingInvoice(true);
+  finalInvoiceId = await createInvoiceForFee();   // automatically reuses existing invoice
+  setCreatingInvoice(false);
+}
       // ── Collect payment with invoice ID ──
       const payment = await collectPayment(
         paymentPayload,
@@ -336,13 +312,21 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
       setStudentName(`${fee.students?.first_name} ${fee.students?.last_name}`);
       setStep("success");
 
+      // ── Send receipt email (non-blocking) ──
+      if (org && payment.id) {
+        sendFeeReceiptEmail(payment.id, org).catch((emailErr) =>
+          console.error("Failed to send receipt email", emailErr)
+        );
+      }
+
       queryClient.invalidateQueries({ queryKey: ["studentFees"] });
       queryClient.invalidateQueries({ queryKey: ["student-invoices"] });
       onSuccess?.();
     } catch (err) {
-      console.error(err);
-      message.error(err?.message || "Payment failed");
-    }
+  setCreatingInvoice(false);
+  console.error(err);
+  message.error(err.message || "Payment failed");
+}
   };
 
   // ── Reset and close ──
