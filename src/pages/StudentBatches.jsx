@@ -143,7 +143,7 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
         to: adminEmails,
         subject: `Student Batch Assignments - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");
