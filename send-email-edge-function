@@ -1,0 +1,250 @@
+// supabase/functions/send-email/index.ts
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { Resend } from "npm:resend@2.0.0";
+
+// ------------------------------------------------------------------
+// 1. Configuration
+// ------------------------------------------------------------------
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const DEFAULT_FROM = Deno.env.get("DEFAULT_FROM_EMAIL") || "ShreeVidhya Academy <noreply@wlh.co.in>";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const resend = new Resend(RESEND_API_KEY);
+
+// ------------------------------------------------------------------
+// 2. CORS Headers
+// ------------------------------------------------------------------
+const ALLOWED_HEADERS = [
+  "Authorization",
+  "Content-Type",
+  "apikey",
+  "x-client-info",
+  "prefer",
+].join(", ");
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": ALLOWED_HEADERS,
+};
+
+// ------------------------------------------------------------------
+// 3. Helpers
+// ------------------------------------------------------------------
+interface Template {
+  id: number;
+  organization_id: number;
+  branch_id: number | null;
+  name: string;
+  slug: string;
+  subject: string;
+  body_html: string;
+  placeholders: string[];
+  is_active: boolean;
+}
+
+interface OrganizationInfo {
+  company_name: string;
+  domain: string | null;
+}
+
+/**
+ * Fetch template with branch fallback.
+ */
+async function getTemplate(
+  organizationId: number,
+  slug: string,
+  branchId: number | null = null
+): Promise<Template | null> {
+  let query = supabase
+    .from("email_templates")
+    .select("*")
+    .eq("organization_id", organizationId)
+    .eq("slug", slug)
+    .eq("is_active", true);
+
+  if (branchId) {
+    const { data: branchTemplate } = await query
+      .eq("branch_id", branchId)
+      .maybeSingle();
+    if (branchTemplate) return branchTemplate;
+  }
+
+  const { data: orgTemplate } = await query
+    .is("branch_id", null)
+    .maybeSingle();
+
+  return orgTemplate || null;
+}
+
+/**
+ * Render subject/HTML by replacing {{key}} with context values.
+ */
+function renderTemplate(template: Template, context: Record<string, any>) {
+  const missing = template.placeholders.filter((key) => !(key in context));
+  if (missing.length > 0) {
+    throw new Error(`Missing placeholders: ${missing.join(", ")}`);
+  }
+
+  const replace = (str: string) =>
+    str.replace(/\{\{(\w+)\}\}/g, (_, key) => context[key] ?? "");
+
+  return {
+    subject: replace(template.subject),
+    html: replace(template.body_html),
+  };
+}
+
+/**
+ * Get the primary domain for an organization.
+ * Priority: primary domain from organization_domains -> organization.domain -> null
+ */
+async function getPrimaryDomain(organizationId: number): Promise<string | null> {
+  // 1. Check for a primary domain in the domains table
+  const { data: primaryDomain } = await supabase
+    .from("organization_domains")
+    .select("domain")
+    .eq("organization_id", organizationId)
+    .eq("is_primary", true)
+    .maybeSingle();
+
+  if (primaryDomain) return primaryDomain.domain;
+
+  // 2. Fallback to the single domain column in organization
+  const { data: org } = await supabase
+    .from("organization")
+    .select("domain")
+    .eq("id", organizationId)
+    .maybeSingle();
+
+  return org?.domain || null;
+}
+
+/**
+ * Get organization name and domain (for building the From address).
+ */
+async function getOrganizationInfo(organizationId: number): Promise<OrganizationInfo | null> {
+  const { data, error } = await supabase
+    .from("organization")
+    .select("company_name, domain")
+    .eq("id", organizationId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data;
+}
+
+// ------------------------------------------------------------------
+// 4. Main Handler
+// ------------------------------------------------------------------
+serve(async (req: Request) => {
+  // CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
+  if (req.method !== "POST") {
+    return new Response(
+      JSON.stringify({ error: "Method not allowed" }),
+      { status: 405, headers: { "Content-Type": "application/json", ...corsHeaders } }
+    );
+  }
+
+  try {
+    const body = await req.json();
+
+    const {
+      to,
+      organizationId,
+      slug,
+      context = {},
+      branchId = null,
+      from: fromOverride,
+      subject: overrideSubject,
+      html: overrideHtml,
+    } = body;
+
+    if (!to || !organizationId || !slug) {
+      throw new Error("Missing required fields: to, organizationId, slug");
+    }
+
+    // --------------------------------------------------------------
+    // 5. Determine the From address
+    // --------------------------------------------------------------
+    let fromAddress: string;
+
+    if (fromOverride) {
+      // If the caller explicitly provides a From address, use it.
+      fromAddress = fromOverride;
+    } else {
+      // Build from organization details.
+      const orgInfo = await getOrganizationInfo(organizationId);
+      let domain = await getPrimaryDomain(organizationId);
+
+      // If no domain found, fallback to environment default.
+      if (!domain) {
+        console.warn(`No domain found for organization ${organizationId}, using default from.`);
+        fromAddress = DEFAULT_FROM;
+      } else {
+        const companyName = orgInfo?.company_name || "Academy";
+        // Use a standard prefix like "noreply" or "info" – you can customize.
+        fromAddress = `${companyName} <noreply@${domain}>`;
+      }
+    }
+
+    // --------------------------------------------------------------
+    // 6. Get template or use override
+    // --------------------------------------------------------------
+    let subject: string;
+    let html: string;
+
+    if (overrideSubject && overrideHtml) {
+      subject = overrideSubject;
+      html = overrideHtml;
+    } else {
+      const template = await getTemplate(organizationId, slug, branchId);
+      if (!template) {
+        throw new Error(
+          `No active template found for slug "${slug}" in organization ${organizationId}`
+        );
+      }
+      const rendered = renderTemplate(template, context);
+      subject = rendered.subject;
+      html = rendered.html;
+    }
+
+    // --------------------------------------------------------------
+    // 7. Send email
+    // --------------------------------------------------------------
+    const recipients = Array.isArray(to) ? to : [to];
+
+    const { data, error } = await resend.emails.send({
+      from: fromAddress,
+      to: recipients,
+      subject,
+      html,
+    });
+
+    if (error) {
+      console.error("Resend error:", error);
+      return new Response(
+        JSON.stringify({ error: error.message }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({ success: true, data }),
+      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+    );
+  } catch (err) {
+    console.error("Unhandled error:", err);
+    return new Response(
+      JSON.stringify({ error: err.message || "Internal server error" }),
+      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+    );
+  }
+});

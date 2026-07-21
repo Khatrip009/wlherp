@@ -1,0 +1,75 @@
+Pages Where Emails Are Now Integrated
+Based on the updated services, here’s a list of pages/components that now trigger emails automatically when certain actions occur.
+
+1. Inquiries Management (Inquiries page)
+createInquiry → sends inquiry_confirmation to the parent/student.
+
+scheduleDemo → sends demo_scheduled to the parent/student.
+
+rejectInquiry → sends inquiry_status_change (with rejection reason).
+
+updateInquiry (when status changes) → sends inquiry_status_change with old/new status.
+
+These are called from the Inquiries page (and possibly from InquiryForm modal).
+
+2. Admission Conversion (StudentManagement or dedicated “Convert to Student” button)
+convertInquiryToStudent → sends admission_confirmation to the parent/student.
+
+This is typically used in a page where an inquiry is converted into a student (e.g., StudentManagement or a button inside Inquiries).
+
+3. Students (Students page)
+createStudent → sends account_welcome to the student’s email (if provided).
+
+4. Parents (Parents page)
+createParent → sends account_activation to the parent (with login credentials).
+
+5. Teachers (Teachers page)
+createTeacher → sends teacher_onboarding to the teacher’s email.
+
+6. Batches / Student Batch Assignment (StudentBatches page)
+assignStudentToBatch, bulkAssignStudents, updateStudentBatch (when batch changes) → sends batch_change to the student/parent.
+
+7. Attendance Reports (AttendanceReports page)
+sendAttendanceReportEmail (explicitly called) → sends the report via email (HTML table) to specified recipients. This is a manual action, but you can add a button to trigger it.
+
+8. Certificates (Certificates page)
+createCertificate → sends certificate_issued to the student/parent.
+
+9. Exams (Exams page)
+createExam → sends exam_schedule to all active students in the batch.
+
+10. Homework (Homework page)
+createHomework → sends new_homework to all active students in the batch.
+
+11. Fee Payments / Fee Management (Fees page, CollectPaymentModal)
+collectPayment and collectPaymentWithInvoice → sends fee_receipt to the student/parent.
+
+12. Income & Expenses (Income, Expenses pages)
+createIncome and createExpense → sends system_announcement to all admins.
+
+13. Leaves (LeaveManagement admin, MyLeaves teacher)
+createLeave (teacher) → sends leave_submitted to admins.
+
+updateLeaveStatus (admin) → sends leave_status_update to the teacher.
+
+14. Purchase Orders (PurchaseOrders page, POForm)
+createPO (if status is "Final") and updatePOStatus (when set to "Final") → sends po_sent to the vendor and a system_announcement to admins.
+
+15. Purchase Invoices (PurchaseInvoices page, PurchaseInvoiceForm)
+createPurchaseInvoice (if status is "Final") and finalizePurchaseInvoice → sends pi_received to admins.
+
+16. Invoices (Invoices page, InvoiceForm)
+createInvoice (if status is "Final") and finalizeInvoice → sends invoice notification (via system_announcement) to the student/parent.
+
+finalizeCreditNote, finalizeDebitNote → sends a system_announcement to admins.
+
+17. Salary Generation (GenerateSalaries page)
+generateTeacherSalary → sends salary_slip to the teacher.
+
+18. Progress Evaluations (ProgressEvaluations page)
+createProgressEvaluation → sends a progress summary (via system_announcement) to the student/parent.
+
+19. Vouchers (Vouchers page)
+createVoucher → sends a system_announcement to admins.
+
+20. Finance – Profit/Loss, etc. (not directly email‑triggering, but you can manually call sendAttendanceReportEmail from report pages)
