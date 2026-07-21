@@ -105,7 +105,7 @@ export default function Receipts({ noLayout = false }) {
         to: adminEmails,
         subject: `Receipt Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");

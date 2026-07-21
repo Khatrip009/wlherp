@@ -98,7 +98,7 @@ export default function StudentCertificatesPage() {
         to: recipient.email,
         subject: `My Certificates - ${org?.company_name || 'Academy'}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       // from: org?.email || undefined,
       });
 
       toast.success(`Report sent to ${recipient.email}`);

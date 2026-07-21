@@ -99,7 +99,7 @@ export default function StudentProgressPage({ studentId: propStudentId = null, s
         to: recipient.email,
         subject: `Progress Report - ${recipient.name}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       // from: org?.email || undefined,
       });
 
       toast.success(`Report sent to ${recipient.email}`);

@@ -198,7 +198,7 @@ export default function SalaryReport() {
         to: adminEmails,
         subject: `Salary Report - ${monthName} ${year}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       //// from: org?.email || undefined,
       });
 
       toast.success("Report sent to admins.");

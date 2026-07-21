@@ -123,7 +123,7 @@ export default function Parents() {
         to: adminEmails,
         subject: `Parent Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");

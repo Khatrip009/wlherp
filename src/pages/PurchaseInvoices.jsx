@@ -126,7 +126,7 @@ export default function PurchaseInvoices() {
         to: adminEmails,
         subject: `Purchase Invoice Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");

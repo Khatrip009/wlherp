@@ -180,7 +180,7 @@ export default function StudentFeesPage() {
         to: recipient.email,
         subject: `My Fee Summary - ${org?.company_name || 'Academy'}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       // from: org?.email || undefined,
       });
 
       toast.success(`Fee report sent to ${recipient.email}`);

@@ -163,7 +163,7 @@ export default function MySalary() {
         to: recipientEmail,
         subject: `My Salary Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       // from: org?.email || undefined,
       });
 
       toast.success("Report sent to your email.");

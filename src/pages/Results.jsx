@@ -95,7 +95,7 @@ export default function Results() {
         to: adminEmails,
         subject: `Exam Results Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");

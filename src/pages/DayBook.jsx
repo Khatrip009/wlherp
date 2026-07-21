@@ -162,7 +162,7 @@ export default function DayBook() {
         to: adminEmails,
         subject: `Day Book - ${selectedDate}`,
         html: htmlBody,
-        from: org?.email || undefined,
+        // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");

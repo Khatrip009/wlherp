@@ -93,7 +93,7 @@ export default function OrganizationSettings() {
         to: adminEmails,
         subject: `Organization Profile - ${org.company_name || 'Academy'}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       // from: org?.email || undefined,
       });
 
       toast.success("Organization report sent to admins.");

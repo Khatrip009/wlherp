@@ -129,7 +129,7 @@ export default function MarkAttendance() {
         to: adminEmails,
         subject: `Attendance Report - ${sessionDate} (${sessionBatch})`,
         html: htmlBody,
-        from: org?.email || undefined,
+       // from: org?.email || undefined,
       });
 
       toast.success("Attendance report sent to admins.");

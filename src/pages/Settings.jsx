@@ -87,7 +87,7 @@ export default function Settings() {
         to: user.email,
         subject: `Your Profile Report - ${orgName}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       //// from: org?.email || undefined,
       });
 
       toast.success("Profile report sent to your email.");

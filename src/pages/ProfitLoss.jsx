@@ -263,7 +263,7 @@ export default function ProfitLoss() {
         to: adminEmails,
         subject: `Profit & Loss Statement - ${startDate} to ${endDate}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       //// from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");

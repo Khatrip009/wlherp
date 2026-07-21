@@ -190,7 +190,7 @@ export default function PurchaseInvoiceView() {
         to: recipients,
         subject: `Purchase Invoice ${invoice.invoice_number} from ${orgName}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       // from: org?.email || undefined,
       });
 
       toast.success(`Invoice sent to ${recipients.length} recipient(s).`);

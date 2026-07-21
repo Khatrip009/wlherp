@@ -263,7 +263,7 @@ export default function InvoiceView() {
         to: recipientEmail,
         subject: `Invoice ${invoice.invoice_number} from ${org.company_name || 'Academy'}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       // from: org?.email || undefined,
       });
 
       toast.success(`Invoice sent to ${recipientEmail}`);

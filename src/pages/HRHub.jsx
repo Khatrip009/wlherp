@@ -223,7 +223,7 @@ export default function HRHub() {
         to: adminEmails,
         subject: `HR Dashboard Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       // from: org?.email || undefined,
       });
 
       alert("HR report sent to admins.");

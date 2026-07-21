@@ -124,7 +124,7 @@ export default function InventoryTransactions({ studentId: propStudentId = null,
         to: adminEmails,
         subject: `Inventory Transactions Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");

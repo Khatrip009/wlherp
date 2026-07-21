@@ -231,7 +231,7 @@ export default function PurchaseRegister() {
         to: adminEmails,
         subject: `Purchase Register - ${startDate} to ${endDate}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       // from: org?.email || undefined,
       });
 
       toast.success("Report sent to admins.");

@@ -255,7 +255,7 @@ export default function Inquiries() {
         to: adminEmails,
         subject: `Inquiry Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");

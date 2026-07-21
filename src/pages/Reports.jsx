@@ -201,7 +201,7 @@ export default function Reports() {
         to: adminEmails,
         subject: `Reports List - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-        from: org?.email || undefined,
+       // from: org?.email || undefined,
       });
 
       alert('Report list sent to admins.');
