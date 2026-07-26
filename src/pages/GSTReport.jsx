@@ -1,14 +1,57 @@
 // src/pages/GSTReport.jsx
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Printer, Download, FileText, IndianRupee, Mail } from "lucide-react"; // 👈 Added Mail
+import { Printer, Download, FileText, IndianRupee, Mail } from "lucide-react";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import { supabase } from "../api/supabase";
-import { getOrganization } from "../services/organizationService";
 import toast from "react-hot-toast";
 import { useOrg } from "../context/OrganizationContext";
-import { sendEmail } from "../services/emailService"; // 👈 Import
+import { sendEmail } from "../services/emailService";
 
-// ─── HELPERS ───────────────────────────────────────────────
+/* ─── PDF helpers ──────────────────────────────────────────── */
+async function loadImageAsBase64(url) {
+  if (!url) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch { return null; }
+}
+
+function createRupeeSymbolImage() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 30; canvas.height = 30;
+  const ctx = canvas.getContext("2d");
+  ctx.font = "bold 24px sans-serif"; ctx.fillStyle = "#000";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("₹", 15, 15);
+  return canvas.toDataURL("image/png");
+}
+let rupeeImage = null;
+function getRupeeImage() { if (!rupeeImage) rupeeImage = createRupeeSymbolImage(); return rupeeImage; }
+
+function drawCurrency(doc, amount, x, y, fontSize = 10, align = "left", color = "#000") {
+  const img = getRupeeImage();
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(fontSize);
+  doc.setTextColor(color);
+  const amountText = amount.toLocaleString("en-IN");
+  if (align === "left") {
+    doc.addImage(img, "PNG", x, y - fontSize * 0.35, 4, 4);
+    doc.text(amountText, x + 5, y);
+  } else {
+    const textWidth = doc.getTextWidth(amountText);
+    doc.addImage(img, "PNG", x - textWidth - 5, y - fontSize * 0.35, 4, 4);
+    doc.text(amountText, x - textWidth, y);
+  }
+}
 
 function formatAmount(amount) {
   return Math.round((amount || 0) * 100) / 100;
@@ -19,22 +62,16 @@ function getRatePercent(taxRateName) {
   return match ? parseFloat(match[0]) : 0;
 }
 
-// ─── BUILD COMPLETE GSTR-1 JSON ──────────────────────────
-
+/* ─── GSTR‑1 JSON Builder ───────────────────────────────────── */
 function buildGSTR1JSON(invoices, org, startDate, endDate) {
   const gstin = org?.gstin || "";
   const fp = startDate.substring(0, 6); // YYYYMM
   const orgState = org?.state_code || "";
 
-  // ── B2B Supplies (customers with GSTIN) ──
+  // B2B Supplies (customers with GSTIN)
   const b2bInvoices = invoices.filter((inv) => inv.students?.gstin);
   const b2b = b2bInvoices.map((inv) => {
     const items = inv.invoice_items || [];
-    const totalTaxable = items.reduce((s, i) => s + (i.taxable_amount || 0), 0);
-    const totalCgst = items.reduce((s, i) => s + (i.cgst_amount || 0), 0);
-    const totalSgst = items.reduce((s, i) => s + (i.sgst_amount || 0), 0);
-    const totalIgst = items.reduce((s, i) => s + (i.igst_amount || 0), 0);
-
     return {
       inv_no: inv.invoice_number,
       inv_date: inv.invoice_date,
@@ -56,15 +93,10 @@ function buildGSTR1JSON(invoices, org, startDate, endDate) {
     };
   });
 
-  // ── B2C Supplies (customers without GSTIN) ──
+  // B2C Supplies (customers without GSTIN)
   const b2cInvoices = invoices.filter((inv) => !inv.students?.gstin);
   const b2cs = b2cInvoices.map((inv) => {
     const items = inv.invoice_items || [];
-    const totalTaxable = items.reduce((s, i) => s + (i.taxable_amount || 0), 0);
-    const totalCgst = items.reduce((s, i) => s + (i.cgst_amount || 0), 0);
-    const totalSgst = items.reduce((s, i) => s + (i.sgst_amount || 0), 0);
-    const totalIgst = items.reduce((s, i) => s + (i.igst_amount || 0), 0);
-
     const pos = inv.place_of_supply || orgState;
     const isInterState = pos !== orgState;
 
@@ -87,7 +119,7 @@ function buildGSTR1JSON(invoices, org, startDate, endDate) {
     };
   });
 
-  // ── HSN Summary ──
+  // HSN Summary
   const allItems = invoices.flatMap((inv) => inv.invoice_items || []);
   const hsnMap = {};
   allItems.forEach((item) => {
@@ -118,7 +150,7 @@ function buildGSTR1JSON(invoices, org, startDate, endDate) {
     iamt: formatAmount(h.iamt),
   }));
 
-  // ── Nil / Exempt / Non‑GST Supplies (placeholder) ──
+  // Nil / Exempt / Non‑GST Supplies (placeholder)
   const nilSupplies = {
     sply_ty: "INTER",
     etin: "",
@@ -126,7 +158,6 @@ function buildGSTR1JSON(invoices, org, startDate, endDate) {
     itms: [],
   };
 
-  // ── Final JSON ──
   return {
     gstin,
     fp,
@@ -141,39 +172,18 @@ function buildGSTR1JSON(invoices, org, startDate, endDate) {
   };
 }
 
-// ─── COMPONENT ─────────────────────────────────────────────
-
+/* ─── Main Component ──────────────────────────────────────── */
 export default function GSTReport() {
   const [startDate, setStartDate] = useState(
     new Date(new Date().getFullYear(), 0, 1).toISOString().split("T")[0]
   );
   const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
 
-  // ── Branch & FY context for scoping ──
-  const { branch, selectedFinancialYear, org: currentOrg } = useOrg(); // 👈 Added currentOrg
+  const { org, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  // ── Fetch organisation details with ID 3 – direct Supabase query ──
-  const {
-    data: org,
-    isLoading: orgLoading,
-    error: orgError,
-  } = useQuery({
-    queryKey: ["organization", 3],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("organization")
-        .select("*")
-        .eq("id", 3)
-        .single();
-      if (error) throw error;
-      return data;
-    },
-    staleTime: 10 * 60 * 1000,
-  });
-
-  // ── Fetch invoices with items, tax rates, students – scoped ──
+  // Fetch invoices (scoped)
   const { data: invoices = [], isLoading, refetch } = useQuery({
     queryKey: ["gst-invoices", startDate, endDate, branchId, financialYearId],
     queryFn: async () => {
@@ -193,7 +203,6 @@ export default function GSTReport() {
 
       const { data: invoiceData, error: invError } = await invQuery;
       if (invError) throw invError;
-
       if (!invoiceData.length) return [];
 
       const invoiceIds = invoiceData.map((inv) => inv.id);
@@ -253,7 +262,7 @@ export default function GSTReport() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // ── Compute summaries ──
+  // Summaries
   const summaries = useMemo(() => {
     const b2bInvoices = invoices.filter((inv) => inv.students?.gstin);
     const b2cInvoices = invoices.filter((inv) => !inv.students?.gstin);
@@ -263,30 +272,16 @@ export default function GSTReport() {
     const totalInvoices = invoices.length;
 
     const b2bTaxable = b2bInvoices.reduce(
-      (s, inv) => s + (inv.invoice_items || []).reduce((s2, it) => s2 + (it.taxable_amount || 0), 0),
-      0
+      (s, inv) => s + (inv.invoice_items || []).reduce((s2, it) => s2 + (it.taxable_amount || 0), 0), 0
     );
     const b2cTaxable = b2cInvoices.reduce(
-      (s, inv) => s + (inv.invoice_items || []).reduce((s2, it) => s2 + (it.taxable_amount || 0), 0),
-      0
+      (s, inv) => s + (inv.invoice_items || []).reduce((s2, it) => s2 + (it.taxable_amount || 0), 0), 0
     );
     const b2bGst = b2bInvoices.reduce(
-      (s, inv) =>
-        s +
-        (inv.invoice_items || []).reduce(
-          (s2, it) => s2 + (it.cgst_amount || 0) + (it.sgst_amount || 0) + (it.igst_amount || 0),
-          0
-        ),
-      0
+      (s, inv) => s + (inv.invoice_items || []).reduce((s2, it) => s2 + (it.cgst_amount || 0) + (it.sgst_amount || 0) + (it.igst_amount || 0), 0), 0
     );
     const b2cGst = b2cInvoices.reduce(
-      (s, inv) =>
-        s +
-        (inv.invoice_items || []).reduce(
-          (s2, it) => s2 + (it.cgst_amount || 0) + (it.sgst_amount || 0) + (it.igst_amount || 0),
-          0
-        ),
-      0
+      (s, inv) => s + (inv.invoice_items || []).reduce((s2, it) => s2 + (it.cgst_amount || 0) + (it.sgst_amount || 0) + (it.igst_amount || 0), 0), 0
     );
 
     const allItems = invoices.flatMap((inv) => inv.invoice_items || []);
@@ -305,8 +300,7 @@ export default function GSTReport() {
       }
       hsnSummary[hsn].quantity += item.quantity || 0;
       hsnSummary[hsn].taxable_value += item.taxable_amount || 0;
-      hsnSummary[hsn].tax_amount +=
-        (item.cgst_amount || 0) + (item.sgst_amount || 0) + (item.igst_amount || 0);
+      hsnSummary[hsn].tax_amount += (item.cgst_amount || 0) + (item.sgst_amount || 0) + (item.igst_amount || 0);
     });
 
     return {
@@ -323,13 +317,13 @@ export default function GSTReport() {
     };
   }, [invoices]);
 
-  // ─── Helper: get admin emails ──────────────────────────────────────
+  // Email helpers
   const getAdminEmails = async () => {
-    if (!currentOrg?.id) return [];
+    if (!org?.id) return [];
     const { data, error } = await supabase
       .from("profiles")
       .select("email")
-      .eq("organization_id", currentOrg.id)
+      .eq("organization_id", org.id)
       .in("role", ["admin", "super_admin", "organization_admin"])
       .eq("is_active", true);
     if (error) {
@@ -339,21 +333,22 @@ export default function GSTReport() {
     return data?.map(p => p.email).filter(Boolean) || [];
   };
 
-  // ─── Send Report Email ─────────────────────────────────────────────
   const sendReportEmail = async () => {
     if (invoices.length === 0) {
       alert("No invoices found for the selected period.");
       return;
     }
-
     try {
       const adminEmails = await getAdminEmails();
-      if (adminEmails.length === 0) {
+      if (!adminEmails.length) {
         alert("No admin emails found.");
         return;
       }
 
-      // Build HSN table rows
+      const orgName = org?.company_name || "Academy";
+      const gstin = org?.gstin || "Not Registered";
+
+      // Build HSN rows
       let hsnRows = summaries.hsnSummary.map((h) => `
         <tr>
           <td style="padding:4px 8px;border:1px solid #ddd;font-family:monospace;">${h.hsn_code}</td>
@@ -368,12 +363,9 @@ export default function GSTReport() {
       const totalHsnTaxable = summaries.hsnSummary.reduce((s, h) => s + h.taxable_value, 0);
       const totalHsnTax = summaries.hsnSummary.reduce((s, h) => s + h.tax_amount, 0);
 
-      const orgName = org?.company_name || "Academy";
-      const gstin = org?.gstin || "Not Registered";
-
       const htmlBody = `
         <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
-          <h2 style="color:#0D47A1;">GSTR-1 Report</h2>
+          <h2 style="color:#000;">GSTR-1 Report</h2>
           <p><strong>Organization:</strong> ${orgName}</p>
           <p><strong>GSTIN:</strong> ${gstin}</p>
           <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
@@ -391,11 +383,11 @@ export default function GSTReport() {
             </div>
             <div style="border:1px solid #ddd;padding:8px 16px;border-radius:6px;background:#f9f9f9;">
               <div style="font-size:10px;color:#888;">Total GST</div>
-              <div style="font-size:18px;font-weight:700;color:#2e7d32;">₹ ${summaries.totalGst.toLocaleString('en-IN')}</div>
+              <div style="font-size:18px;font-weight:700;color:#000;">₹ ${summaries.totalGst.toLocaleString('en-IN')}</div>
             </div>
             <div style="border:1px solid #ddd;padding:8px 16px;border-radius:6px;background:#f9f9f9;">
               <div style="font-size:10px;color:#888;">Avg Tax Rate</div>
-              <div style="font-size:18px;font-weight:700;color:#283593;">
+              <div style="font-size:18px;font-weight:700;color:#000;">
                 ${summaries.totalTaxable > 0 ? ((summaries.totalGst / summaries.totalTaxable) * 100).toFixed(1) : 0}%
               </div>
             </div>
@@ -403,20 +395,20 @@ export default function GSTReport() {
 
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:15px;">
             <div style="border:1px solid #ddd;padding:8px 16px;border-radius:6px;background:#f9f9f9;">
-              <div style="font-weight:600;color:#1565C0;">B2B Supplies (${summaries.totalB2B} invoices)</div>
+              <div style="font-weight:600;color:#000;">B2B Supplies (${summaries.totalB2B} invoices)</div>
               <div>Taxable Value: ₹ ${summaries.b2bTaxable.toLocaleString('en-IN')}</div>
               <div>GST: ₹ ${summaries.b2bGst.toLocaleString('en-IN')}</div>
             </div>
             <div style="border:1px solid #ddd;padding:8px 16px;border-radius:6px;background:#f9f9f9;">
-              <div style="font-weight:600;color:#E65100;">B2C Supplies (${summaries.totalB2C} invoices)</div>
+              <div style="font-weight:600;color:#000;">B2C Supplies (${summaries.totalB2C} invoices)</div>
               <div>Taxable Value: ₹ ${summaries.b2cTaxable.toLocaleString('en-IN')}</div>
               <div>GST: ₹ ${summaries.b2cGst.toLocaleString('en-IN')}</div>
             </div>
           </div>
 
-          <h3 style="color:#0D47A1;">HSN Summary</h3>
+          <h3 style="color:#000;">HSN Summary</h3>
           <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
-            <thead style="background:#e3f2fd;">
+            <thead style="background:#f5f5f5;">
               <tr>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">HSN/SAC</th>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Description</th>
@@ -445,17 +437,15 @@ export default function GSTReport() {
         to: adminEmails,
         subject: `GSTR-1 Report - ${startDate} to ${endDate}`,
         html: htmlBody,
-        from: org?.email || undefined,
       });
-
-      alert("Report sent to admins.");
+      toast.success("Report sent to admins.");
     } catch (err) {
       console.error("Failed to send report:", err);
-      alert("Failed to send report. Check console for details.");
+      toast.error("Failed to send report.");
     }
   };
 
-  // ─── Handle JSON Download ───────────────────────────────────────────
+  // JSON download
   const handleDownloadJSON = () => {
     if (!org) {
       toast.error("Organization details not loaded");
@@ -476,231 +466,281 @@ export default function GSTReport() {
     toast.success("GSTR-1 JSON downloaded");
   };
 
-  // ─── Handle Print ──────────────────────────────────────────────────
-  const handlePrint = () => {
-    const printContent = document.getElementById("gst-preview")?.outerHTML;
-    if (!printContent) return;
-    const logoUrl = org?.logo_dark_url || "/ShreeVidhyaDark.png";
-    const orgName = org?.company_name || "ShreeVidhya Academy";
-    const printWindow = window.open("", "_blank", "width=1100,height=750");
-    printWindow.document.write(`
-      <html><head><title>GST Report</title>
-      <style>
-        @page { size: A4; margin: 12mm; }
-        body { font-family: Montserrat, sans-serif; color: #222; font-size: 11px; }
-        .header { display: flex; align-items: center; border-bottom: 2px solid #0D47A1; padding-bottom: 8px; margin-bottom: 15px; }
-        .header img { height: 40px; margin-right: 15px; }
-        .org-name { font-size: 16px; font-weight: 700; color: #0D47A1; }
-        .org-details { font-size: 8px; color: #555; }
-        h1 { text-align: center; color: #0D47A1; margin: 10px 0; font-size: 14px; }
-        .summary { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 15px; }
-        .summary-card { border: 1px solid #ddd; padding: 8px 16px; border-radius: 6px; background: #f9f9f9; }
-        .summary-card .label { font-size: 8px; color: #888; }
-        .summary-card .value { font-size: 14px; font-weight: 700; }
-        table { width: 100%; border-collapse: collapse; border: 1px solid #bbb; font-size: 9px; }
-        th, td { padding: 4px 6px; border: 1px solid #bbb; }
-        th { background-color: #E3F2FD; }
-        .text-right { text-align: right; }
-        .footer { margin-top: 20px; font-size: 8px; color: #888; text-align: center; border-top: 1px solid #ddd; padding-top: 8px; }
-        .badge { display: inline-block; padding: 1px 8px; border-radius: 12px; font-size: 8px; font-weight: 600; }
-        .badge-b2b { background: #E3F2FD; color: #1565C0; }
-        .badge-b2c { background: #FFF3E0; color: #E65100; }
-      </style></head>
-      <body>
-        <div class="header"><img src="${logoUrl}" alt="Logo" onerror="this.style.display='none'"/><div><div class="org-name">${orgName}</div><div class="org-details">${org?.address||""}</div><div class="org-details">Ph: ${org?.phone||""} | Email: ${org?.email||""}</div><div class="org-details">GSTIN: ${org?.gstin||"Not Registered"}</div></div></div>
-        <h1>GSTR-1 Report – ${startDate} to ${endDate}</h1>
-        ${printContent}
-        <div class="footer">Computer‑generated report – ${orgName}</div>
-        <script>window.print();</script>
-      </body></html>
-    `);
-    printWindow.document.close();
+  // PDF export (professional, black & white)
+  const handlePrintPDF = async () => {
+    if (!org || invoices.length === 0) return;
+
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 14;
+    let y = margin;
+
+    // Logo
+    let logoBase64 = null;
+    if (org?.logo_dark_url) {
+      logoBase64 = await loadImageAsBase64(org.logo_dark_url);
+    }
+
+    // Header
+    const logoWidth = 30, logoHeight = 12;
+    if (logoBase64) {
+      doc.addImage(logoBase64, "PNG", margin, y, logoWidth, logoHeight);
+    }
+    const textX = margin + (logoBase64 ? logoWidth + 4 : 0);
+    const textY = y + 1;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor("#000000");
+    doc.text(org.company_name || "Academy", textX, textY);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor("#000000");
+    let detailY = textY + 4.5;
+    if (org.address) {
+      const addrLines = doc.splitTextToSize(org.address, pageWidth - textX - margin - 10);
+      doc.text(addrLines, textX, detailY);
+      detailY += addrLines.length * 3.5 + 1;
+    }
+    if (org.gstin) { doc.text(`GSTIN: ${org.gstin}`, textX, detailY); detailY += 4; }
+    if (org.phone) { doc.text(`Phone: ${org.phone}`, textX, detailY); detailY += 4; }
+    if (org.email) { doc.text(`Email: ${org.email}`, textX, detailY); detailY += 4; }
+
+    const headerHeight = Math.max(logoHeight + 4, detailY - textY + 4);
+    y += headerHeight + 2;
+    doc.setDrawColor("#000000");
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 6;
+
+    // Title
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor("#000000");
+    doc.text("GSTR-1 Report", pageWidth / 2, y, { align: "center" });
+    y += 8;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Period: ${startDate} – ${endDate}`, pageWidth / 2, y, { align: "center" });
+    y += 10;
+
+    // Summary boxes
+    const boxWidth = (pageWidth - 2 * margin - 30) / 4;
+    const boxHeight = 16;
+    const boxY = y;
+    const summaryItems = [
+      { label: "Total Invoices", value: summaries.totalInvoices },
+      { label: "Taxable Value", value: summaries.totalTaxable },
+      { label: "Total GST", value: summaries.totalGst },
+      {
+        label: "Avg Tax Rate",
+        value: summaries.totalTaxable > 0
+          ? ((summaries.totalGst / summaries.totalTaxable) * 100).toFixed(1)
+          : 0,
+      },
+    ];
+
+    summaryItems.forEach((item, i) => {
+      const x = margin + i * (boxWidth + 10);
+      doc.setDrawColor("#000000");
+      doc.setFillColor(255, 255, 255);
+      doc.rect(x, boxY, boxWidth, boxHeight, "FD");
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.text(item.label, x + 2, boxY + 5);
+      if (typeof item.value === "number") {
+        drawCurrency(doc, item.value, x + 2, boxY + 13, 8, "left", "#000");
+      } else {
+        doc.setFontSize(8);
+        doc.text(item.value.toString(), x + 2, boxY + 13);
+      }
+    });
+    y += boxHeight + 10;
+
+    // B2B / B2C summaries
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.text(`B2B Supplies (${summaries.totalB2B} invoices)`, margin, y);
+    y += 7;
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Taxable Value: ₹ ${summaries.b2bTaxable.toLocaleString("en-IN")}`, margin + 5, y);
+    y += 5;
+    doc.text(`GST: ₹ ${summaries.b2bGst.toLocaleString("en-IN")}`, margin + 5, y);
+    y += 8;
+
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.text(`B2C Supplies (${summaries.totalB2C} invoices)`, margin, y);
+    y += 7;
+    doc.setFontSize(9);
+    doc.text(`Taxable Value: ₹ ${summaries.b2cTaxable.toLocaleString("en-IN")}`, margin + 5, y);
+    y += 5;
+    doc.text(`GST: ₹ ${summaries.b2cGst.toLocaleString("en-IN")}`, margin + 5, y);
+    y += 10;
+
+    // HSN table
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("HSN Summary", margin, y);
+    y += 8;
+
+    const hsnRows = summaries.hsnSummary.map((h) => [
+      h.hsn_code,
+      h.description || "—",
+      h.quantity,
+      h.unit,
+      h.taxable_value,
+      h.tax_amount,
+    ]);
+    const totalHsnTaxable = summaries.hsnSummary.reduce((s, h) => s + h.taxable_value, 0);
+    const totalHsnTax = summaries.hsnSummary.reduce((s, h) => s + h.tax_amount, 0);
+    hsnRows.push(["", "", "", "Total", totalHsnTaxable, totalHsnTax]);
+
+    autoTable(doc, {
+      startY: y,
+      head: [["HSN/SAC", "Description", "Qty", "Unit", "Taxable Value", "Tax"]],
+      body: hsnRows,
+      theme: "plain",
+      styles: { fontSize: 8, textColor: [0,0,0], fillColor: [255,255,255], lineColor: [0,0,0], lineWidth: 0.2 },
+      headStyles: { fillColor: [255,255,255], textColor: [0,0,0], fontStyle: "bold", lineWidth: 0.2, lineColor: [0,0,0] },
+      columnStyles: {
+        0: { cellWidth: 25 },
+        1: { cellWidth: 40, halign: "left" },
+        2: { cellWidth: 20, halign: "right" },
+        3: { cellWidth: 15 },
+        4: { cellWidth: 35, halign: "right" },
+        5: { cellWidth: 35, halign: "right" },
+      },
+      margin: { left: margin, right: margin },
+      willDrawCell: (data) => {
+        if ([4,5].includes(data.column.index) && typeof data.cell.raw === "number") {
+          data.cell.text = [];
+        }
+      },
+      didDrawCell: (data) => {
+        if ([4,5].includes(data.column.index) && typeof data.cell.raw === "number") {
+          drawCurrency(doc, data.cell.raw, data.cell.x + data.cell.width - 2, data.cell.y + data.cell.height / 2 + 1.5, 8, "right", "#000");
+        }
+        if (data.row.index === hsnRows.length - 1) {
+          data.cell.styles.fontStyle = "bold";
+        }
+      },
+    });
+
+    y = doc.lastAutoTable.finalY + 10;
+
+    // Footer
+    const footerY = pageHeight - margin - 5;
+    doc.setFontSize(7);
+    doc.setTextColor("#000000");
+    doc.setFont("helvetica", "italic");
+    doc.text(`Generated on ${new Date().toLocaleString()}`, margin, footerY);
+    doc.text(`© ${org.company_name || "Academy"}`, pageWidth / 2, footerY, { align: "center" });
+
+    doc.save(`GSTR1_Report_${startDate}_${endDate}.pdf`);
   };
-
-  // ── Loading / Error states ──
-  if (orgLoading) {
-    return (
-      <div className="flex items-center justify-center p-12 text-gray-500 dark:text-gray-400">
-        <div className="text-center">
-          <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-3"></div>
-          <p>Loading organisation details...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (orgError) {
-    return (
-      <div className="p-8 text-center text-red-600 dark:text-red-400">
-        <p>Failed to load organisation details: {orgError.message}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="mt-3 bg-primary text-white px-4 py-2 rounded-lg text-sm"
-        >
-          Retry
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6 px-4 sm:px-6 lg:px-0">
-      {/* Header */}
+      {/* Header & Buttons */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1
-            className="text-2xl sm:text-3xl font-bold"
-            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
-          >
-            GST Report (GSTR‑1)
-          </h1>
-          <p
-            className="text-sm text-gray-600 dark:text-gray-400 mt-1"
-            style={{ fontFamily: "var(--font-body)" }}
-          >
-            Generate GST return JSON and summaries
-          </p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">GST Report (GSTR‑1)</h1>
+          <p className="text-sm text-gray-600 mt-1">Generate GST return JSON and summaries</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {/* 👇 NEW Send Report button */}
-          <button
-            onClick={sendReportEmail}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
-            style={{ fontFamily: "var(--font-body)" }}
-          >
+          <button onClick={sendReportEmail} className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium">
             <Mail size={16} /> Send Report
           </button>
-          <button
-            onClick={handlePrint}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
-            style={{ fontFamily: "var(--font-body)" }}
-          >
-            <Printer size={16} /> Print
+          <button onClick={handlePrintPDF} className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg transition-colors text-sm font-medium">
+            <Printer size={16} /> Print PDF
           </button>
-          <button
-            onClick={handleDownloadJSON}
-            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-            style={{ fontFamily: "var(--font-body)" }}
-          >
+          <button onClick={handleDownloadJSON} className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm">
             <Download size={16} /> Download JSON
           </button>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-4 bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+      <div className="flex flex-wrap gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-200">
         <div className="flex items-center">
-          <label
-            className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2"
-            style={{ fontFamily: "var(--font-body)" }}
-          >
-            From:
-          </label>
+          <label className="text-sm font-medium text-gray-700 mr-2">From:</label>
           <input
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2 text-sm"
+            className="border border-gray-300 bg-white text-gray-900 rounded-lg p-2 text-sm"
           />
         </div>
         <div className="flex items-center">
-          <label
-            className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2"
-            style={{ fontFamily: "var(--font-body)" }}
-          >
-            To:
-          </label>
+          <label className="text-sm font-medium text-gray-700 mr-2">To:</label>
           <input
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2 text-sm"
+            className="border border-gray-300 bg-white text-gray-900 rounded-lg p-2 text-sm"
           />
         </div>
-        <button
-          onClick={() => refetch()}
-          className="inline-flex items-center px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg text-sm font-medium transition-colors"
-          style={{ fontFamily: "var(--font-body)" }}
-        >
+        <button onClick={() => refetch()} className="inline-flex items-center px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-sm font-medium transition-colors">
           Refresh
         </button>
-        {isLoading && (
-          <span className="text-sm text-gray-500 dark:text-gray-400 flex items-center">Loading...</span>
-        )}
+        {isLoading && <span className="text-sm text-gray-500 flex items-center">Loading...</span>}
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6" id="gst-preview">
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
-          <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
-            Total Invoices
-          </p>
-          <p className="text-2xl font-bold" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
-            {summaries.totalInvoices}
-          </p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
+          <p className="text-xs text-gray-500">Total Invoices</p>
+          <p className="text-2xl font-bold text-gray-900">{summaries.totalInvoices}</p>
           <div className="flex gap-2 mt-1 text-xs">
-            <span className="text-blue-600 dark:text-blue-400">B2B: {summaries.totalB2B}</span>
-            <span className="text-orange-600 dark:text-orange-400">B2C: {summaries.totalB2C}</span>
+            <span className="text-gray-600">B2B: {summaries.totalB2B}</span>
+            <span className="text-gray-600">B2C: {summaries.totalB2C}</span>
           </div>
         </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
-          <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
-            Taxable Value
-          </p>
-          <p className="text-2xl font-bold" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
-            ₹ {summaries.totalTaxable.toLocaleString("en-IN")}
-          </p>
+        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
+          <p className="text-xs text-gray-500">Taxable Value</p>
+          <p className="text-2xl font-bold text-gray-900">₹ {summaries.totalTaxable.toLocaleString("en-IN")}</p>
         </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
-          <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
-            Total GST
-          </p>
-          <p className="text-2xl font-bold text-green-700 dark:text-green-400">
-            ₹ {summaries.totalGst.toLocaleString("en-IN")}
-          </p>
+        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
+          <p className="text-xs text-gray-500">Total GST</p>
+          <p className="text-2xl font-bold text-gray-900">₹ {summaries.totalGst.toLocaleString("en-IN")}</p>
         </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
-          <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
-            Avg Tax Rate
-          </p>
-          <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
-            {summaries.totalTaxable > 0
-              ? ((summaries.totalGst / summaries.totalTaxable) * 100).toFixed(1)
-              : 0}%
+        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
+          <p className="text-xs text-gray-500">Avg Tax Rate</p>
+          <p className="text-2xl font-bold text-gray-900">
+            {summaries.totalTaxable > 0 ? ((summaries.totalGst / summaries.totalTaxable) * 100).toFixed(1) : 0}%
           </p>
         </div>
       </div>
 
       {/* B2B & B2C Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
-          <h3 className="font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-2" style={{ fontFamily: "var(--font-heading)" }}>
-            <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200">
-              B2B
-            </span>
+        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">B2B</span>
             Supplies ({summaries.totalB2B} invoices)
           </h3>
-          <div className="flex justify-between mt-2 text-sm text-gray-700 dark:text-gray-200">
+          <div className="flex justify-between mt-2 text-sm text-gray-700">
             <span>Taxable Value:</span>
             <span className="font-medium">₹ {summaries.b2bTaxable.toLocaleString("en-IN")}</span>
           </div>
-          <div className="flex justify-between text-sm text-gray-700 dark:text-gray-200">
+          <div className="flex justify-between text-sm text-gray-700">
             <span>Total GST:</span>
             <span className="font-medium">₹ {summaries.b2bGst.toLocaleString("en-IN")}</span>
           </div>
         </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
-          <h3 className="font-semibold text-orange-700 dark:text-orange-400 flex items-center gap-2" style={{ fontFamily: "var(--font-heading)" }}>
-            <span className="px-2 py-0.5 rounded-full text-xs bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-200">
-              B2C
-            </span>
+        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">B2C</span>
             Supplies ({summaries.totalB2C} invoices)
           </h3>
-          <div className="flex justify-between mt-2 text-sm text-gray-700 dark:text-gray-200">
+          <div className="flex justify-between mt-2 text-sm text-gray-700">
             <span>Taxable Value:</span>
             <span className="font-medium">₹ {summaries.b2cTaxable.toLocaleString("en-IN")}</span>
           </div>
-          <div className="flex justify-between text-sm text-gray-700 dark:text-gray-200">
+          <div className="flex justify-between text-sm text-gray-700">
             <span>Total GST:</span>
             <span className="font-medium">₹ {summaries.b2cGst.toLocaleString("en-IN")}</span>
           </div>
@@ -708,84 +748,43 @@ export default function GSTReport() {
       </div>
 
       {/* HSN Summary Table */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-6">
-        <h2
-          className="text-lg font-semibold p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 flex items-center gap-2"
-          style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
-        >
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
+        <h2 className="text-lg font-semibold p-4 border-b border-gray-200 bg-gray-50 flex items-center gap-2 text-gray-900">
           <FileText size={18} /> HSN Summary
         </h2>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[600px]">
-            <thead className="bg-gray-50 dark:bg-gray-700">
+            <thead className="bg-gray-50">
               <tr>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  HSN/SAC
-                </th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Description
-                </th>
-                <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Quantity
-                </th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Unit
-                </th>
-                <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Taxable Value
-                </th>
-                <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Tax Amount
-                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">HSN/SAC</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Unit</th>
+                <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Taxable Value</th>
+                <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Tax</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="divide-y">
               {summaries.hsnSummary.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-4 text-center text-gray-500 dark:text-gray-400">
-                    No HSN data available
-                  </td>
-                </tr>
+                <tr><td colSpan={6} className="p-4 text-center text-gray-500">No HSN data available</td></tr>
               ) : (
                 summaries.hsnSummary.map((h, idx) => (
-                  <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200 font-mono">
-                      {h.hsn_code}
-                    </td>
-                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">
-                      {h.description || "—"}
-                    </td>
-                    <td className="p-3 text-sm text-right text-gray-700 dark:text-gray-200">
-                      {h.quantity}
-                    </td>
-                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{h.unit}</td>
-                    <td className="p-3 text-sm text-right text-gray-700 dark:text-gray-200">
-                      ₹ {h.taxable_value.toLocaleString("en-IN")}
-                    </td>
-                    <td className="p-3 text-sm text-right text-gray-700 dark:text-gray-200">
-                      ₹ {h.tax_amount.toLocaleString("en-IN")}
-                    </td>
+                  <tr key={idx} className="hover:bg-gray-50">
+                    <td className="p-3 text-sm text-gray-900 font-mono">{h.hsn_code}</td>
+                    <td className="p-3 text-sm text-gray-900">{h.description || "—"}</td>
+                    <td className="p-3 text-sm text-right text-gray-900">{h.quantity}</td>
+                    <td className="p-3 text-sm text-gray-900">{h.unit}</td>
+                    <td className="p-3 text-sm text-right text-gray-900">₹ {h.taxable_value.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-sm text-right text-gray-900">₹ {h.tax_amount.toLocaleString("en-IN")}</td>
                   </tr>
                 ))
               )}
             </tbody>
-            <tfoot className="bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600 font-medium">
+            <tfoot className="bg-gray-50 border-t border-gray-200 font-medium">
               <tr>
-                <td colSpan={4} className="p-3 text-right text-gray-800 dark:text-gray-100">
-                  Total
-                </td>
-                <td className="p-3 text-right text-gray-800 dark:text-gray-100">
-                  ₹{" "}
-                  {summaries.hsnSummary
-                    .reduce((s, h) => s + h.taxable_value, 0)
-                    .toLocaleString("en-IN")}
-                </td>
-                <td className="p-3 text-right text-gray-800 dark:text-gray-100">
-                  ₹{" "}
-                  {summaries.hsnSummary
-                    .reduce((s, h) => s + h.tax_amount, 0)
-                    .toLocaleString("en-IN")}
-                </td>
+                <td colSpan={4} className="p-3 text-right text-gray-900">Total</td>
+                <td className="p-3 text-right text-gray-900">₹ {summaries.hsnSummary.reduce((s, h) => s + h.taxable_value, 0).toLocaleString("en-IN")}</td>
+                <td className="p-3 text-right text-gray-900">₹ {summaries.hsnSummary.reduce((s, h) => s + h.tax_amount, 0).toLocaleString("en-IN")}</td>
               </tr>
             </tfoot>
           </table>
@@ -793,14 +792,11 @@ export default function GSTReport() {
       </div>
 
       {/* JSON Preview */}
-      <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-        <h2
-          className="text-lg font-semibold mb-3 flex items-center gap-2"
-          style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
-        >
+      <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+        <h2 className="text-lg font-semibold mb-3 flex items-center gap-2 text-gray-900">
           <IndianRupee size={18} /> GSTR‑1 JSON Preview
         </h2>
-        <pre className="text-xs bg-white dark:bg-gray-700 p-3 rounded border border-gray-200 dark:border-gray-600 max-h-80 overflow-auto text-gray-800 dark:text-gray-200">
+        <pre className="text-xs bg-white p-3 rounded border border-gray-200 max-h-80 overflow-auto text-gray-900">
           {isLoading
             ? "Loading invoice data..."
             : invoices.length === 0
@@ -809,10 +805,7 @@ export default function GSTReport() {
             ? JSON.stringify(buildGSTR1JSON(invoices, org, startDate, endDate), null, 2)
             : "Organization details not loaded. Please refresh."}
         </pre>
-        <p
-          className="text-xs text-gray-500 dark:text-gray-400 mt-2"
-          style={{ fontFamily: "var(--font-body)" }}
-        >
+        <p className="text-xs text-gray-500 mt-2">
           JSON follows the GST portal offline utility schema (v1.0.0). Contains B2B, B2C, and HSN summary.
         </p>
       </div>

@@ -26,6 +26,7 @@ async function getFeeStructures({ pageParam = 0, filters = {}, branchId, financi
         tax_rates(id, name, rate)
       )`
     )
+    .is('courses.deleted_at', null)   // ✅ exclude fee structures linked to soft-deleted courses
     .order("id")
     .range(pageParam * limit, (pageParam + 1) * limit - 1);
 
@@ -78,7 +79,7 @@ export default function FeeStructures() {
     mutationFn: (id) => deleteFeeStructure(id, ctx),
     onSuccess: () => {
       toast.success("Deleted");
-      queryClient.invalidateQueries(["fee-structures"]);
+      queryClient.invalidateQueries({ queryKey: ["fee-structures"] });
     },
     onError: () => toast.error("Delete failed"),
   });
@@ -94,7 +95,7 @@ export default function FeeStructures() {
   };
 
   const handleFormSuccess = () => {
-    queryClient.invalidateQueries(["fee-structures"]);
+    queryClient.invalidateQueries({ queryKey: ["fee-structures"] });
   };
 
   return (

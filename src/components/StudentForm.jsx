@@ -15,7 +15,7 @@ export default function StudentForm({
   onSuccess,
   onClose,
   initialData = {},
-  inquiryId = null, // <-- NEW: auto-load from inquiry
+  inquiryId = null,
 }) {
   const isEdit = !!initialData.id;
   const darkLogo = useOrgDarkLogo();
@@ -29,20 +29,18 @@ export default function StudentForm({
   const [selectedInquiryId, setSelectedInquiryId] = useState(inquiryId || null);
   const [useInquiry, setUseInquiry] = useState(!!inquiryId);
 
-  // Load all inquiries for dropdown (if not auto‑selected)
   useEffect(() => {
-    if (!branchId || !financialYearId || inquiryId) return; // if auto, skip
+    if (!branchId || !financialYearId || inquiryId) return;
     supabase
       .from("inquiries")
       .select("id, student_name, mobile, email, medium_id, interested_course_id, parent_name")
-      .in("status", ["Interested", "Demo Scheduled"]) // only convertible statuses
+      .in("status", ["Interested", "Demo Scheduled"])
       .eq("branch_id", branchId)
       .eq("financial_year_id", financialYearId)
       .order("created_at", { ascending: false })
       .then(({ data }) => setInquiries(data || []));
   }, [branchId, financialYearId, inquiryId]);
 
-  // Pre‑fill when inquiry is selected
   useEffect(() => {
     if (!useInquiry || !selectedInquiryId) return;
     const inq = inquiries.find((i) => i.id === Number(selectedInquiryId));
@@ -58,7 +56,6 @@ export default function StudentForm({
     }));
   }, [selectedInquiryId, useInquiry, inquiries]);
 
-  // If inquiryId is passed, fetch it directly (since it may not be in dropdown)
   useEffect(() => {
     if (!inquiryId || !branchId || !financialYearId) return;
     async function loadInquiry() {
@@ -88,7 +85,7 @@ export default function StudentForm({
 
   // ─────────── Form State ───────────
   const [form, setForm] = useState({
-    admission_no: initialData.admission_no || "",
+    admission_no: initialData.admission_no || "",   // new students will leave empty
     first_name: initialData.first_name || "",
     last_name: initialData.last_name || "",
     gender: initialData.gender || "",
@@ -115,7 +112,6 @@ export default function StudentForm({
     billing_address: initialData.billing_address || "",
     batch_id: initialData.batch_id || "",
     fee_structure_id: initialData.fee_structure_id || "",
-    // internal fields for parent auto creation
     _inquiryParentName: "",
     _inquiryMobile: "",
   });
@@ -151,32 +147,6 @@ export default function StudentForm({
       setExistingUsers(p.data || []);
     });
   }, [branchId, financialYearId]);
-
-  // ─────────── Auto‑generate admission number ───────────
-  const [loadingAdmission, setLoadingAdmission] = useState(!isEdit && !initialData.admission_no);
-  useEffect(() => {
-    if (isEdit || initialData.admission_no) return;
-    async function generate() {
-      try {
-        const { data } = await supabase
-          .from("students")
-          .select("admission_no")
-          .order("admission_no", { ascending: false })
-          .limit(1);
-        let next = 1;
-        if (data?.[0]?.admission_no) {
-          const match = data[0].admission_no.match(/SRA-(\d+)/);
-          if (match) next = parseInt(match[1], 10) + 1;
-        }
-        setForm((prev) => ({ ...prev, admission_no: `SRA-${String(next).padStart(5, "0")}` }));
-      } catch {
-        setForm((prev) => ({ ...prev, admission_no: `SRA-${Date.now()}` }));
-      } finally {
-        setLoadingAdmission(false);
-      }
-    }
-    generate();
-  }, [isEdit, initialData.admission_no]);
 
   // ─────────── Parents ───────────
   const [allParents, setAllParents] = useState([]);
@@ -288,7 +258,6 @@ export default function StudentForm({
     try {
       let authUserId = null;
 
-      // ── Create or link login account ──
       if (loginMode === "create") {
         const response = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-student-user`,
@@ -326,7 +295,6 @@ export default function StudentForm({
         await supabase.from("profiles").update({ role: "student", is_active: true }).eq("id", existingUserId);
       }
 
-      // ── Photo upload ──
       let photoUrl = initialData.photo_url || null;
       if (photoFile) {
         const fileExt = photoFile.name.split(".").pop();
@@ -341,7 +309,6 @@ export default function StudentForm({
         photoUrl = publicData.publicUrl;
       }
 
-      // Extract batch_id and fee_structure_id
       const { batch_id, fee_structure_id, _inquiryParentName, _inquiryMobile, ...studentData } = form;
 
       const studentPayload = {
@@ -351,6 +318,11 @@ export default function StudentForm({
         branch_id: branchId,
         financial_year_id: financialYearId,
       };
+
+      // For new students, remove empty admission_no so the DB default sequence is used
+      if (!isEdit && !studentPayload.admission_no) {
+        delete studentPayload.admission_no;
+      }
 
       let studentId = initialData.id;
       if (isEdit) {
@@ -366,14 +338,13 @@ export default function StudentForm({
         const { data: newStudent, error } = await supabase
           .from("students")
           .insert(studentPayload)
-          .select("id")
+          .select("id, admission_no")
           .single();
         if (error) throw error;
         studentId = newStudent.id;
       }
 
       // ── Parent linking ──
-      // If converting from inquiry and no parent linked, auto‑create parent
       if (selectedInquiryId && useInquiry && linkedParents.length === 0) {
         const parentPayload = {
           father_name: form._inquiryParentName || "N/A",
@@ -386,7 +357,6 @@ export default function StudentForm({
           financial_year_id: financialYearId,
         };
 
-        // Check for existing parent by mobile
         let checkQuery = supabase
           .from("parents")
           .select("id")
@@ -419,12 +389,9 @@ export default function StudentForm({
               financial_year_id: financialYearId,
             });
           if (linkError) throw linkError;
-          // Add to linkedParents for UI (optional)
-          setLinkedParents([{ id: parentId, father_name: parentPayload.father_name }]);
         }
       }
 
-      // ── Existing parent linking ──
       if (isEdit) {
         let deleteQuery = supabase
           .from("student_parents")
@@ -446,7 +413,6 @@ export default function StudentForm({
         if (linkError) throw linkError;
       }
 
-      // ── Batch assignment ──
       if (batch_id) {
         if (isEdit) {
           let deactivateQuery = supabase
@@ -468,24 +434,56 @@ export default function StudentForm({
         if (batchError) throw batchError;
       }
 
-      // ── Fee assignment ──
-      if (fee_structure_id) {
-        const feeStruct = feeStructures.find((fs) => fs.id == fee_structure_id);
-        if (feeStruct) {
-          const { error: feeError } = await supabase.from("student_fees").insert({
-            student_id: studentId,
-            fee_structure_id: fee_structure_id,
-            total_fee: feeStruct.fee_amount,
-            final_fee: feeStruct.fee_amount,
-            status: "Pending",
-            branch_id: branchId,
-            financial_year_id: financialYearId,
-          });
-          if (feeError) throw feeError;
-        }
-      }
+if (fee_structure_id) {
+  const feeStruct = feeStructures.find((fs) => fs.id == fee_structure_id);
+  if (feeStruct) {
+    // 1. Insert student_fees record
+    const { data: studentFee, error: feeError } = await supabase
+      .from("student_fees")
+      .insert({
+        student_id: studentId,
+        fee_structure_id: fee_structure_id,
+        total_fee: feeStruct.fee_amount,
+        final_fee: feeStruct.fee_amount,
+        status: "Pending",
+        branch_id: branchId,
+        financial_year_id: financialYearId,
+      })
+      .select("id")
+      .single();
+    if (feeError) throw feeError;
 
-      // ── Update inquiry status to "Admitted" ──
+    // 2. Fetch fee_structure_components with tax info
+    const { data: feeComponents, error: compFetchError } = await supabase
+      .from("fee_structure_components")
+      .select("*, tax_rates(rate)")
+      .eq("fee_structure_id", fee_structure_id)
+      .eq("branch_id", branchId)
+      .eq("financial_year_id", financialYearId)
+      .order("sort_order");
+    if (compFetchError) throw compFetchError;
+
+    if (feeComponents && feeComponents.length > 0) {
+      const studentFeeComponents = feeComponents.map((comp) => {
+        const rate = comp.tax_rates?.rate ? comp.tax_rates.rate / 100 : 0;
+        const baseAmount = Number(comp.amount);
+        const totalAmount = comp.tax_inclusive ? baseAmount : baseAmount * (1 + rate);
+        return {
+          student_fee_id: studentFee.id,
+          fee_structure_component_id: comp.id,
+          due_amount: totalAmount,
+          paid_amount: 0,
+          branch_id: branchId,
+          financial_year_id: financialYearId,
+        };
+      });
+      const { error: compInsertError } = await supabase
+        .from("student_fee_components")
+        .insert(studentFeeComponents);
+      if (compInsertError) throw compInsertError;
+    }
+  }
+}
       if (selectedInquiryId && useInquiry) {
         let updateInquiryQuery = supabase
           .from("inquiries")
@@ -523,7 +521,7 @@ export default function StudentForm({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
-          {/* Inquiry Section (only when adding and not auto‑loaded) */}
+          {/* Inquiry Section */}
           {!isEdit && !inquiryId && (
             <div className="col-span-2 border-b pb-4">
               <label className="block text-sm font-montserrat text-secondary-dark mb-2">
@@ -565,13 +563,21 @@ export default function StudentForm({
           <div className="col-span-2 grid grid-cols-1 md:grid-cols-3 gap-5">
             <div>
               <label className="block text-sm mb-1"><Hash size={14} className="inline mr-1" /> Admission No</label>
-              <input
-                name="admission_no"
-                value={form.admission_no}
-                onChange={handleChange}
-                disabled={loadingAdmission}
-                className="w-full border rounded p-2.5 focus:ring-1 focus:ring-primary outline-none"
-              />
+              {isEdit ? (
+                <input
+                  name="admission_no"
+                  value={form.admission_no}
+                  onChange={handleChange}
+                  className="w-full border rounded p-2.5 focus:ring-1 focus:ring-primary outline-none"
+                />
+              ) : (
+                <input
+                  type="text"
+                  value="Auto‑assigned on save"
+                  readOnly
+                  className="w-full border rounded p-2.5 bg-gray-100 text-gray-500 cursor-not-allowed"
+                />
+              )}
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm mb-1"><Upload size={14} className="inline mr-1" /> Photo</label>
@@ -587,31 +593,15 @@ export default function StudentForm({
           {/* Personal Details */}
           <div>
             <label className="block text-sm mb-1"><User size={14} className="inline mr-1" /> First Name *</label>
-            <input
-              name="first_name"
-              value={form.first_name}
-              onChange={handleChange}
-              required
-              className="w-full border rounded p-2.5 focus:ring-1 focus:ring-primary outline-none"
-            />
+            <input name="first_name" value={form.first_name} onChange={handleChange} required className="w-full border rounded p-2.5 focus:ring-1 focus:ring-primary outline-none" />
           </div>
           <div>
             <label className="block text-sm mb-1">Last Name</label>
-            <input
-              name="last_name"
-              value={form.last_name}
-              onChange={handleChange}
-              className="w-full border rounded p-2.5"
-            />
+            <input name="last_name" value={form.last_name} onChange={handleChange} className="w-full border rounded p-2.5" />
           </div>
           <div>
             <label className="block text-sm mb-1">Gender</label>
-            <select
-              name="gender"
-              value={form.gender}
-              onChange={handleChange}
-              className="w-full border rounded p-2.5"
-            >
+            <select name="gender" value={form.gender} onChange={handleChange} className="w-full border rounded p-2.5">
               <option value="">Select</option>
               <option>Male</option>
               <option>Female</option>
@@ -620,144 +610,66 @@ export default function StudentForm({
           </div>
           <div>
             <label className="block text-sm mb-1"><Calendar size={14} className="inline mr-1" /> Date of Birth</label>
-            <input
-              type="date"
-              name="dob"
-              value={form.dob}
-              onChange={handleChange}
-              className="w-full border rounded p-2.5"
-            />
+            <input type="date" name="dob" value={form.dob} onChange={handleChange} className="w-full border rounded p-2.5" />
           </div>
           <div>
             <label className="block text-sm mb-1"><Phone size={14} className="inline mr-1" /> Mobile *</label>
-            <input
-              name="mobile"
-              value={form.mobile}
-              onChange={handleChange}
-              required
-              className="w-full border rounded p-2.5"
-            />
+            <input name="mobile" value={form.mobile} onChange={handleChange} required className="w-full border rounded p-2.5" />
           </div>
           <div>
             <label className="block text-sm mb-1">WhatsApp</label>
-            <input
-              name="whatsapp"
-              value={form.whatsapp}
-              onChange={handleChange}
-              className="w-full border rounded p-2.5"
-            />
+            <input name="whatsapp" value={form.whatsapp} onChange={handleChange} className="w-full border rounded p-2.5" />
           </div>
           <div>
             <label className="block text-sm mb-1"><Mail size={14} className="inline mr-1" /> Email</label>
-            <input
-              type="email"
-              name="email"
-              value={form.email}
-              onChange={handleChange}
-              className="w-full border rounded p-2.5"
-            />
+            <input type="email" name="email" value={form.email} onChange={handleChange} className="w-full border rounded p-2.5" />
           </div>
           <div>
             <label className="block text-sm mb-1"><Layers size={14} className="inline mr-1" /> Medium</label>
-            <select
-              name="medium_id"
-              value={form.medium_id}
-              onChange={handleChange}
-              className="w-full border rounded p-2.5"
-            >
+            <select name="medium_id" value={form.medium_id} onChange={handleChange} className="w-full border rounded p-2.5">
               <option value="">Select</option>
-              {mediums.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
+              {mediums.map((m) => (<option key={m.id} value={m.id}>{m.name}</option>))}
             </select>
           </div>
 
           {/* Address */}
           <div className="col-span-2">
             <label className="block text-sm mb-1"><MapPin size={14} className="inline mr-1" /> Address</label>
-            <textarea
-              name="address"
-              value={form.address}
-              onChange={handleChange}
-              rows={2}
-              className="w-full border rounded p-2.5 resize-none"
-            />
+            <textarea name="address" value={form.address} onChange={handleChange} rows={2} className="w-full border rounded p-2.5 resize-none" />
           </div>
           <div>
             <label className="block text-sm mb-1">City</label>
-            <input
-              name="city"
-              value={form.city}
-              onChange={handleChange}
-              className="w-full border rounded p-2.5"
-            />
+            <input name="city" value={form.city} onChange={handleChange} className="w-full border rounded p-2.5" />
           </div>
           <div>
             <label className="block text-sm mb-1">State</label>
-            <input
-              name="state"
-              value={form.state}
-              onChange={handleChange}
-              className="w-full border rounded p-2.5"
-            />
+            <input name="state" value={form.state} onChange={handleChange} className="w-full border rounded p-2.5" />
           </div>
           <div>
             <label className="block text-sm mb-1">Pincode</label>
-            <input
-              name="pincode"
-              value={form.pincode}
-              onChange={handleChange}
-              className="w-full border rounded p-2.5"
-            />
+            <input name="pincode" value={form.pincode} onChange={handleChange} className="w-full border rounded p-2.5" />
           </div>
 
           {/* School details */}
           <div>
             <label className="block text-sm mb-1"><School size={14} className="inline mr-1" /> School Name</label>
-            <input
-              name="school_name"
-              value={form.school_name}
-              onChange={handleChange}
-              className="w-full border rounded p-2.5"
-            />
+            <input name="school_name" value={form.school_name} onChange={handleChange} className="w-full border rounded p-2.5" />
           </div>
           <div>
             <label className="block text-sm mb-1">Board</label>
-            <input
-              name="board"
-              value={form.board}
-              onChange={handleChange}
-              className="w-full border rounded p-2.5"
-              placeholder="GSEB, CBSE..."
-            />
+            <input name="board" value={form.board} onChange={handleChange} className="w-full border rounded p-2.5" placeholder="GSEB, CBSE..." />
           </div>
           <div>
             <label className="block text-sm mb-1">Standard</label>
-            <input
-              name="standard"
-              value={form.standard}
-              onChange={handleChange}
-              className="w-full border rounded p-2.5"
-            />
+            <input name="standard" value={form.standard} onChange={handleChange} className="w-full border rounded p-2.5" />
           </div>
           <div>
             <label className="block text-sm mb-1">Joining Date</label>
-            <input
-              type="date"
-              name="joining_date"
-              value={form.joining_date}
-              onChange={handleChange}
-              className="w-full border rounded p-2.5"
-            />
+            <input type="date" name="joining_date" value={form.joining_date} onChange={handleChange} className="w-full border rounded p-2.5" />
           </div>
           <div>
             <label className="block text-sm mb-1">Status</label>
-            <select
-              name="status"
-              value={form.status}
-              onChange={handleChange}
-              className="w-full border rounded p-2.5"
-            >
+            <select name="status" value={form.status} onChange={handleChange} className="w-full border rounded p-2.5">
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
               <option value="graduated">Graduated</option>
@@ -766,38 +678,20 @@ export default function StudentForm({
 
           {/* Batch & Fee Assignment */}
           <div className="col-span-2 border-t pt-4">
-            <h3 className="text-lg font-righteous text-primary-dark mb-3">
-              <BookOpen size={18} className="inline mr-2" /> Academic & Fee Assignment
-            </h3>
+            <h3 className="text-lg font-righteous text-primary-dark mb-3"><BookOpen size={18} className="inline mr-2" /> Academic & Fee Assignment</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm mb-1">Assign Batch</label>
-                <select
-                  name="batch_id"
-                  value={form.batch_id}
-                  onChange={handleChange}
-                  className="w-full border rounded p-2.5"
-                >
+                <select name="batch_id" value={form.batch_id} onChange={handleChange} className="w-full border rounded p-2.5">
                   <option value="">Select Batch</option>
-                  {batches.map((b) => (
-                    <option key={b.id} value={b.id}>{b.batch_name}</option>
-                  ))}
+                  {batches.map((b) => (<option key={b.id} value={b.id}>{b.batch_name}</option>))}
                 </select>
               </div>
               <div>
                 <label className="block text-sm mb-1">Assign Fee Structure</label>
-                <select
-                  name="fee_structure_id"
-                  value={form.fee_structure_id}
-                  onChange={handleChange}
-                  className="w-full border rounded p-2.5"
-                >
+                <select name="fee_structure_id" value={form.fee_structure_id} onChange={handleChange} className="w-full border rounded p-2.5">
                   <option value="">Select Fee Structure</option>
-                  {feeStructures.map((fs) => (
-                    <option key={fs.id} value={fs.id}>
-                      {fs.courses?.course_name || "N/A"} – ₹{fs.fee_amount}
-                    </option>
-                  ))}
+                  {feeStructures.map((fs) => (<option key={fs.id} value={fs.id}>{fs.courses?.course_name || "N/A"} – ₹{fs.fee_amount}</option>))}
                 </select>
                 {taxPreview && (
                   <div className="mt-2 text-xs bg-gray-50 p-2 rounded">
@@ -810,243 +704,76 @@ export default function StudentForm({
 
           {/* GST Section */}
           <div className="col-span-2 border-t pt-4">
-            <h3 className="text-lg font-righteous text-primary-dark mb-3">
-              <IndianRupee size={18} className="inline mr-2" /> GST Information
-            </h3>
+            <h3 className="text-lg font-righteous text-primary-dark mb-3"><IndianRupee size={18} className="inline mr-2" /> GST Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm mb-1">GSTIN</label>
-                <input
-                  name="gstin"
-                  value={form.gstin}
-                  onChange={handleChange}
-                  maxLength={15}
-                  className="w-full border rounded p-2.5 uppercase"
-                />
-              </div>
-              <div>
-                <label className="block text-sm mb-1">Legal Business Name</label>
-                <input
-                  name="legal_business_name"
-                  value={form.legal_business_name}
-                  onChange={handleChange}
-                  className="w-full border rounded p-2.5"
-                />
-              </div>
-              <div>
-                <label className="block text-sm mb-1">Trade Name</label>
-                <input
-                  name="trade_name"
-                  value={form.trade_name}
-                  onChange={handleChange}
-                  className="w-full border rounded p-2.5"
-                />
-              </div>
-              <div>
-                <label className="block text-sm mb-1">State Code</label>
-                <input
-                  name="state_code"
-                  value={form.state_code}
-                  onChange={handleChange}
-                  maxLength={2}
-                  className="w-full border rounded p-2.5"
-                />
-              </div>
-              <div>
-                <label className="block text-sm mb-1">Place of Supply</label>
-                <input
-                  name="place_of_supply"
-                  value={form.place_of_supply}
-                  onChange={handleChange}
-                  maxLength={2}
-                  className="w-full border rounded p-2.5"
-                />
-              </div>
-              <div>
-                <label className="block text-sm mb-1">Registration Type</label>
-                <select
-                  name="registration_type"
-                  value={form.registration_type}
-                  onChange={handleChange}
-                  className="w-full border rounded p-2.5"
-                >
-                  <option value="">Select</option>
-                  <option>Regular</option>
-                  <option>Composition</option>
-                  <option>Unregistered</option>
-                </select>
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm mb-1">Billing Address</label>
-                <input
-                  name="billing_address"
-                  value={form.billing_address}
-                  onChange={handleChange}
-                  className="w-full border rounded p-2.5"
-                />
-              </div>
+              <div><label className="block text-sm mb-1">GSTIN</label><input name="gstin" value={form.gstin} onChange={handleChange} maxLength={15} className="w-full border rounded p-2.5 uppercase" /></div>
+              <div><label className="block text-sm mb-1">Legal Business Name</label><input name="legal_business_name" value={form.legal_business_name} onChange={handleChange} className="w-full border rounded p-2.5" /></div>
+              <div><label className="block text-sm mb-1">Trade Name</label><input name="trade_name" value={form.trade_name} onChange={handleChange} className="w-full border rounded p-2.5" /></div>
+              <div><label className="block text-sm mb-1">State Code</label><input name="state_code" value={form.state_code} onChange={handleChange} maxLength={2} className="w-full border rounded p-2.5" /></div>
+              <div><label className="block text-sm mb-1">Place of Supply</label><input name="place_of_supply" value={form.place_of_supply} onChange={handleChange} maxLength={2} className="w-full border rounded p-2.5" /></div>
+              <div><label className="block text-sm mb-1">Registration Type</label><select name="registration_type" value={form.registration_type} onChange={handleChange} className="w-full border rounded p-2.5"><option value="">Select</option><option>Regular</option><option>Composition</option><option>Unregistered</option></select></div>
+              <div className="col-span-2"><label className="block text-sm mb-1">Billing Address</label><input name="billing_address" value={form.billing_address} onChange={handleChange} className="w-full border rounded p-2.5" /></div>
             </div>
           </div>
 
           {/* Login Account */}
           <div className="col-span-2 border-t pt-4">
-            <h3 className="text-lg font-righteous text-primary-dark mb-3">
-              <Lock size={18} className="inline mr-2" /> Student Login Account
-            </h3>
+            <h3 className="text-lg font-righteous text-primary-dark mb-3"><Lock size={18} className="inline mr-2" /> Student Login Account</h3>
             <div className="space-y-3">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="loginMode"
-                  value="none"
-                  checked={loginMode === "none"}
-                  onChange={() => setLoginMode("none")}
-                  className="accent-primary"
-                /> No login
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="loginMode"
-                  value="create"
-                  checked={loginMode === "create"}
-                  onChange={() => setLoginMode("create")}
-                  className="accent-primary"
-                /> Create account
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="loginMode"
-                  value="link"
-                  checked={loginMode === "link"}
-                  onChange={() => setLoginMode("link")}
-                  className="accent-primary"
-                /> Link existing user
-              </label>
+              <label className="flex items-center gap-2 text-sm"><input type="radio" name="loginMode" value="none" checked={loginMode === "none"} onChange={() => setLoginMode("none")} className="accent-primary" /> No login</label>
+              <label className="flex items-center gap-2 text-sm"><input type="radio" name="loginMode" value="create" checked={loginMode === "create"} onChange={() => setLoginMode("create")} className="accent-primary" /> Create account</label>
+              <label className="flex items-center gap-2 text-sm"><input type="radio" name="loginMode" value="link" checked={loginMode === "link"} onChange={() => setLoginMode("link")} className="accent-primary" /> Link existing user</label>
             </div>
             {loginMode === "create" && (
               <div className="grid grid-cols-2 gap-4 mt-3">
-                <div>
-                  <label className="block text-sm mb-1">Email *</label>
-                  <input
-                    type="email"
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
-                    className="w-full border rounded p-2.5"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm mb-1">Password</label>
-                  <input
-                    type="text"
-                    value={loginPassword}
-                    readOnly
-                    className="w-full border rounded p-2.5 bg-gray-100"
-                  />
-                </div>
+                <div><label className="block text-sm mb-1">Email *</label><input type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} className="w-full border rounded p-2.5" required /></div>
+                <div><label className="block text-sm mb-1">Password</label><input type="text" value={loginPassword} readOnly className="w-full border rounded p-2.5 bg-gray-100" /></div>
               </div>
             )}
             {loginMode === "link" && (
-              <div className="mt-3">
-                <label className="block text-sm mb-1">Select User *</label>
-                <select
-                  value={existingUserId}
-                  onChange={(e) => setExistingUserId(e.target.value)}
-                  className="w-full border rounded p-2.5"
-                  required
-                >
-                  <option value="">-- choose --</option>
-                  {existingUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.full_name || u.email} ({u.email})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <div className="mt-3"><label className="block text-sm mb-1">Select User *</label><select value={existingUserId} onChange={(e) => setExistingUserId(e.target.value)} className="w-full border rounded p-2.5" required><option value="">-- choose --</option>{existingUsers.map((u) => (<option key={u.id} value={u.id}>{u.full_name || u.email} ({u.email})</option>))}</select></div>
             )}
           </div>
 
           {/* Parents Section */}
           <div className="col-span-2 border-t pt-4">
-            <h3 className="text-lg font-righteous text-primary-dark mb-3">
-              <User size={18} className="inline mr-2" /> Parents / Guardians
-            </h3>
+            <h3 className="text-lg font-righteous text-primary-dark mb-3"><User size={18} className="inline mr-2" /> Parents / Guardians</h3>
             <div className="flex flex-wrap gap-2 mb-3">
               {linkedParents.map((p) => (
-                <span
-                  key={p.id}
-                  className="inline-flex items-center gap-2 bg-primary-bg text-primary px-3 py-1.5 rounded-full text-sm"
-                >
+                <span key={p.id} className="inline-flex items-center gap-2 bg-primary-bg text-primary px-3 py-1.5 rounded-full text-sm">
                   {p?.father_name || p?.mother_name || p?.mobile || "Unknown"}
-                  <button
-                    type="button"
-                    onClick={() => removeLinkedParent(p.id)}
-                    className="text-red-500"
-                  >
-                    <X size={14} />
-                  </button>
+                  <button type="button" onClick={() => removeLinkedParent(p.id)} className="text-red-500"><X size={14} /></button>
                 </span>
               ))}
             </div>
             <div className="relative mb-3">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
-              <input
-                type="text"
-                placeholder="Search parent..."
-                value={parentSearch}
-                onChange={(e) => setParentSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border rounded text-sm"
-              />
+              <input type="text" placeholder="Search parent..." value={parentSearch} onChange={(e) => setParentSearch(e.target.value)} className="w-full pl-10 pr-4 py-2.5 border rounded text-sm" />
             </div>
             {parentSearch && (
               <div className="max-h-32 overflow-y-auto border rounded mb-3">
                 {filteredParents.slice(0, 5).map((p) => (
-                  <div
-                    key={p.id}
-                    className="px-4 py-2 text-sm hover:bg-primary-bg cursor-pointer flex justify-between"
-                    onClick={() => addExistingParent(p)}
-                  >
+                  <div key={p.id} className="px-4 py-2 text-sm hover:bg-primary-bg cursor-pointer flex justify-between" onClick={() => addExistingParent(p)}>
                     <span>{p.father_name || p.mother_name} – {p.mobile}</span>
                     <Plus size={16} className="text-primary" />
                   </div>
                 ))}
               </div>
             )}
-            <button
-              type="button"
-              onClick={() => setShowAddParentModal(true)}
-              className="text-primary hover:underline text-sm flex items-center gap-1"
-            >
-              <Plus size={16} /> Add New Parent
-            </button>
+            <button type="button" onClick={() => setShowAddParentModal(true)} className="text-primary hover:underline text-sm flex items-center gap-1"><Plus size={16} /> Add New Parent</button>
           </div>
 
           {/* Buttons */}
           <div className="col-span-2 flex justify-end gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-5 py-2.5 border rounded-lg text-secondary-dark hover:bg-secondary-bg"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={uploading}
-              className="px-5 py-2.5 bg-primary text-white rounded-lg hover:bg-primary-light disabled:opacity-50"
-            >
+            <button type="button" onClick={onClose} className="px-5 py-2.5 border rounded-lg text-secondary-dark hover:bg-secondary-bg">Cancel</button>
+            <button type="submit" disabled={uploading} className="px-5 py-2.5 bg-primary text-white rounded-lg hover:bg-primary-light disabled:opacity-50">
               {uploading ? "Processing..." : isEdit ? "Update Student" : "Add Student"}
             </button>
           </div>
         </form>
 
         {showAddParentModal && (
-          <ParentForm
-            onSubmit={handleNewParentCreated}
-            onClose={() => setShowAddParentModal(false)}
-          />
+          <ParentForm onSubmit={handleNewParentCreated} onClose={() => setShowAddParentModal(false)} />
         )}
       </div>
     </div>

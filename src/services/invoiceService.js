@@ -1,6 +1,6 @@
 // src/services/invoiceService.js
 import { supabase } from "../api/supabase";
-import { sendTemplateEmail } from "./emailService"; // 👈 Added
+import { sendTemplateEmail } from "./emailService";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -94,7 +94,7 @@ async function notifyAdmins(orgId, title, message, branchId) {
       organizationId: orgId,
       slug: "system_announcement",
       context: {
-        academyName: "", // not required for admins, but pass something
+        academyName: "",
         title,
         message,
         target_type: "Admin",
@@ -105,6 +105,55 @@ async function notifyAdmins(orgId, title, message, branchId) {
   } catch (error) {
     console.error("❌ Failed to send admin notification:", error);
   }
+}
+
+// ─── Tax Calculation Helper ──────────────────────────────────────────
+
+/**
+ * Calculate base, tax, and CGST/SGST/IGST for a single invoice item.
+ * @param {number} totalAmount - The total amount (inclusive or exclusive depending on inclusive flag)
+ * @param {number} taxRate - The tax rate percentage (e.g., 18 for 18%)
+ * @param {boolean} inclusive - If true, totalAmount includes tax
+ * @param {string} placeOfSupply - State code of the supply
+ * @param {string} orgState - State code of the organization
+ * @returns {object} { base, tax, cgst, sgst, igst }
+ */
+function calculateTaxForItem(totalAmount, taxRate, inclusive, placeOfSupply, orgState) {
+  const rate = taxRate / 100;
+  let base = totalAmount;
+  let tax = 0;
+
+  if (inclusive && rate > 0) {
+    // Price includes tax, so back‑calculate base
+    base = totalAmount / (1 + rate);
+    tax = totalAmount - base;
+  } else if (!inclusive && rate > 0) {
+    // Price is exclusive, tax added
+    base = totalAmount;
+    tax = totalAmount * rate;
+  }
+
+  // Round to 2 decimal places
+  base = Math.round(base * 100) / 100;
+  tax = Math.round(tax * 100) / 100;
+
+  // Split into CGST/SGST/IGST
+  let cgst = 0, sgst = 0, igst = 0;
+  if (tax > 0) {
+    if (placeOfSupply === orgState) {
+      // Intra‑state: half tax each
+      cgst = tax / 2;
+      sgst = tax / 2;
+      cgst = Math.round(cgst * 100) / 100;
+      sgst = Math.round(sgst * 100) / 100;
+    } else {
+      // Inter‑state: all IGST
+      igst = tax;
+      igst = Math.round(igst * 100) / 100;
+    }
+  }
+
+  return { base, tax, cgst, sgst, igst };
 }
 
 // ─── INVOICES ──────────────────────────────────────────────────────────
@@ -202,11 +251,15 @@ export async function getInvoice(id, branchId, financialYearId) {
   return { ...invoice, invoice_items: enrichedItems };
 }
 
-// ─── Create Invoice ────────────────────────────────────────────────
+// ─── Create Invoice ────────────────────────────────────────────────────
 
 export async function createInvoice(payload, context) {
   const {
     student_id,
+    parent_id = null,          // NEW
+    course_id = null,          // NEW
+    batch_id = null,           // NEW
+    academic_year_id = null,   // NEW
     invoice_date,
     due_date,
     payment_terms,
@@ -216,10 +269,12 @@ export async function createInvoice(payload, context) {
     items,
     student_fee_id,
     fee_installment_id,
+    status = "Draft",
   } = payload;
 
   const { branchId, financialYearId } = context;
 
+  // Get organization state for tax split
   let orgState = "";
   if (branchId) {
     const { data: branch } = await supabase
@@ -231,6 +286,7 @@ export async function createInvoice(payload, context) {
   }
   const placeOfSupply = place_of_supply || orgState;
 
+  // Fetch all tax rates needed for items
   const taxRateIds = items.map(i => i.tax_rate_id).filter(id => id);
   let taxRateQuery = supabase.from("tax_rates").select("*").in("id", taxRateIds);
   if (branchId) taxRateQuery = taxRateQuery.eq("branch_id", branchId);
@@ -244,48 +300,51 @@ export async function createInvoice(payload, context) {
   const invoiceItems = items.map(item => {
     const unitPrice = parseFloat(item.unit_price) || 0;
     const qty = parseFloat(item.quantity) || 1;
-    const taxable = unitPrice * qty;
-    let cgst = 0, sgst = 0, igst = 0;
-    if (item.tax_rate_id && taxRateMap[item.tax_rate_id]) {
-      const rate = taxRateMap[item.tax_rate_id].rate;
-      if (placeOfSupply === orgState) {
-        cgst = (rate / 2) / 100 * taxable;
-        sgst = (rate / 2) / 100 * taxable;
-      } else {
-        igst = rate / 100 * taxable;
-      }
+    const total = unitPrice * qty;
+
+    const taxRateId = item.tax_rate_id || null;
+    const taxInclusive = item.tax_inclusive !== undefined ? item.tax_inclusive : true;
+
+    let base, tax, cgst = 0, sgst = 0, igst = 0;
+    if (taxRateId && taxRateMap[taxRateId]) {
+      const rate = taxRateMap[taxRateId].rate;
+      const result = calculateTaxForItem(total, rate, taxInclusive, placeOfSupply, orgState);
+      base = result.base;
+      tax = result.tax;
+      cgst = result.cgst;
+      sgst = result.sgst;
+      igst = result.igst;
+    } else {
+      base = total;
+      tax = 0;
     }
-    const total = taxable + cgst + sgst + igst;
-    totalTaxable += taxable;
+
+    const totalWithTax = base + cgst + sgst + igst;
+    totalTaxable += base;
+    totalGST += tax;
+    totalAmount += totalWithTax;
     totalCgst += cgst;
     totalSgst += sgst;
     totalIgst += igst;
-    totalGST += cgst + sgst + igst;
-    totalAmount += total;
+
     return {
       ...item,
-      taxable_amount: taxable,
+      quantity: qty,
+      unit_price: unitPrice,
+      taxable_amount: base,
+      tax_rate_id: taxRateId,
       cgst_amount: cgst,
       sgst_amount: sgst,
       igst_amount: igst,
-      total_amount: total,
+      cess_amount: 0,
+      total_amount: totalWithTax,
     };
   });
 
   const roundOff = Math.round(totalAmount) - totalAmount;
   const grandTotal = totalAmount + roundOff;
 
-  // If an invoice already exists for this fee, reuse it
-  const { data: existingInvoice } = await supabase
-    .from("invoices")
-    .select("*")
-    .eq("student_fee_id", student_fee_id)
-    .maybeSingle();
-
-  if (existingInvoice) {
-    return existingInvoice;
-  }
-
+  // Always create a new invoice (no reuse logic)
   const invoiceNumber = await generateUniqueInvoiceNumber();
 
   const { data: invoice, error } = await supabase
@@ -294,6 +353,10 @@ export async function createInvoice(payload, context) {
       invoice_number: invoiceNumber,
       invoice_date: invoice_date || new Date().toISOString().split("T")[0],
       student_id,
+      parent_id,                // NEW
+      course_id,                // NEW
+      batch_id,                 // NEW
+      academic_year_id,         // NEW
       due_date: due_date || null,
       payment_terms: payment_terms || "",
       gst_applicable: gst_applicable || false,
@@ -305,7 +368,7 @@ export async function createInvoice(payload, context) {
       total_amount: totalAmount,
       round_off: roundOff,
       grand_total: grandTotal,
-      status: "Draft", // default
+      status: status,
       student_fee_id: student_fee_id || null,
       fee_installment_id: fee_installment_id || null,
       branch_id: branchId,
@@ -316,6 +379,7 @@ export async function createInvoice(payload, context) {
 
   if (error) throw error;
 
+  // Insert invoice items
   const itemInserts = invoiceItems.map(item => ({
     invoice_id: invoice.id,
     item_type: item.item_type,
@@ -337,15 +401,15 @@ export async function createInvoice(payload, context) {
   const { error: insError } = await supabase.from("invoice_items").insert(itemInserts);
   if (insError) throw insError;
 
-  // If status is "Final", send email immediately
-  if (payload.status === "Final") {
+  // If status is "Final", send notification
+  if (status === "Final") {
     await sendInvoiceNotification(invoice, branchId, financialYearId);
   }
 
   return invoice;
 }
 
-// ─── Update Invoice ──────────────────────────────────────────────────
+// ─── Update Invoice ────────────────────────────────────────────────────
 
 export async function updateInvoice(id, payload, context) {
   const { items, ...headerData } = payload;
@@ -367,11 +431,14 @@ export async function updateInvoice(id, payload, context) {
   if (error) throw error;
 
   if (items !== undefined) {
+    // Delete old items
     let deleteItemsQuery = supabase.from("invoice_items").delete().eq("invoice_id", id);
     if (branchId) deleteItemsQuery = deleteItemsQuery.eq("branch_id", branchId);
     if (financialYearId) deleteItemsQuery = deleteItemsQuery.eq("financial_year_id", financialYearId);
     await deleteItemsQuery;
 
+    // Recalculate totals? For simplicity, we assume the payload already contains updated totals.
+    // But we can recalc if needed. We'll trust the payload.
     const itemInserts = items.map(item => ({
       invoice_id: id,
       item_type: item.item_type,

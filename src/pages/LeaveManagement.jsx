@@ -1,3 +1,4 @@
+// src/pages/LeaveManagement.jsx
 import { useState } from "react";
 import {
   useInfiniteQuery,
@@ -13,12 +14,14 @@ import {
   User,
   Clock,
   Mail,
+  Download,          // added icon for download
 } from "lucide-react";
 import BackButton from "../components/BackButton";
 import { getLeaves, updateLeaveStatus } from "../services/leaveService";
 import { useOrg } from "../context/OrganizationContext";
 import { supabase } from "../api/supabase";
 import { sendEmail } from "../services/emailService";
+import { generateLeaveApplicationPdf } from "../utils/leaveApplicationPdf";  // added PDF generator
 
 export default function LeaveManagement() {
   const queryClient = useQueryClient();
@@ -60,7 +63,6 @@ export default function LeaveManagement() {
         return;
       }
 
-      // Build HTML table rows
       let tableRows = leaves.map((l) => {
         const teacherName = l.teachers ? `${l.teachers.first_name || ''} ${l.teachers.last_name || ''}`.trim() : '—';
         const statusColor = l.status === "Approved" ? "#2e7d32" :
@@ -115,13 +117,23 @@ export default function LeaveManagement() {
         to: adminEmails,
         subject: `Leave Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-       // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");
     } catch (err) {
       console.error("Failed to send report:", err);
       alert("Failed to send report. Check console for details.");
+    }
+  };
+
+  // ─── PDF download handler ─────────────────────────────────────────
+  const handleDownloadLeave = async (leave) => {
+    try {
+      const doc = await generateLeaveApplicationPdf(leave, leave.teachers, org);
+      doc.save(`Leave_${leave.teachers?.first_name}_${leave.teachers?.last_name}.pdf`);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to generate leave application PDF");
     }
   };
 
@@ -170,7 +182,7 @@ export default function LeaveManagement() {
           <h1 className="text-3xl font-righteous text-primary-dark">Leave Management</h1>
           <p className="text-sm text-secondary-dark font-montserrat">Approve or reject teacher leave requests</p>
         </div>
-        {/* 👇 Send Report button */}
+        {/* Send Report button */}
         <button
           onClick={sendReportEmail}
           className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
@@ -235,29 +247,39 @@ export default function LeaveManagement() {
                       }`}>{l.status}</span>
                     </td>
                     <td className="text-sm">
-                      {l.status === "Pending" && (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => updateMutation.mutate({ id: l.id, status: "Approved" })}
-                            className="text-green-600 hover:underline"
-                          >
-                            <Check size={15} /> Approve
-                          </button>
-                          <button
-                            onClick={() => {
-                              const remark = prompt("Rejection reason (optional):");
-                              updateMutation.mutate({
-                                id: l.id,
-                                status: "Rejected",
-                                adminRemarks: remark || "",
-                              });
-                            }}
-                            className="text-red-600 hover:underline"
-                          >
-                            <X size={15} /> Reject
-                          </button>
-                        </div>
-                      )}
+                      <div className="flex gap-2">
+                        {l.status === "Pending" && (
+                          <>
+                            <button
+                              onClick={() => updateMutation.mutate({ id: l.id, status: "Approved" })}
+                              className="text-green-600 hover:underline"
+                            >
+                              <Check size={15} /> Approve
+                            </button>
+                            <button
+                              onClick={() => {
+                                const remark = prompt("Rejection reason (optional):");
+                                updateMutation.mutate({
+                                  id: l.id,
+                                  status: "Rejected",
+                                  adminRemarks: remark || "",
+                                });
+                              }}
+                              className="text-red-600 hover:underline"
+                            >
+                              <X size={15} /> Reject
+                            </button>
+                          </>
+                        )}
+                        {/* Download button for all leave requests */}
+                        <button
+                          onClick={() => handleDownloadLeave(l)}
+                          className="text-blue-600 hover:underline"
+                          title="Download Leave Application PDF"
+                        >
+                          <Download size={15} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

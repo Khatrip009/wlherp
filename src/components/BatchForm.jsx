@@ -5,7 +5,7 @@ import {
   X, Users, BookOpen, Calendar, Layers, Plus, Trash2,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { getCourseOptions, getTeacherOptions, getMediumOptions } from "../services/batchService";
+import { getTeacherOptions, getMediumOptions } from "../services/batchService";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
@@ -16,6 +16,7 @@ export default function BatchForm({ onSubmit, onClose, initialData = {} }) {
 
   const darkLogo = org?.logo_dark_url || "/ShreeVidhyaDark.png";
   const orgName = org?.company_name || "Academy";
+  const organizationId = org?.id;
 
   const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
 
@@ -41,13 +42,25 @@ export default function BatchForm({ onSubmit, onClose, initialData = {} }) {
 
   const DAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-  // Dropdown data – now scoped appropriately
+  // ✅ Fetch courses directly, filtering out soft‑deleted ones
   const { data: courses = [] } = useQuery({
-    queryKey: ["courses-dropdown"],
-    queryFn: getCourseOptions,   // organisation‑wide, no parameters
+    queryKey: ["courses-dropdown", organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+      const { data, error } = await supabase
+        .from("courses")
+        .select("id, course_name")
+        .eq("organization_id", organizationId)
+        .is("deleted_at", null)              // exclude soft‑deleted courses
+        .order("course_name", { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!organizationId,
     staleTime: 10 * 60 * 1000,
   });
 
+  // Teachers – scoped by branch & FY (unchanged)
   const { data: teachers = [] } = useQuery({
     queryKey: ["teachers-dropdown", branchId, financialYearId],
     queryFn: () => getTeacherOptions(branchId, financialYearId),
@@ -55,13 +68,14 @@ export default function BatchForm({ onSubmit, onClose, initialData = {} }) {
     staleTime: 10 * 60 * 1000,
   });
 
+  // Mediums – organisation‑wide (unchanged)
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediums-dropdown"],
-    queryFn: getMediumOptions,   // organisation‑wide
+    queryFn: getMediumOptions,
     staleTime: 10 * 60 * 1000,
   });
 
-  // Subjects for selected course – now scoped
+  // Subjects for selected course – already scoped by branch & FY
   const [subjects, setSubjects] = useState([]);
   const [loadingSubjects, setLoadingSubjects] = useState(false);
 
@@ -89,7 +103,7 @@ export default function BatchForm({ onSubmit, onClose, initialData = {} }) {
       .finally(() => setLoadingSubjects(false));
   }, [form.course_id, branchId, financialYearId]);
 
-  // Load existing assignments when editing – scoped (optional but safe)
+  // Load existing assignments when editing – scoped
   useEffect(() => {
     if (initialData.id && branchId && financialYearId) {
       supabase
@@ -173,7 +187,7 @@ export default function BatchForm({ onSubmit, onClose, initialData = {} }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-xl">
-        {/* Header with dynamic logo */}
+        {/* Header */}
         <div className="sticky top-0 bg-white border-b border-secondary-light px-6 py-4 flex items-center justify-between rounded-t-xl z-10">
           <div className="flex items-center gap-3">
             <img src={darkLogo} alt={orgName} className="h-10 w-auto" />
@@ -223,7 +237,6 @@ export default function BatchForm({ onSubmit, onClose, initialData = {} }) {
                 className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
               />
             </div>
-            {/* Medium Dropdown */}
             <div>
               <label className="block text-sm font-montserrat text-secondary-dark mb-1">
                 <Layers size={14} className="inline mr-1" />
@@ -348,7 +361,7 @@ export default function BatchForm({ onSubmit, onClose, initialData = {} }) {
             </div>
           </div>
 
-          {/* Teacher-Subject-Day Assignments Section */}
+          {/* Teacher Assignments */}
           <div className="border-t border-secondary-light pt-5">
             <h3 className="text-lg font-righteous text-primary-dark mb-3 flex items-center gap-2">
               <Users size={18} /> Teacher Assignments (Day‑wise)
@@ -397,7 +410,6 @@ export default function BatchForm({ onSubmit, onClose, initialData = {} }) {
                     ))}
                   </select>
                 </div>
-                {/* Day dropdown */}
                 <div className="w-24 min-w-[80px]">
                   <label className="block text-xs font-montserrat text-secondary-dark mb-1">
                     Day

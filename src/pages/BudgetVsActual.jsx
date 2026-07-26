@@ -1,93 +1,202 @@
 // src/pages/BudgetVsActual.jsx
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Printer, ArrowLeft, Mail } from "lucide-react"; // 👈 Added Mail
+import toast from "react-hot-toast";
+import { Printer, ArrowLeft, Mail } from "lucide-react";
 import { Link } from "react-router-dom";
-import { getBudgetVsActual } from "../services/budgetService";
-import { getOrganization } from "../services/organizationService";
-import { useOrg } from "../context/OrganizationContext";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import { supabase } from "../api/supabase";
-import { sendEmail } from "../services/emailService"; // 👈 Import
+import { useOrg } from "../context/OrganizationContext";
+import { sendEmail } from "../services/emailService";
+
+/* ─── PDF helpers (same as other reports) ─────────────── */
+async function loadImageAsBase64(url) {
+  if (!url) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch { return null; }
+}
+
+function createRupeeSymbolImage() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 30; canvas.height = 30;
+  const ctx = canvas.getContext("2d");
+  ctx.font = "bold 24px sans-serif"; ctx.fillStyle = "#000";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("₹", 15, 15);
+  return canvas.toDataURL("image/png");
+}
+let rupeeImage = null;
+function getRupeeImage() { if (!rupeeImage) rupeeImage = createRupeeSymbolImage(); return rupeeImage; }
+
+function drawCurrency(doc, amount, x, y, fontSize = 10, align = "left", color = "#000") {
+  const img = getRupeeImage();
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(fontSize);
+  doc.setTextColor(color);
+  const amountText = amount.toLocaleString("en-IN");
+  if (align === "left") {
+    doc.addImage(img, "PNG", x, y - fontSize * 0.35, 4, 4);
+    doc.text(amountText, x + 5, y);
+  } else {
+    const textWidth = doc.getTextWidth(amountText);
+    doc.addImage(img, "PNG", x - textWidth - 5, y - fontSize * 0.35, 4, 4);
+    doc.text(amountText, x - textWidth, y);
+  }
+}
 
 export default function BudgetVsActual() {
   const today = new Date().toISOString().split("T")[0];
   const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-    .toISOString()
-    .split("T")[0];
-
+    .toISOString().split("T")[0];
   const [startDate, setStartDate] = useState(firstOfMonth);
   const [endDate, setEndDate] = useState(today);
 
-  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const { org, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  const { data: org } = useQuery({
-    queryKey: ["organization", currentOrg?.id],
-    queryFn: () => getOrganization(currentOrg?.id),
-    enabled: !!currentOrg?.id,
-  });
-
+  // ── Data fetching ───────────────────────────────────────
   const { data: report = [], isLoading } = useQuery({
-    queryKey: ["budget-vs-actual", startDate, endDate, branchId, financialYearId],
-    queryFn: () => getBudgetVsActual(startDate, endDate, branchId, financialYearId),
-    enabled: !!(startDate && endDate && branchId && financialYearId),
+    queryKey: ["budget-vs-actual", startDate, endDate, branchId, financialYearId, org?.id],
+    queryFn: async () => {
+      // 1. Fetch all budgets for this branch & FY
+      let budgetQuery = supabase
+        .from("budgets")
+        .select("*, chart_of_accounts!inner(account_code, account_name)")
+        .order("period_start");
+
+      if (branchId) budgetQuery = budgetQuery.eq("branch_id", branchId);
+      if (financialYearId) budgetQuery = budgetQuery.eq("financial_year_id", financialYearId);
+
+      const { data: allBudgets, error: budgetErr } = await budgetQuery;
+      if (budgetErr) throw budgetErr;
+      if (!allBudgets?.length) return [];
+
+      // Normalize dates: swap if start > end
+      const normalize = (budget) => {
+        let start = budget.period_start;
+        let end = budget.period_end;
+        if (start > end) {
+          // Reversed dates – swap them
+          [start, end] = [end, start];
+        }
+        return { ...budget, period_start: start, period_end: end };
+      };
+
+      const budgets = allBudgets
+        .map(normalize)
+        .filter((b) => b.period_start <= endDate && b.period_end >= startDate);
+
+      if (!budgets.length) return [];
+
+      const accountIds = budgets.map((b) => b.account_id);
+
+      // 2. Fetch journal lines for those accounts in the date range
+      let lineQuery = supabase
+        .from("journal_entry_lines")
+        .select("account_id, debit, credit, journal_entries!inner(entry_date)")
+        .in("account_id", accountIds)
+        .gte("journal_entries.entry_date", startDate)
+        .lte("journal_entries.entry_date", endDate);
+
+      if (branchId) {
+        lineQuery = lineQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+      }
+
+      const { data: lines, error: lineErr } = await lineQuery;
+      if (lineErr) throw lineErr;
+
+      // Aggregate actuals (expense accounts: debit - credit)
+      const actualMap = {};
+      (lines || []).forEach((l) => {
+        const aid = l.account_id;
+        if (!actualMap[aid]) actualMap[aid] = 0;
+        actualMap[aid] += Number(l.debit || 0) - Number(l.credit || 0);
+      });
+
+      // Build report rows
+      return budgets.map((b) => {
+        const actual = actualMap[b.account_id] || 0;
+        const variance = actual - b.amount;
+        const variancePercent = b.amount ? ((variance / b.amount) * 100).toFixed(1) : 0;
+        return {
+          id: b.id,
+          account_code: b.chart_of_accounts?.account_code || "",
+          account_name: b.chart_of_accounts?.account_name || "",
+          period_start: b.period_start,
+          period_end: b.period_end,
+          budgeted: b.amount,
+          actual,
+          variance,
+          variancePercent,
+        };
+      });
+    },
+    enabled: !!(startDate && endDate && branchId && financialYearId && org?.id),
   });
 
   const totalBudget = report.reduce((s, r) => s + r.budgeted, 0);
   const totalActual = report.reduce((s, r) => s + r.actual, 0);
   const totalVariance = totalActual - totalBudget;
 
-  // ─── Helper: get admin emails ──────────────────────────────────────
+  // ── Email helpers ─────────────────────────────────────
   const getAdminEmails = async () => {
-    if (!currentOrg?.id) return [];
+    if (!org?.id) return [];
     const { data, error } = await supabase
       .from("profiles")
       .select("email")
-      .eq("organization_id", currentOrg.id)
+      .eq("organization_id", org.id)
       .in("role", ["admin", "super_admin", "organization_admin"])
       .eq("is_active", true);
     if (error) {
       console.error("Failed to fetch admin emails:", error);
       return [];
     }
-    return data?.map(p => p.email).filter(Boolean) || [];
+    return data?.map((p) => p.email).filter(Boolean) || [];
   };
 
-  // ─── Send Report Email ─────────────────────────────────────────────
   const sendReportEmail = async () => {
     if (report.length === 0) {
       alert("No data to send. Please adjust the date range.");
       return;
     }
-
     try {
       const adminEmails = await getAdminEmails();
       if (adminEmails.length === 0) {
-        alert("No admin emails found to send the report.");
+        alert("No admin emails found.");
         return;
       }
 
-      // Build HTML table rows
-      let tableRows = report.map((r) => {
-        const varianceColor = r.variance > 0 ? "#dc2626" : "#16a34a";
-        return `
-          <tr>
-            <td style="padding:4px 8px;border:1px solid #ddd;">${r.account_code} - ${r.account_name}</td>
-            <td style="padding:4px 8px;border:1px solid #ddd;">${r.period_start} → ${r.period_end}</td>
-            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${r.budgeted.toLocaleString('en-IN')}</td>
-            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${r.actual.toLocaleString('en-IN')}</td>
-            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;font-weight:bold;color:${varianceColor};">${r.variance > 0 ? '+' : ''}₹ ${r.variance.toLocaleString('en-IN')}</td>
-            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;color:${varianceColor};">${r.variancePercent}%</td>
-          </tr>
-        `;
-      }).join('');
+      const tableRows = report
+        .map((r) => {
+          const varianceColor = r.variance > 0 ? "#dc2626" : "#16a34a";
+          return `
+            <tr>
+              <td style="padding:4px 8px;border:1px solid #ddd;">${r.account_code} - ${r.account_name}</td>
+              <td style="padding:4px 8px;border:1px solid #ddd;">${r.period_start} → ${r.period_end}</td>
+              <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${r.budgeted.toLocaleString('en-IN')}</td>
+              <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${r.actual.toLocaleString('en-IN')}</td>
+              <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;font-weight:bold;color:${varianceColor};">${r.variance > 0 ? '+' : ''}₹ ${r.variance.toLocaleString('en-IN')}</td>
+              <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;color:${varianceColor};">${r.variancePercent}%</td>
+            </tr>`;
+        })
+        .join("");
 
       const varianceTotalColor = totalVariance > 0 ? "#dc2626" : "#16a34a";
 
       const htmlBody = `
         <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
-          <h2 style="color:#0D47A1;">Budget vs Actual Report</h2>
+          <h2 style="color:#000;">Budget vs Actual Report</h2>
           <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
           <p><strong>Period:</strong> ${startDate} – ${endDate}</p>
           <hr />
@@ -99,7 +208,7 @@ export default function BudgetVsActual() {
           <h3>Account-wise Breakdown</h3>
           <table style="width:100%;border-collapse:collapse;font-size:12px;">
             <thead>
-              <tr style="background:#e3f2fd;">
+              <tr style="background:#f5f5f5;">
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Account</th>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Period</th>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Budgeted</th>
@@ -122,196 +231,260 @@ export default function BudgetVsActual() {
             </tfoot>
           </table>
           <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
-        </div>
-      `;
+        </div>`;
 
       await sendEmail({
         to: adminEmails,
         subject: `Budget vs Actual Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-        from: org?.email || undefined,
       });
-
-      alert("Report sent to admins.");
+      toast.success("Report sent to admins.");
     } catch (err) {
       console.error("Failed to send report:", err);
-      alert("Failed to send report. Check console for details.");
+      toast.error("Failed to send report.");
     }
   };
 
-  // ─── Print handler ─────────────────────────────────────────────────
-  const handlePrint = () => {
-    const printContent = document.getElementById("bva-table")?.outerHTML;
-    if (!printContent) return;
-    const logoUrl = org?.logo_dark_url || "/ShreeVidhyaDark.png";
-    const orgName = org?.company_name || "ShreeVidhya Academy";
-    const orgAddr = org?.address || "";
-    const orgPhone = org?.phone || "";
-    const orgEmail = org?.email || "";
-    const printWindow = window.open("", "_blank", "width=1100,height=750");
-    printWindow.document.write(`
-      <html><head><title>Budget vs Actual</title>
-      <style>
-        @page { size: A4 landscape; margin: 12mm; }
-        body { font-family: Montserrat, sans-serif; color: #222; font-size: 10px; }
-        .header { display: flex; align-items: center; border-bottom: 2px solid #0D47A1; padding-bottom: 8px; margin-bottom: 15px; }
-        .header img { height: 40px; margin-right: 15px; }
-        .org-name { font-size: 16px; font-weight: 700; color: #0D47A1; }
-        .org-details { font-size: 8px; color: #555; }
-        h1 { text-align: center; color: #0D47A1; margin: 10px 0; font-size: 14px; }
-        table { width: 100%; border-collapse: collapse; border: 1px solid #bbb; font-size: 9px; }
-        th, td { padding: 4px 6px; border: 1px solid #bbb; }
-        th { background-color: #E3F2FD; }
-        .text-right { text-align: right; }
-        .footer { margin-top: 20px; font-size: 8px; color: #888; text-align: center; border-top: 1px solid #ddd; padding-top: 8px; }
-        .over-budget { color: #dc2626; font-weight: 600; }
-        .under-budget { color: #16a34a; font-weight: 600; }
-      </style></head>
-      <body>
-        <div class="header"><img src="${logoUrl}" alt="Logo" onerror="this.style.display='none'"/><div><div class="org-name">${orgName}</div><div class="org-details">${orgAddr}</div><div class="org-details">Ph: ${orgPhone} | Email: ${orgEmail}</div></div></div>
-        <h1>Budget vs Actual Report</h1>
-        <div class="text-center text-xs mb-4">Period: ${startDate} – ${endDate}</div>
-        ${printContent}
-        <div class="footer">Computer‑generated report – ${orgName}</div>
-        <script>window.print();</script>
-      </body></html>
-    `);
-    printWindow.document.close();
+  // ── PDF Export (black & white, landscape) ───────────────
+  const handlePrintPDF = async () => {
+    if (report.length === 0) return;
+
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 10;
+    let y = margin;
+
+    // Logo
+    let logoBase64 = null;
+    if (org?.logo_dark_url) {
+      logoBase64 = await loadImageAsBase64(org.logo_dark_url);
+    }
+
+    // Header
+    const logoWidth = 35, logoHeight = 14;
+    if (logoBase64) {
+      doc.addImage(logoBase64, "PNG", margin, y, logoWidth, logoHeight);
+    }
+    const textX = margin + (logoBase64 ? logoWidth + 4 : 0);
+    const textY = y + 1;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor("#000000");
+    doc.text(org?.company_name || "Academy", textX, textY);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor("#000000");
+    let detailY = textY + 4.5;
+    if (org?.address) {
+      const addrLines = doc.splitTextToSize(org.address, pageWidth - textX - margin - 10);
+      doc.text(addrLines, textX, detailY);
+      detailY += addrLines.length * 3.5 + 1;
+    }
+    if (org?.gstin) { doc.text(`GSTIN: ${org.gstin}`, textX, detailY); detailY += 4; }
+    if (org?.phone) { doc.text(`Phone: ${org.phone}`, textX, detailY); detailY += 4; }
+    if (org?.email) { doc.text(`Email: ${org.email}`, textX, detailY); detailY += 4; }
+
+    const headerHeight = Math.max(logoHeight + 4, detailY - textY + 4);
+    y += headerHeight + 2;
+    doc.setDrawColor("#000000");
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 6;
+
+    // Title
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor("#000000");
+    doc.text("Budget vs Actual", pageWidth / 2, y, { align: "center" });
+    y += 8;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Period: ${startDate} – ${endDate}`, pageWidth / 2, y, { align: "center" });
+    y += 10;
+
+    // Summary boxes
+    const boxWidth = (pageWidth - 2 * margin - 30) / 3;
+    const boxHeight = 16;
+    const boxY = y;
+    const summaryItems = [
+      { label: "Total Budgeted", value: totalBudget },
+      { label: "Total Actual", value: totalActual },
+      { label: "Variance", value: totalVariance },
+    ];
+
+    summaryItems.forEach((item, i) => {
+      const x = margin + i * (boxWidth + 15);
+      doc.setDrawColor("#000000");
+      doc.setFillColor(255, 255, 255);
+      doc.rect(x, boxY, boxWidth, boxHeight, "FD");
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.text(item.label, x + 2, boxY + 5);
+      drawCurrency(doc, item.value, x + 2, boxY + 13, 8, "left", "#000");
+    });
+    y += boxHeight + 12;
+
+    // Table rows
+    const rows = report.map((r) => [
+      `${r.account_code} - ${r.account_name}`,
+      `${r.period_start} → ${r.period_end}`,
+      r.budgeted,
+      r.actual,
+      r.variance,
+      r.variancePercent + "%",
+    ]);
+
+    // Totals row
+    rows.push([
+      "TOTAL", "", totalBudget, totalActual, totalVariance,
+      totalBudget ? ((totalVariance / totalBudget) * 100).toFixed(1) + "%" : "0%",
+    ]);
+
+    autoTable(doc, {
+      startY: y,
+      head: [["Account", "Period", "Budgeted", "Actual", "Variance", "Variance %"]],
+      body: rows,
+      theme: "plain",
+      styles: { fontSize: 8, textColor: [0,0,0], fillColor: [255,255,255], lineColor: [0,0,0], lineWidth: 0.2 },
+      headStyles: { fillColor: [255,255,255], textColor: [0,0,0], fontStyle: "bold", lineWidth: 0.2, lineColor: [0,0,0] },
+      columnStyles: {
+        0: { cellWidth: 50, halign: "left" },
+        1: { cellWidth: 40 },
+        2: { cellWidth: 35, halign: "right" },
+        3: { cellWidth: 35, halign: "right" },
+        4: { cellWidth: 35, halign: "right" },
+        5: { cellWidth: 25, halign: "right" },
+      },
+      margin: { left: margin, right: margin },
+      willDrawCell: (data) => {
+        if ([2,3,4].includes(data.column.index) && typeof data.cell.raw === "number") {
+          data.cell.text = [];
+        }
+      },
+      didDrawCell: (data) => {
+        if ([2,3,4].includes(data.column.index) && typeof data.cell.raw === "number") {
+          drawCurrency(doc, data.cell.raw, data.cell.x + data.cell.width - 2, data.cell.y + data.cell.height / 2 + 1.5, 8, "right", "#000");
+        }
+        if (data.row.index === rows.length - 1) {
+          data.cell.styles.fontStyle = "bold";
+        }
+      },
+    });
+
+    y = doc.lastAutoTable.finalY + 10;
+
+    // Footer
+    const footerY = pageHeight - margin - 5;
+    doc.setFontSize(7);
+    doc.setTextColor("#000000");
+    doc.setFont("helvetica", "italic");
+    doc.text(`Generated on ${new Date().toLocaleString()}`, margin, footerY);
+    doc.text(`© ${org?.company_name || "Academy"}`, pageWidth / 2, footerY, { align: "center" });
+
+    doc.save(`Budget_vs_Actual_${startDate}_${endDate}.pdf`);
   };
 
   return (
     <div className="space-y-6 px-4 sm:px-6 lg:px-0">
-      {/* Back to Budgets */}
       <Link
         to="/budgets"
-        className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-primary dark:hover:text-primary-light text-sm"
-        style={{ fontFamily: "var(--font-body)" }}
+        className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 text-sm"
       >
         <ArrowLeft size={18} /> Back to Budgets
       </Link>
 
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
-            Budget vs Actual
-          </h1>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>
-            Compare budgeted amounts against actual spending
-          </p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Budget vs Actual</h1>
+          <p className="text-sm text-gray-600 mt-1">Compare budgeted amounts against actual spending</p>
         </div>
         <div className="flex gap-3">
           <button
             onClick={sendReportEmail}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
-            style={{ fontFamily: "var(--font-body)" }}
           >
             <Mail size={16} /> Send Report
           </button>
           <button
-            onClick={handlePrint}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
-            style={{ fontFamily: "var(--font-body)" }}
+            onClick={handlePrintPDF}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg transition-colors text-sm font-medium"
           >
-            <Printer size={16} /> Print
+            <Printer size={16} /> Print PDF
           </button>
         </div>
       </div>
 
-      {/* Date selectors */}
       <div className="flex flex-wrap gap-4">
         <div>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2" style={{ fontFamily: "var(--font-body)" }}>
-            From:
-          </label>
+          <label className="text-sm font-medium text-gray-700 mr-2">From:</label>
           <input
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+            className="border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm"
           />
         </div>
         <div>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2" style={{ fontFamily: "var(--font-body)" }}>
-            To:
-          </label>
+          <label className="text-sm font-medium text-gray-700 mr-2">To:</label>
           <input
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+            className="border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm"
           />
         </div>
       </div>
 
-      {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 text-center">
-          <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
-            Total Budgeted
-          </p>
-          <p className="text-xl font-bold" style={{ color: "var(--color-primary)" }}>
-            ₹ {totalBudget.toLocaleString("en-IN")}
-          </p>
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 text-center">
+          <p className="text-xs text-gray-500">Total Budgeted</p>
+          <p className="text-xl font-bold text-gray-900">₹ {totalBudget.toLocaleString("en-IN")}</p>
         </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 text-center">
-          <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
-            Total Actual
-          </p>
-          <p className="text-xl font-bold text-green-600 dark:text-green-400">
-            ₹ {totalActual.toLocaleString("en-IN")}
-          </p>
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 text-center">
+          <p className="text-xs text-gray-500">Total Actual</p>
+          <p className="text-xl font-bold text-gray-900">₹ {totalActual.toLocaleString("en-IN")}</p>
         </div>
-        <div className={`bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border text-center ${
-          totalVariance > 0 ? "border-red-300 dark:border-red-700" : "border-green-300 dark:border-green-700"
-        }`}>
-          <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
-            Variance
-          </p>
-          <p className={`text-xl font-bold ${totalVariance > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 text-center">
+          <p className="text-xs text-gray-500">Variance</p>
+          <p className={`text-xl font-bold ${totalVariance > 0 ? "text-red-600" : "text-green-600"}`}>
             {totalVariance > 0 ? "+" : ""}₹ {totalVariance.toLocaleString("en-IN")}
           </p>
         </div>
       </div>
 
-      {/* Report Table */}
       {isLoading ? (
-        <p className="text-center py-8 text-gray-500 dark:text-gray-400">Loading…</p>
+        <p className="text-center py-8 text-gray-500">Loading…</p>
       ) : report.length === 0 ? (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-10 text-center text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+        <div className="bg-white rounded-xl p-10 text-center text-gray-500 border border-gray-200">
           <p>No budget data for the selected period.</p>
         </div>
       ) : (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div id="bva-table" className="overflow-x-auto">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
             <table className="w-full min-w-[700px] text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-700">
+              <thead className="bg-gray-50">
                 <tr>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Account</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Period</th>
-                  <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Budgeted</th>
-                  <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actual</th>
-                  <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Variance</th>
-                  <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Variance %</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Account</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Period</th>
+                  <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Budgeted</th>
+                  <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Actual</th>
+                  <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Variance</th>
+                  <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Variance %</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              <tbody className="divide-y">
                 {report.map((r) => (
-                  <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                    <td className="p-3 text-gray-700 dark:text-gray-200">{r.account_code} - {r.account_name}</td>
-                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">
-                      {r.period_start} → {r.period_end}
-                    </td>
-                    <td className="p-3 text-right text-gray-700 dark:text-gray-200">₹ {r.budgeted.toLocaleString("en-IN")}</td>
-                    <td className="p-3 text-right text-gray-700 dark:text-gray-200">₹ {r.actual.toLocaleString("en-IN")}</td>
-                    <td className={`p-3 text-right font-medium ${
-                      r.variance > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
-                    }`}>
+                  <tr key={r.id} className="hover:bg-gray-50 transition">
+                    <td className="p-3 text-gray-900">{r.account_code} - {r.account_name}</td>
+                    <td className="p-3 text-gray-900">{r.period_start} → {r.period_end}</td>
+                    <td className="p-3 text-right text-gray-900">₹ {r.budgeted.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-right text-gray-900">₹ {r.actual.toLocaleString("en-IN")}</td>
+                    <td className={`p-3 text-right font-medium ${r.variance > 0 ? "text-red-600" : "text-green-600"}`}>
                       {r.variance > 0 ? "+" : ""}₹ {r.variance.toLocaleString("en-IN")}
                     </td>
-                    <td className={`p-3 text-right ${
-                      r.variance > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
-                    }`}>
+                    <td className={`p-3 text-right ${r.variance > 0 ? "text-red-600" : "text-green-600"}`}>
                       {r.variancePercent}%
                     </td>
                   </tr>

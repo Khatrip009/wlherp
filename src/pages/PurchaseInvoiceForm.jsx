@@ -8,7 +8,6 @@ import {
   updatePurchaseInvoice,
   getPurchaseInvoice,
 } from "../services/purchaseInvoiceService";
-import { getOrganization } from "../services/organizationService";
 import { useOrg } from "../context/OrganizationContext";
 import toast from "react-hot-toast";
 
@@ -20,7 +19,6 @@ export default function PurchaseInvoiceForm() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // ── Organisation / Branch / Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
@@ -143,6 +141,64 @@ export default function PurchaseInvoiceForm() {
     }
   }, [invoice]);
 
+  // ── NEW: Fetch selected PO data (items + po_number) when a PO is chosen ──
+  const { data: selectedPO } = useQuery({
+    queryKey: ["selected-po", form.purchase_order_id, branchId, financialYearId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("purchase_orders")
+        .select("po_number, purchase_order_items(*)")
+        .eq("id", form.purchase_order_id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!form.purchase_order_id && !!branchId && !!financialYearId,
+  });
+
+  // ── Auto‑populate items from selected PO (only for new invoices) ──
+  useEffect(() => {
+    // Don’t override items when editing an existing invoice
+    if (isEditing) return;
+
+    if (selectedPO?.purchase_order_items?.length) {
+      const poItems = selectedPO.purchase_order_items.map((poItem) => ({
+        item_id: poItem.item_id ? String(poItem.item_id) : "",
+        description:
+          inventoryItems.find((inv) => inv.id === poItem.item_id)?.item_name || "",
+        hsn_sac_code: "", // PO items don’t have HSN/SAC, leave blank
+        quantity: poItem.quantity_ordered || 1,
+        unit_price: poItem.unit_price || 0,
+        tax_rate_id: poItem.tax_rate_id ? String(poItem.tax_rate_id) : "",
+      }));
+      setItems(poItems);
+
+      // Optionally pre‑fill the reference with the PO number
+      setForm((prev) => ({
+        ...prev,
+        reference: selectedPO.po_number || prev.reference,
+      }));
+    } else if (!form.purchase_order_id) {
+      // Reset to one empty row when the PO is cleared
+      setItems([
+        {
+          item_id: "",
+          description: "",
+          hsn_sac_code: "",
+          quantity: 1,
+          unit_price: 0,
+          tax_rate_id: "",
+        },
+      ]);
+      // Clear the reference if it was set by a previous PO
+      setForm((prev) => ({
+        ...prev,
+        reference: "",
+      }));
+    }
+    // Dependencies: re‑run when PO data, inventory list, or PO selection changes
+  }, [selectedPO, inventoryItems, form.purchase_order_id, isEditing]);
+
   // ── Handlers ──
   const addItem = () => {
     setItems([
@@ -208,7 +264,7 @@ export default function PurchaseInvoiceForm() {
 
   const totals = computeTotals();
 
-  // ── Mutations – already pass context ──
+  // ── Mutations ──
   const createMutation = useMutation({
     mutationFn: (payload) => createPurchaseInvoice(payload, ctx),
     onSuccess: () => {
@@ -270,9 +326,7 @@ export default function PurchaseInvoiceForm() {
 
   if (loadingInvoice) {
     return (
-      <>
-        <div className="p-8 text-center">Loading invoice…</div>
-      </>
+      <div className="p-8 text-center text-gray-500">Loading invoice…</div>
     );
   }
 
@@ -280,25 +334,23 @@ export default function PurchaseInvoiceForm() {
     <>
       <button
         onClick={() => navigate("/purchase-invoices")}
-        className="inline-flex items-center gap-2 text-secondary hover:text-primary-dark mb-4 text-sm"
+        className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4 text-sm"
       >
         <ArrowLeft size={18} /> Back to Invoices
       </button>
 
-      <h1 className="text-3xl font-righteous text-primary-dark mb-6">
+      <h1 className="text-3xl font-bold text-gray-900 mb-6">
         {isEditing ? "Edit Purchase Invoice" : "New Purchase Invoice"}
       </h1>
 
-      <form className="bg-white rounded-xl shadow-sm p-6 space-y-6">
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
-              Vendor *
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Vendor *</label>
             <select
               value={form.vendor_id}
               onChange={(e) => setForm({ ...form, vendor_id: e.target.value })}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-gray-900"
               required
             >
               <option value="">Select Vendor</option>
@@ -308,27 +360,23 @@ export default function PurchaseInvoiceForm() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
-              Invoice Date
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Date</label>
             <input
               type="date"
               value={form.invoice_date}
               onChange={(e) => setForm({ ...form, invoice_date: e.target.value })}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-gray-900"
             />
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
-              Purchase Order (optional)
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Order (optional)</label>
             <select
               value={form.purchase_order_id}
               onChange={(e) => setForm({ ...form, purchase_order_id: e.target.value })}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-gray-900"
             >
               <option value="">None</option>
               {purchaseOrders.map((po) => (
@@ -337,46 +385,42 @@ export default function PurchaseInvoiceForm() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
-              Reference
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Reference</label>
             <input
               type="text"
               value={form.reference}
               onChange={(e) => setForm({ ...form, reference: e.target.value })}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+              className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-gray-900"
               placeholder="Vendor bill ref, etc."
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-montserrat text-secondary-dark mb-1">
-            Notes
-          </label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
           <textarea
             value={form.notes}
             onChange={(e) => setForm({ ...form, notes: e.target.value })}
             rows={2}
-            className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+            className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-gray-900"
             placeholder="Any additional notes..."
           />
         </div>
 
         {/* Items */}
         <div>
-          <h3 className="text-lg font-semibold text-secondary-dark mb-3">Items</h3>
-          <div className="overflow-x-auto">
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">Items</h3>
+          <div className="overflow-x-auto border border-gray-200 rounded-lg">
             <table className="w-full min-w-[800px]">
-              <thead className="bg-slate-100">
+              <thead className="bg-gray-50">
                 <tr>
-                  <th className="p-2 text-left text-sm">Item</th>
-                  <th className="p-2 text-left text-sm">Description</th>
-                  <th className="p-2 text-left text-sm">HSN/SAC</th>
-                  <th className="p-2 text-right text-sm">Qty</th>
-                  <th className="p-2 text-right text-sm">Unit Price</th>
-                  <th className="p-2 text-left text-sm">Tax Rate</th>
-                  <th className="p-2 text-center text-sm">Actions</th>
+                  <th className="p-2 text-left text-sm text-gray-700">Item</th>
+                  <th className="p-2 text-left text-sm text-gray-700">Description</th>
+                  <th className="p-2 text-left text-sm text-gray-700">HSN/SAC</th>
+                  <th className="p-2 text-right text-sm text-gray-700">Qty</th>
+                  <th className="p-2 text-right text-sm text-gray-700">Unit Price</th>
+                  <th className="p-2 text-left text-sm text-gray-700">Tax Rate</th>
+                  <th className="p-2 text-center text-sm text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -419,7 +463,7 @@ export default function PurchaseInvoiceForm() {
                         type="number"
                         value={item.quantity}
                         onChange={(e) => updateItem(idx, "quantity", e.target.value)}
-                        className="w-16 border rounded p-1 text-sm text-right"
+                        className="w-20 border rounded p-1 text-sm text-right"
                         min="1"
                         step="0.01"
                       />
@@ -465,7 +509,7 @@ export default function PurchaseInvoiceForm() {
           <button
             type="button"
             onClick={addItem}
-            className="mt-2 text-primary text-sm flex items-center gap-1"
+            className="mt-2 text-gray-900 text-sm flex items-center gap-1 hover:underline"
           >
             <Plus size={16} /> Add Item
           </button>
@@ -475,19 +519,19 @@ export default function PurchaseInvoiceForm() {
         <div className="border-t pt-4 space-y-2">
           <div className="flex justify-end">
             <div className="w-72 space-y-1">
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between text-sm text-gray-700">
                 <span>Taxable Amount:</span>
                 <span className="font-medium">₹ {totals.taxableTotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between text-sm text-gray-700">
                 <span>GST (approx):</span>
                 <span className="font-medium">₹ {totals.totalGST.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-lg font-bold border-t pt-1">
+              <div className="flex justify-between text-lg font-bold border-t pt-1 text-gray-900">
                 <span>Grand Total:</span>
-                <span className="text-primary">₹ {totals.grandTotal.toFixed(2)}</span>
+                <span>₹ {totals.grandTotal.toFixed(2)}</span>
               </div>
-              <p className="text-xs text-secondary-light">
+              <p className="text-xs text-gray-500">
                 * GST will be split as CGST/SGST or IGST based on vendor state.
               </p>
             </div>
@@ -499,15 +543,14 @@ export default function PurchaseInvoiceForm() {
           <button
             type="button"
             onClick={() => navigate("/purchase-invoices")}
-            className="border border-secondary-light px-4 py-2 rounded-lg text-sm hover:bg-secondary-bg transition"
+            className="border border-gray-300 px-4 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition"
           >
             Cancel
           </button>
           <button
             type="submit"
-            onClick={handleSubmit}
             disabled={saving || createMutation.isPending || updateMutation.isPending}
-            className="bg-primary hover:bg-primary-light text-white px-6 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
+            className="bg-gray-900 hover:bg-gray-800 text-white px-6 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
           >
             {saving || createMutation.isPending || updateMutation.isPending ? (
               <Loader className="w-4 h-4 animate-spin" />

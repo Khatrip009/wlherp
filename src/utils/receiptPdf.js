@@ -10,6 +10,7 @@ function formatDate(dateStr) {
   if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
   return dateStr;
 }
+
 function createRupeeSymbolImage() {
   const canvas = document.createElement('canvas');
   canvas.width = 30;
@@ -29,7 +30,7 @@ function getRupeeImage() {
   return rupeeImage;
 }
 
-function drawCurrency(doc, amount, x, y, fontSize = 10, align = 'left', color = '#333') {
+function drawCurrency(doc, amount, x, y, fontSize = 10, align = 'left', color = '#000') {
   const img = getRupeeImage();
   doc.setFontSize(fontSize);
   doc.setTextColor(color);
@@ -100,7 +101,6 @@ async function getBranch(branchId) {
 }
 
 // ─── Main PDF Generator ────────────────────────────────────
-
 export async function generateReceiptPdf(receipt, options = {}) {
   const { org: passedOrg, theme } = options;
 
@@ -123,13 +123,13 @@ export async function generateReceiptPdf(receipt, options = {}) {
   const registrationType = org?.registration_type || "";
   const logoUrl = org?.logo_dark_url || org?.logo_light_url || null;
 
-  const primaryColor = theme?.primary_color || "#0D47A1";
+  const accentColor = "#000000";
   const fontBody = theme?.font_body || "helvetica";
 
   const doc = new jsPDF({ unit: 'mm', format: 'a5', orientation: 'landscape' });
   const pageWidth = doc.internal.pageSize.getWidth();   // 210 mm
   const pageHeight = doc.internal.pageSize.getHeight(); // 148 mm
-  const margin = 10;
+  const margin = 10; // same left/right margin for all content
 
   let logoBase64 = null;
   if (logoUrl) {
@@ -142,78 +142,59 @@ export async function generateReceiptPdf(receipt, options = {}) {
   const studentAddress = student?.address || "";
   const studentMobile = student?.mobile || "";
 
-  // ── Fee / tax details ──
-  let totalFee = 0, paidSoFar = 0, baseAmount = 0, taxAmount = 0, totalDisplay = 0;
-  let taxRateName = "", taxRateValue = 0, taxInclusive = true;
+  // ── Payment allocations ──
+  let allocations = [];
+  let totalBase = 0;
+  let totalTax = 0;
+  let totalAllocated = 0;
 
-  if (payment?.student_fee_id) {
-    const studentFeeId = payment.student_fee_id;
-    const { data: studentFee } = await supabase
-      .from("student_fees")
-      .select(`
-        *,
-        fee_structures!inner (
-          fee_amount,
+  const { data: allocData, error: allocError } = await supabase
+    .from("payment_allocations")
+    .select(`
+      *,
+      student_fee_components (
+        id,
+        due_amount,
+        paid_amount,
+        fee_structure_components (
+          component_name,
           tax_rate_id,
-          tax_inclusive
+          tax_rates ( id, name, rate )
         )
-      `)
-      .eq("id", studentFeeId)
-      .single();
+      )
+    `)
+    .eq("payment_id", receipt.payment_id)
+    .eq("branch_id", receipt.branch_id)
+    .eq("financial_year_id", receipt.financial_year_id);
 
-    if (studentFee) {
-      totalFee = Number(studentFee.final_fee);
-      const feeStructure = studentFee.fee_structures;
-      if (feeStructure) {
-        taxInclusive = feeStructure.tax_inclusive !== undefined ? feeStructure.tax_inclusive : true;
-        if (feeStructure.tax_rate_id) {
-          const { data: taxRateData } = await supabase
-            .from("tax_rates")
-            .select("name, rate")
-            .eq("id", feeStructure.tax_rate_id)
-            .single();
-          if (taxRateData) {
-            taxRateName = taxRateData.name || "";
-            taxRateValue = Number(taxRateData.rate) || 0;
-          }
-        }
-      }
-      const { data: allPayments } = await supabase
-        .from("fee_payments")
-        .select("amount")
-        .eq("student_fee_id", studentFeeId);
-      paidSoFar = allPayments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0;
-    }
+  if (!allocError && allocData) {
+    allocations = allocData;
+    allocations.forEach(a => {
+      totalBase += Number(a.base_amount || 0);
+      totalTax += Number(a.tax_amount || 0);
+      totalAllocated += Number(a.allocated_amount || 0);
+    });
   }
 
+  const useFallback = allocations.length === 0;
   const amount = Number(receipt.amount);
-  const amountWords = numberToWords(amount) + " Only";
 
-  // Tax calculation
-  if (taxRateValue > 0) {
-    const rate = taxRateValue / 100;
-    if (taxInclusive) {
-      baseAmount = amount / (1 + rate);
-      taxAmount = amount - baseAmount;
-      totalDisplay = amount;
-    } else {
-      baseAmount = amount;
-      taxAmount = amount * rate;
-      totalDisplay = amount + taxAmount;
-    }
-    baseAmount = Math.round(baseAmount * 100) / 100;
-    taxAmount = Math.round(taxAmount * 100) / 100;
-    totalDisplay = Math.round(totalDisplay * 100) / 100;
+  // ── Build table rows ──
+  let tableRows = [];
+  if (useFallback) {
+    tableRows = [["1", "Fee Payment", "—", amount, "—", amount]];
   } else {
-    baseAmount = amount;
-    taxAmount = 0;
-    totalDisplay = amount;
+    allocations.forEach((alloc, idx) => {
+      const comp = alloc.student_fee_components;
+      const name = comp?.fee_structure_components?.component_name || `Component ${idx + 1}`;
+      const base = Number(alloc.base_amount || 0);
+      const tax = Number(alloc.tax_amount || 0);
+      const total = Number(alloc.allocated_amount || 0);
+      const rate = comp?.fee_structure_components?.tax_rates?.rate || 0;
+      const rateDisplay = rate > 0 ? `${rate}%` : "—";
+      tableRows.push([(idx + 1).toString(), name, base, tax, rateDisplay, total]);
+    });
   }
-
-  const sgst = taxAmount / 2;
-  const cgst = taxAmount / 2;
-  const roundOff = Math.round(totalDisplay) - totalDisplay;
-  const grandTotal = totalDisplay + roundOff;
 
   // ── Header ──
   let y = 10;
@@ -227,11 +208,11 @@ export async function generateReceiptPdf(receipt, options = {}) {
   const textY = y + 1;
   doc.setFont(fontBody, 'bold');
   doc.setFontSize(14);
-  doc.setTextColor(primaryColor);
+  doc.setTextColor(accentColor);
   doc.text(companyName, textX, textY);
   doc.setFont(fontBody, 'normal');
   doc.setFontSize(7);
-  doc.setTextColor('#333');
+  doc.setTextColor('#000');
   let detailY = textY + 4.5;
   if (address) {
     const addrLines = doc.splitTextToSize(address, pageWidth - textX - margin - 10);
@@ -253,13 +234,13 @@ export async function generateReceiptPdf(receipt, options = {}) {
   const headerHeight = Math.max(logoHeight + 4, detailY - textY + 4);
   y += headerHeight + 2;
 
-  doc.setDrawColor(primaryColor);
+  doc.setDrawColor(accentColor);
   doc.line(margin, y, pageWidth - margin, y);
   y += 4;
 
   doc.setFont(fontBody, 'bold');
   doc.setFontSize(16);
-  doc.setTextColor(primaryColor);
+  doc.setTextColor(accentColor);
   doc.text("FEE RECEIPT", pageWidth / 2, y, { align: 'center' });
   y += 8;
 
@@ -269,11 +250,11 @@ export async function generateReceiptPdf(receipt, options = {}) {
 
   doc.setFont(fontBody, 'bold');
   doc.setFontSize(10);
-  doc.setTextColor(primaryColor);
+  doc.setTextColor(accentColor);
   doc.text("Student Details", col1X, y);
   doc.setFont(fontBody, 'normal');
   doc.setFontSize(9);
-  doc.setTextColor('#333');
+  doc.setTextColor('#000');
   let colY = y + 5;
   doc.text(`Name: ${studentName}`, col1X, colY);
   colY += 5;
@@ -289,11 +270,11 @@ export async function generateReceiptPdf(receipt, options = {}) {
 
   doc.setFont(fontBody, 'bold');
   doc.setFontSize(10);
-  doc.setTextColor(primaryColor);
+  doc.setTextColor(accentColor);
   doc.text("Receipt Details", col2X, y);
   doc.setFont(fontBody, 'normal');
   doc.setFontSize(9);
-  doc.setTextColor('#333');
+  doc.setTextColor('#000');
   let col2Y = y + 5;
   doc.text(`Receipt No: ${receipt.receipt_no}`, col2X, col2Y);
   col2Y += 5;
@@ -309,108 +290,148 @@ export async function generateReceiptPdf(receipt, options = {}) {
 
   y = Math.max(colY, col2Y) + 4;
 
-  // ── Table (full width) ──
-  const tableWidth = pageWidth - 2 * margin;
-  const tableX = margin;
+  // ── Table (centered, full available width, no double data) ──
+  const availableWidth = pageWidth - 2 * margin;   // 190 mm
+  const tableStartY = y;
 
-  const tableRows = [
-    ["1", "Fee Payment", "1", amount, 0, amount]
-  ];
+  let tableHead;
+  let columnStyles;
+
+  if (useFallback) {
+    // Total width must be exactly availableWidth = 190
+    // #=9, Particular=91, Amount=28, Tax=28, Total=34 → 190
+    tableHead = ["#", "Particular", "Amount", "Tax", "Total"];
+    columnStyles = {
+      0: { cellWidth: 9, halign: 'center' },
+      1: { cellWidth: 91, halign: 'left' },
+      2: { cellWidth: 28, halign: 'right' },
+      3: { cellWidth: 28, halign: 'right' },
+      4: { cellWidth: 34, halign: 'right' },
+    };
+  } else {
+    // #=10, Component=66, Base=29, Tax=29, Rate=23, Total=33 → 190
+    tableHead = ["#", "Component", "Base", "Tax", "Rate", "Total"];
+    columnStyles = {
+      0: { cellWidth: 10, halign: 'center' },
+      1: { cellWidth: 66, halign: 'left' },
+      2: { cellWidth: 29, halign: 'right' },
+      3: { cellWidth: 29, halign: 'right' },
+      4: { cellWidth: 23, halign: 'center' },
+      5: { cellWidth: 33, halign: 'right' },
+    };
+  }
 
   autoTable(doc, {
-    startY: y,
-    head: [["#", "Particular", "Qty", "Amount", "Discount", "Total"]],
+    startY: tableStartY,
+    head: [tableHead],
     body: tableRows,
-    theme: "grid",
-    styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
-    headStyles: { fillColor: primaryColor, textColor: '#FFFFFF', fontStyle: 'bold', fontSize: 7 },
-    columnStyles: {
-      0: { cellWidth: 8, halign: 'center' },
-      1: { cellWidth: 80, halign: 'left' }, // wide for description
-      2: { cellWidth: 10, halign: 'center' },
-      3: { cellWidth: 25, halign: 'right' },
-      4: { cellWidth: 25, halign: 'right' },
-      5: { cellWidth: 30, halign: 'right' },
+    theme: 'plain',
+    styles: {
+      fontSize: 7,
+      cellPadding: 1.5,
+      overflow: 'linebreak',
+      textColor: [0, 0, 0],
+      fillColor: [255, 255, 255],
+      lineColor: [0, 0, 0],
+      lineWidth: 0.2,
     },
-    margin: { left: tableX, right: margin },
+    headStyles: {
+      textColor: [0, 0, 0],
+      fontStyle: 'bold',
+      fontSize: 7,
+      fillColor: [255, 255, 255],
+      lineWidth: 0.2,               // all header borders visible
+      lineColor: [0, 0, 0],
+    },
+    columnStyles,
+    margin: { left: margin, right: margin },   // centered, same as summary
     willDrawCell: (data) => {
-      if ([3,4,5].includes(data.column.index) && typeof data.cell.raw === 'number') {
-        data.cell.text = [];
+      // Prevent raw number from being drawn in currency columns
+      let currencyCols = useFallback ? [2, 3, 4] : [2, 3, 5];
+      if (currencyCols.includes(data.column.index) && typeof data.cell.raw === 'number') {
+        data.cell.text = '';   // clear text, will be drawn in didDrawCell
       }
     },
     didDrawCell: (data) => {
-      if ([3,4,5].includes(data.column.index) && typeof data.cell.raw === 'number') {
+      let currencyCols = useFallback ? [2, 3, 4] : [2, 3, 5];
+      if (currencyCols.includes(data.column.index) && typeof data.cell.raw === 'number') {
         const x = data.cell.x + 2;
         const yPos = data.cell.y + data.cell.height / 2 + 1.5;
-        drawCurrency(doc, data.cell.raw, x, yPos, 7, 'left', '#333');
+        drawCurrency(doc, data.cell.raw, x, yPos, 7, 'left', '#000');
       }
-    }
+    },
   });
 
   const tableEndY = doc.lastAutoTable.finalY;
 
-  // ── Summary Box (below table, full width) ──
+  // ── Summary Box (same width, same left/right margins → perfectly aligned) ──
   const summaryStartY = tableEndY + 4;
-  const summaryWidth = pageWidth - 2 * margin;
-  const summaryX = margin;
+  const summaryWidth = availableWidth;   // exactly the same as table
+  const summaryX = margin;               // same left edge
 
-  // Draw a light background box
-  doc.setDrawColor(primaryColor);
-  doc.setFillColor('#f8f9fa');
-  // We'll calculate a fixed height based on number of summary items
-  const summaryItemCount = 5; // Subtotal, SGST, CGST, Round Off, Grand Total
-  const summaryHeight = 5 + summaryItemCount * 4.5 + 4; // header + items + padding
+  let totalSubtotal = 0, totalTaxAmount = 0, totalGrand = 0;
+  if (!useFallback) {
+    totalSubtotal = totalBase;
+    totalTaxAmount = totalTax;
+    totalGrand = totalAllocated;
+  } else {
+    totalSubtotal = Number(payment?.base_amount || amount);
+    totalTaxAmount = Number(payment?.tax_amount || 0);
+    totalGrand = amount;
+  }
 
+  const roundOff = Math.round(totalGrand) - totalGrand;
+  const grandTotal = totalGrand + roundOff;
+
+  const summaryHeight = 5 + 4 * 4.5 + 4;
+  doc.setDrawColor('#000');
+  doc.setFillColor(255, 255, 255);
   doc.rect(summaryX, summaryStartY, summaryWidth, summaryHeight, 'FD');
 
   let sY = summaryStartY + 3;
   doc.setFont(fontBody, 'bold');
   doc.setFontSize(9);
-  doc.setTextColor(primaryColor);
+  doc.setTextColor('#000');
   doc.text("Summary", summaryX + 3, sY);
   sY += 5;
 
   doc.setFont(fontBody, 'normal');
   doc.setFontSize(7);
-  doc.setTextColor('#333');
+  doc.setTextColor('#000');
 
-  const taxLabel = taxRateValue > 0 ? ` (${taxRateName} ${taxRateValue}%)` : '';
   const summaryItems = [
-    { label: "Subtotal", value: baseAmount },
-    { label: `SGST${taxLabel}`, value: sgst },
-    { label: `CGST${taxLabel}`, value: cgst },
+    { label: "Total Base Amount", value: totalSubtotal },
+    { label: "Total Tax Amount", value: totalTaxAmount },
     { label: "Round Off", value: roundOff },
     { label: "Grand Total", value: grandTotal, bold: true },
   ];
 
-  // We'll split into two columns inside the summary box for better use of space
-  // But for simplicity, we'll keep it as a single column for now.
   summaryItems.forEach((item) => {
     const labelX = summaryX + 3;
     const valueX = summaryX + summaryWidth - 3;
     doc.setFont(fontBody, item.bold ? 'bold' : 'normal');
+    doc.setTextColor('#000');
     doc.text(item.label, labelX, sY);
-    drawCurrency(doc, item.value, valueX, sY, 7, 'right', item.bold ? primaryColor : '#333');
+    drawCurrency(doc, item.value, valueX, sY, 7, 'right', '#000');
     sY += 4.5;
   });
 
-  // ── Amount in Words (below summary) ──
+  // ── Amount in Words ──
   const wordsY = summaryStartY + summaryHeight + 6;
   doc.setFont(fontBody, 'italic');
   doc.setFontSize(8);
-  doc.setTextColor('#555');
+  doc.setTextColor('#000');
   const words = numberToWords(grandTotal);
   doc.text(`Amount in words: ${words} Only`, pageWidth / 2, wordsY, { align: 'center' });
 
-
   // ── Footer Signatures ──
   const footerY = pageHeight - 10;
-  doc.setDrawColor('#ccc');
+  doc.setDrawColor('#000');
   doc.line(margin, footerY, margin + 40, footerY);
   doc.line(pageWidth - margin - 40, footerY, pageWidth - margin, footerY);
   doc.setFont(fontBody, 'normal');
   doc.setFontSize(6);
-  doc.setTextColor('#333');
+  doc.setTextColor('#000');
   doc.text("Authorized Signatory", margin + 10, footerY + 4);
   doc.text("Student/Parent", pageWidth - margin - 30, footerY + 4);
 

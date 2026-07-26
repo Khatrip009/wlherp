@@ -1,25 +1,28 @@
 // src/pages/StudentFees.jsx
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Table, Button, Input, Select, Space, Tag, Modal, Drawer, Form,
   InputNumber, message, Row, Col, Card, Typography, Tooltip, Checkbox,
-  Dropdown,
+  Dropdown, Tabs, DatePicker, Badge, Popconfirm,
 } from "antd";
 import {
   PlusOutlined, SearchOutlined, ExportOutlined, UploadOutlined,
   DollarOutlined, FileTextOutlined, DeleteOutlined, EditOutlined,
   EyeOutlined, SendOutlined, FilePdfOutlined, PrinterOutlined,
-  MailOutlined,
+  MailOutlined, FilterOutlined, ReloadOutlined,
 } from "@ant-design/icons";
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import Papa from "papaparse";
+import dayjs from "dayjs";
 import {
   getStudentFees, createStudentFee, updateStudentFee, deleteStudentFee,
   getPayments, getAllStudentFeesForExport, generateInvoiceFromStudentFee,
   getFeeStructures,
 } from "../services/feeService";
+import { getInvoices } from "../services/invoiceService";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";
 import CollectPaymentModal from "../components/CollectPaymentModal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useAuth } from "../context/AuthContext";
@@ -27,27 +30,58 @@ import { generateReceiptPdf } from "../utils/receiptPdf";
 import { generateInvoicePDF } from "../utils/invoicePdf";
 import { sendEmail, sendFeeReceiptEmail } from "../services/emailService";
 
-const { Text } = Typography;
+const { Text, Title } = Typography;
+const { RangePicker } = DatePicker;
 
+// ─── Helper ────────────────────────────────────────────────────────────
+const formatCurrency = (amount) => `₹${Number(amount).toLocaleString("en-IN")}`;
+
+// ─── Main Component ────────────────────────────────────────────────────
 export default function StudentFees() {
   const queryClient = useQueryClient();
   const { org, branch, selectedFinancialYear } = useOrg();
+  const { theme } = useTheme();
   const { user } = useAuth();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState(null);
-  const [sendingEmailId, setSendingEmailId] = useState(null);
+  // ── Tab state ──
+  const [activeTab, setActiveTab] = useState("payments");
 
-  // ── Print / Invoice modals ──
-  const [printReceiptModal, setPrintReceiptModal] = useState({ open: false, feeId: null, payments: [] });
-  const [selectedPaymentId, setSelectedPaymentId] = useState(null);
+  // ── Payments filter state ──
+  const [paymentSearch, setPaymentSearch] = useState("");
+  const [paymentDateRange, setPaymentDateRange] = useState(null);
+  const [paymentMode, setPaymentMode] = useState(null);
+  const [paymentStatus, setPaymentStatus] = useState(null);
+  const [showFilters, setShowFilters] = useState(false);
+
+  // ── Fees filter state ──
+  const [feeSearch, setFeeSearch] = useState("");
+  const [feeStatusFilter, setFeeStatusFilter] = useState(null);
+
+  // ── UI state ──
+  const [collectingFee, setCollectingFee] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmInvoice, setConfirmInvoice] = useState(null);
+  const [sendingEmailId, setSendingEmailId] = useState(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [editingFee, setEditingFee] = useState(null);
+  const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+  const [bulkReminderOpen, setBulkReminderOpen] = useState(false);
+  const [printReceiptModal, setPrintReceiptModal] = useState({ open: false, paymentId: null });
   const [printingReceipt, setPrintingReceipt] = useState(false);
   const [printingInvoice, setPrintingInvoice] = useState(false);
+  const fileInputRef = useRef(null);
 
-  // ── Helper: get admin emails ──────────────────────────────────────
+  // ── State for expanded invoices/receipts per fee ──
+  const [expandedFeeId, setExpandedFeeId] = useState(null);
+  const [invoicesMap, setInvoicesMap] = useState({});
+  const [receiptsMap, setReceiptsMap] = useState({});
+  const [loadingInvoices, setLoadingInvoices] = useState({});
+
+  // ─── Helper: fetch admin emails ────────────────────────────────────
   const getAdminEmails = async () => {
     if (!org?.id) return [];
     const { data, error } = await supabase
@@ -60,146 +94,72 @@ export default function StudentFees() {
       console.error("Failed to fetch admin emails:", error);
       return [];
     }
-    return data?.map(p => p.email).filter(Boolean) || [];
+    return data.map(p => p.email).filter(Boolean);
   };
 
-  // ─── Send Report Email ─────────────────────────────────────────────
-  const sendReportEmail = async () => {
-    if (studentFees.length === 0) {
-      alert("No fee records to send.");
-      return;
-    }
-
-    try {
-      const adminEmails = await getAdminEmails();
-      if (adminEmails.length === 0) {
-        alert("No admin emails found.");
-        return;
-      }
-
-      // Build HTML table rows
-      let tableRows = studentFees.map((fee) => {
-        const studentName = fee.students ? `${fee.students.first_name || ''} ${fee.students.last_name || ''}`.trim() : '—';
-        const course = fee.fee_structures?.courses?.course_name || '—';
-        const total = `₹ ${Number(fee.final_fee).toLocaleString('en-IN')}`;
-        const paid = `₹ ${Number(fee.total_paid || 0).toLocaleString('en-IN')}`;
-        const pending = `₹ ${Number(fee.pending || 0).toLocaleString('en-IN')}`;
-        const statusColor = fee.status === "Paid" ? "#2e7d32" : "#e65100";
-        const statusBg = fee.status === "Paid" ? "#e8f5e9" : "#fff3e0";
-        return `
-          <tr>
-            <td style="padding:4px 8px;border:1px solid #ddd;">${studentName}</td>
-            <td style="padding:4px 8px;border:1px solid #ddd;">${course}</td>
-            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${total}</td>
-            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${paid}</td>
-            <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${pending}</td>
-            <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">
-              <span style="background:${statusBg};color:${statusColor};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;">${fee.status}</span>
-            </td>
-          </tr>
-        `;
-      }).join('');
-
-      const totalPending = studentFees.reduce((sum, f) => sum + Number(f.pending || 0), 0);
-      const totalPaid = studentFees.reduce((sum, f) => sum + Number(f.total_paid || 0), 0);
-      const totalFee = studentFees.reduce((sum, f) => sum + Number(f.final_fee || 0), 0);
-
-      const htmlBody = `
-        <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
-          <h2 style="color:#0D47A1;">Student Fee Report</h2>
-          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
-          <p><strong>Total Fees:</strong> ${studentFees.length}</p>
-          <p><strong>Total Amount:</strong> ₹ ${totalFee.toLocaleString('en-IN')}</p>
-          <p><strong>Total Paid:</strong> ₹ ${totalPaid.toLocaleString('en-IN')}</p>
-          <p><strong>Total Pending:</strong> ₹ ${totalPending.toLocaleString('en-IN')}</p>
-          <hr />
-          <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
-            <thead style="background:#e3f2fd;">
-              <tr>
-                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Student</th>
-                <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Course</th>
-                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Total</th>
-                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Paid</th>
-                <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Pending</th>
-                <th style="padding:4px 8px;border:1px solid #ddd;text-align:center;">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${tableRows}
-            </tbody>
-            <tfoot style="font-weight:bold;background:#f5f5f5;">
-              <tr>
-                <td colspan="2" style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Totals</td>
-                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${totalFee.toLocaleString('en-IN')}</td>
-                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${totalPaid.toLocaleString('en-IN')}</td>
-                <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${totalPending.toLocaleString('en-IN')}</td>
-                <td></td>
-              </tr>
-            </tfoot>
-          </table>
-          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
-        </div>
-      `;
-
-      await sendEmail({
-        to: adminEmails,
-        subject: `Student Fee Report - ${new Date().toLocaleDateString()}`,
-        html: htmlBody,
-       // from: org?.email || undefined,
-      });
-
-      alert("Report sent to admins.");
-    } catch (err) {
-      console.error("Failed to send report:", err);
-      alert("Failed to send report. Check console for details.");
-    }
-  };
-
-  // ─── Resend Receipt Email ──────────────────────────────────────────
-  const resendReceiptEmail = async (fee) => {
-    setSendingEmailId(fee.id);
-    try {
-      // 1. Find the latest payment that has a receipt
-      const { data: payments, error } = await supabase
-        .from("fee_payments")
-        .select("id, receipt_number")
-        .eq("student_fee_id", fee.id)
-        .not("receipt_number", "is", null)
-        .order("payment_date", { ascending: false })
-        .limit(1)
-        .eq("branch_id", branchId)
-        .eq("financial_year_id", financialYearId);
-
-      if (error) throw error;
-      if (!payments || payments.length === 0) {
-        message.warning("No receipt found for this fee.");
-        setSendingEmailId(null);
-        return;
-      }
-
-      const paymentId = payments[0].id;
-      // Use the existing sendFeeReceiptEmail from emailService
-      await sendFeeReceiptEmail(paymentId, org);
-      message.success("Receipt email sent.");
-    } catch (err) {
-      console.error("Resend receipt error:", err);
-      message.error("Failed to send receipt email.");
-    } finally {
-      setSendingEmailId(null);
-    }
-  };
-
-  // ── Data fetching ──────────────────────────────────────────────────
+  // ── Fetch Payments ──────────────────────────────────────────────────
   const {
-    data,
-    isLoading,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
+    data: paymentsData,
+    isLoading: paymentsLoading,
+    fetchNextPage: fetchMorePayments,
+    hasNextPage: hasMorePayments,
+    isFetchingNextPage: isFetchingMorePayments,
   } = useInfiniteQuery({
-    queryKey: ["studentFees", search, statusFilter, branchId, financialYearId],
-    queryFn: ({ pageParam = 0 }) =>
-      getStudentFees({ pageParam, filters: { search }, branchId, financialYearId }),
+    queryKey: ["payments", paymentSearch, paymentDateRange, paymentMode, paymentStatus, branchId, financialYearId],
+    queryFn: async ({ pageParam = 0 }) => {
+      let query = supabase
+        .from("fee_payments")
+        .select(`
+          *,
+          student_fees!inner (
+            student_id,
+            students ( id, first_name, last_name, admission_no ),
+            fee_structures ( courses ( course_name ) )
+          ),
+          receipts ( * ),
+          invoices ( id, invoice_number, status )
+        `, { count: "exact" })
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
+        .order("payment_date", { ascending: false })
+        .range(pageParam * 20, (pageParam + 1) * 20 - 1);
+
+      if (paymentSearch) {
+        const { data: matchingStudents } = await supabase
+          .from("students")
+          .select("id")
+          .or(`first_name.ilike.%${paymentSearch}%,last_name.ilike.%${paymentSearch}%,admission_no.ilike.%${paymentSearch}%`)
+          .eq("branch_id", branchId)
+          .eq("financial_year_id", financialYearId);
+        const ids = matchingStudents?.map(s => s.id) || [];
+        if (ids.length) {
+          query = query.in("student_fees.student_id", ids);
+        } else {
+          return { data: [], count: 0 };
+        }
+      }
+
+      if (paymentDateRange) {
+        const start = dayjs(paymentDateRange[0]).format("YYYY-MM-DD");
+        const end = dayjs(paymentDateRange[1]).format("YYYY-MM-DD");
+        query = query.gte("payment_date", start).lte("payment_date", end);
+      }
+      if (paymentMode) query = query.eq("payment_mode", paymentMode);
+      if (paymentStatus === "has_receipt") query = query.not("receipts.receipt_no", "is", null);
+      else if (paymentStatus === "no_receipt") query = query.is("receipts.receipt_no", null);
+
+      const { data, error, count } = await query;
+      if (error) throw error;
+
+      const payments = data.map(p => ({
+        ...p,
+        student: p.student_fees?.students || null,
+        course: p.student_fees?.fee_structures?.courses?.course_name || null,
+        receipt: p.receipts?.[0] || null,
+        invoice: p.invoices?.[0] || null,
+      }));
+      return { data: payments, count };
+    },
     getNextPageParam: (lastPage, allPages) => {
       const totalFetched = allPages.reduce((sum, page) => sum + page.data.length, 0);
       if (lastPage.count && totalFetched < lastPage.count) return allPages.length;
@@ -210,15 +170,57 @@ export default function StudentFees() {
     staleTime: 2 * 60 * 1000,
   });
 
-  const studentFees = data?.pages.flatMap((page) => page.data) || [];
+  const allPayments = React.useMemo(() => {
+    const flat = paymentsData?.pages.flatMap(p => p.data) || [];
+    const seen = new Set();
+    return flat.filter(p => {
+      if (seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
+  }, [paymentsData]);
 
+  // ── Fetch Student Fees ──
+  const {
+    data: feesData,
+    isLoading: feesLoading,
+    fetchNextPage: fetchMoreFees,
+    hasNextPage: hasMoreFees,
+    isFetchingNextPage: isFetchingMoreFees,
+  } = useInfiniteQuery({
+    queryKey: ["studentFees", feeSearch, feeStatusFilter, branchId, financialYearId],
+    queryFn: ({ pageParam = 0 }) =>
+      getStudentFees({ pageParam, filters: { search: feeSearch, status: feeStatusFilter }, branchId, financialYearId }),
+    getNextPageParam: (lastPage, allPages) => {
+      const totalFetched = allPages.reduce((sum, page) => sum + page.data.length, 0);
+      if (lastPage.count && totalFetched < lastPage.count) return allPages.length;
+      return undefined;
+    },
+    initialPageParam: 0,
+    enabled: !!branchId && !!financialYearId && activeTab === "fees",
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const studentFees = React.useMemo(() => {
+    const flat = feesData?.pages.flatMap(p => p.data) || [];
+    const seen = new Set();
+    return flat.filter(f => {
+      if (seen.has(f.id)) return false;
+      seen.add(f.id);
+      return true;
+    });
+  }, [feesData]);
+
+  // ── Fetch dropdowns ──
   const { data: students = [] } = useQuery({
     queryKey: ["students-dropdown", branchId, financialYearId],
     queryFn: async () => {
-      let query = supabase.from("students").select("id, first_name, last_name, admission_no").order("first_name");
-      if (branchId) query = query.eq("branch_id", branchId);
-      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
-      const { data } = await query;
+      const { data } = await supabase
+        .from("students")
+        .select("id, first_name, last_name, admission_no")
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
+        .order("first_name");
       return data || [];
     },
     enabled: !!branchId && !!financialYearId,
@@ -228,30 +230,42 @@ export default function StudentFees() {
   const { data: feeStructures = [] } = useQuery({
     queryKey: ["feeStructures-dropdown", branchId, financialYearId],
     queryFn: async () => {
-      let query = supabase.from("fee_structures").select(`
-        id, fee_amount, installment_allowed, tax_rate_id, tax_inclusive,
-        courses(course_name), tax_rates(id, name, rate)
-      `).order("id");
-      if (branchId) query = query.eq("branch_id", branchId);
-      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
-      const { data } = await query;
+      const { data } = await supabase
+        .from("fee_structures")
+        .select(`
+          id, fee_amount, installment_allowed,
+          courses(course_name),
+          fee_structure_components (
+            id, component_name, amount, is_taxable, tax_rate_id, tax_inclusive,
+            tax_rates ( id, name, rate )
+          )
+        `)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
+        .order("id");
       return data || [];
     },
     enabled: !!branchId && !!financialYearId,
     staleTime: 10 * 60 * 1000,
   });
 
-  // ── UI state ──
-  const [assignOpen, setAssignOpen] = useState(false);
-  const [editingFee, setEditingFee] = useState(null);
-  const [collectingFee, setCollectingFee] = useState(null);
-  const [confirmDelete, setConfirmDelete] = useState(null);
-  const [confirmInvoice, setConfirmInvoice] = useState(null);
-  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
-  const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
-  const [bulkReminderOpen, setBulkReminderOpen] = useState(false);
-
   // ── Mutations ──
+const deletePaymentMutation = useMutation({
+  mutationFn: async (paymentId) => {
+    // Delete allocations first
+    await supabase.from("payment_allocations").delete().eq("payment_id", paymentId);
+    const { error } = await supabase.from("fee_payments").delete().eq("id", paymentId);
+    if (error) throw error;
+  },
+
+    onSuccess: () => {
+      message.success("Payment deleted");
+      queryClient.invalidateQueries({ queryKey: ["payments"] });
+      queryClient.invalidateQueries({ queryKey: ["studentFees"] });
+    },
+    onError: (err) => message.error(err.message),
+  });
+
   const createMutation = useMutation({
     mutationFn: (payload) => createStudentFee(payload, ctx),
     onSuccess: () => {
@@ -274,7 +288,7 @@ export default function StudentFees() {
     onError: (err) => message.error(err.message),
   });
 
-  const deleteMutation = useMutation({
+  const deleteFeeMutation = useMutation({
     mutationFn: (id) => deleteStudentFee(id, ctx),
     onSuccess: () => {
       message.success("Fee record deleted");
@@ -288,12 +302,167 @@ export default function StudentFees() {
     onSuccess: () => {
       message.success("Invoice generated");
       queryClient.invalidateQueries({ queryKey: ["studentFees"] });
+      queryClient.invalidateQueries({ queryKey: ["payments"] });
     },
     onError: (err) => message.error(err.message),
   });
 
-  // ── CSV ──
-  const fileInputRef = useRef();
+  // ── Print functions ──
+  const handlePrintReceipt = async (paymentId) => {
+    setPrintingReceipt(true);
+    try {
+      const { data: receipt, error } = await supabase
+        .from("receipts")
+        .select(`*, students (*), fee_payments (*)`)
+        .eq("payment_id", paymentId)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
+        .single();
+      if (error) throw error;
+      await generateReceiptPdf(receipt, { theme });
+      message.success("Receipt downloaded");
+    } catch (err) {
+      console.error(err);
+      message.error("Failed to generate receipt PDF");
+    } finally {
+      setPrintingReceipt(false);
+    }
+  };
+
+const handlePrintInvoice = async (invoiceId) => {
+  setPrintingInvoice(true);
+  try {
+    const { data: invoice, error } = await supabase
+      .from("invoices")
+      .select("*, invoice_items(*), students(*), receipt_id")   // ← added receipt_id
+      .eq("id", invoiceId)
+      .eq("branch_id", branchId)
+      .eq("financial_year_id", financialYearId)
+      .single();
+    if (error) throw error;
+    const doc = await generateInvoicePDF(invoice, org, 'sales', { theme });
+    const pdfBlob = doc.output('blob');
+    const url = URL.createObjectURL(pdfBlob);
+    window.open(url, '_blank');
+    message.success("Invoice opened");
+  } catch (err) {
+    console.error(err);
+    message.error("Failed to generate invoice");
+  } finally {
+    setPrintingInvoice(false);
+  }
+};
+
+  const handleResendReceiptEmail = async (paymentId) => {
+    setSendingEmailId(paymentId);
+    try {
+      await sendFeeReceiptEmail(paymentId, org);
+      message.success("Receipt email sent");
+    } catch (err) {
+      console.error(err);
+      message.error("Failed to send email");
+    } finally {
+      setSendingEmailId(null);
+    }
+  };
+
+  const sendReportEmail = async () => {
+    if (allPayments.length === 0) {
+      message.warning("No payments to send.");
+      return;
+    }
+    try {
+      const adminEmails = await getAdminEmails();
+      if (!adminEmails.length) {
+        message.warning("No admin emails found.");
+        return;
+      }
+      const rows = allPayments.map(p => {
+        const studentName = p.student ? `${p.student.first_name} ${p.student.last_name}` : '—';
+        return `
+          <tr>
+            <td>${studentName}</td>
+            <td>${formatCurrency(p.amount)}</td>
+            <td>${p.payment_date}</td>
+            <td>${p.payment_mode}</td>
+            <td>${p.receipt?.receipt_no || '—'}</td>
+            <td>${p.invoice?.invoice_number || '—'}</td>
+          </tr>
+        `;
+      }).join('');
+      const html = `
+        <h2>Payment Report</h2>
+        <table border="1" cellpadding="4" style="border-collapse:collapse;">
+          <thead><tr><th>Student</th><th>Amount</th><th>Date</th><th>Mode</th><th>Receipt</th><th>Invoice</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <p>Total Payments: ${allPayments.length}</p>
+        <p>Total Amount: ${formatCurrency(allPayments.reduce((s, p) => s + Number(p.amount), 0))}</p>
+      `;
+      await sendEmail({ to: adminEmails, subject: `Payment Report - ${dayjs().format("DD-MMM-YYYY")}`, html });
+      message.success("Report sent to admins.");
+    } catch (err) {
+      console.error(err);
+      message.error("Failed to send report");
+    }
+  };
+
+  const handleExportPayments = () => {
+    if (!allPayments.length) {
+      message.warning("No payments to export.");
+      return;
+    }
+    const csvData = allPayments.map(p => ({
+      Student: p.student ? `${p.student.first_name} ${p.student.last_name}` : '—',
+      Amount: p.amount,
+      Date: p.payment_date,
+      Mode: p.payment_mode,
+      Receipt: p.receipt?.receipt_no || '—',
+      Invoice: p.invoice?.invoice_number || '—',
+      Status: p.invoice?.status || '—',
+    }));
+    const csv = Papa.unparse(csvData);
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `payments_${dayjs().format("YYYY-MM-DD")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    message.success("Export complete");
+  };
+
+  const handleExportFees = async () => {
+    try {
+      const allData = await getAllStudentFeesForExport({ search: feeSearch, status: feeStatusFilter }, branchId, financialYearId);
+      if (!allData.length) {
+        message.warning("No fee records to export.");
+        return;
+      }
+      const csv = Papa.unparse(allData.map(f => ({
+        student: `${f.students?.first_name} ${f.students?.last_name}`,
+        course: f.fee_structures?.courses?.course_name,
+        total_fee: f.total_fee,
+        discount: f.discount,
+        final_fee: f.final_fee,
+        paid: f.total_paid,
+        pending: f.pending,
+        status: f.status,
+      })));
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "student_fees.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+      message.success("Export complete");
+    } catch (err) {
+      console.error(err);
+      message.error("Export failed");
+    }
+  };
+
   const handleImport = (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -320,34 +489,10 @@ export default function StudentFees() {
       },
       error: () => message.error("CSV parsing error"),
     });
+    event.target.value = null;
   };
 
-  const handleExport = async () => {
-    try {
-      const allData = await getAllStudentFeesForExport({ search }, branchId, financialYearId);
-      const csv = Papa.unparse(allData.map(f => ({
-        student: `${f.students?.first_name} ${f.students?.last_name}`,
-        course: f.fee_structures?.courses?.course_name,
-        total_fee: f.total_fee,
-        discount: f.discount,
-        final_fee: f.final_fee,
-        paid: f.total_paid,
-        pending: f.pending,
-        status: f.status,
-      })));
-      const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "student_fees.csv";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      message.error("Export failed");
-    }
-  };
-
-  // ── Handlers ──
+  // ── Fee assignment handlers ──
   const openAssign = (fee = null) => {
     setEditingFee(fee);
     setAssignOpen(true);
@@ -406,163 +551,165 @@ export default function StudentFees() {
     setSelectedRowKeys([]);
   };
 
-  // ── Print Receipt ──
-  const handlePrintReceiptClick = async (fee) => {
+  // ── Helper for fee actions ──
+  const handlePrintReceiptFromFee = async (fee) => {
     try {
-      const { data: payments, error } = await supabase
+      const { data: payments } = await supabase
         .from("fee_payments")
-        .select("*, receipts(*)")
-        .eq("student_fee_id", fee.id)
-        .eq("branch_id", branchId)
-        .eq("financial_year_id", financialYearId)
-        .order("payment_date", { ascending: false });
-
-      if (error) throw error;
-
-      const paymentsWithReceipt = payments.filter(p => p.receipts && p.receipts.length > 0);
-      if (paymentsWithReceipt.length === 0) {
-        message.warning("No receipt found for this fee.");
-        return;
-      }
-
-      if (paymentsWithReceipt.length === 1) {
-        await printReceipt(paymentsWithReceipt[0].id);
-      } else {
-        setPrintReceiptModal({
-          open: true,
-          feeId: fee.id,
-          payments: paymentsWithReceipt,
-        });
-        setSelectedPaymentId(paymentsWithReceipt[0].id);
-      }
-    } catch (err) {
-      console.error(err);
-      message.error("Failed to fetch payments");
-    }
-  };
-
-  const printReceipt = async (paymentId) => {
-    setPrintingReceipt(true);
-    try {
-      const { data: receipt, error } = await supabase
-        .from("receipts")
-        .select(`
-          *,
-          students (*),
-          fee_payments (*)
-        `)
-        .eq("payment_id", paymentId)
-        .eq("branch_id", branchId)
-        .eq("financial_year_id", financialYearId)
-        .single();
-
-      if (error) throw error;
-      await generateReceiptPdf(receipt);
-      message.success("Receipt downloaded");
-    } catch (err) {
-      console.error(err);
-      message.error("Failed to generate receipt PDF");
-    } finally {
-      setPrintingReceipt(false);
-      setPrintReceiptModal({ open: false, feeId: null, payments: [] });
-    }
-  };
-
-  // ── Print Invoice ──
-  const handlePrintInvoiceClick = async (fee) => {
-    setPrintingInvoice(true);
-    try {
-      let invoiceId = null;
-
-      const { data: existingInvoice, error: fetchError } = await supabase
-        .from("invoices")
         .select("id")
         .eq("student_fee_id", fee.id)
-        .is("fee_installment_id", null)
         .eq("branch_id", branchId)
         .eq("financial_year_id", financialYearId)
-        .maybeSingle();
-
-      if (fetchError) throw fetchError;
-
-      if (existingInvoice) {
-        invoiceId = existingInvoice.id;
+        .order("payment_date", { ascending: false })
+        .limit(1);
+      if (payments && payments.length) {
+        await handlePrintReceipt(payments[0].id);
       } else {
-        try {
-          const generated = await generateInvoiceFromStudentFee(fee.id, null, ctx);
-          invoiceId = generated.id;
-          message.success("Invoice generated");
-        } catch (genErr) {
-          if (genErr?.code === '23505' || genErr?.message?.includes('duplicate key')) {
-            const { data: existing } = await supabase
-              .from("invoices")
-              .select("id")
-              .eq("student_fee_id", fee.id)
-              .is("fee_installment_id", null)
-              .eq("branch_id", branchId)
-              .eq("financial_year_id", financialYearId)
-              .maybeSingle();
-            if (existing) {
-              invoiceId = existing.id;
-              message.info("Invoice already exists, opening existing.");
-            } else {
-              throw new Error("Invoice generation failed and no existing found.");
-            }
-          } else {
-            throw genErr;
-          }
-        }
+        message.warning("No payment found");
       }
+    } catch (err) {
+      message.error("Failed to fetch payment");
+    }
+  };
 
-      if (!invoiceId) {
-        throw new Error("Could not find or generate invoice.");
+  const handlePrintInvoiceFromFee = async (fee) => {
+    try {
+      // Fetch invoices for this fee
+      const invoices = await getInvoices({ student_fee_id: fee.id }, branchId, financialYearId);
+      if (!invoices || invoices.length === 0) {
+        message.warning("No invoices found. Generate one first.");
+        return;
       }
+      // If multiple, show a selection modal or just use the latest
+      if (invoices.length === 1) {
+        await handlePrintInvoice(invoices[0].id);
+      } else {
+        // Show a modal to select invoice
+        showInvoiceSelectionModal(invoices);
+      }
+    } catch (err) {
+      message.error("Failed to fetch invoices");
+    }
+  };
 
-      const { data: invoice, error: invoiceError } = await supabase
-        .from("invoices")
-        .select(`
-          *,
-          students(*),
-          invoice_items(*)
-        `)
-        .eq("id", invoiceId)
-        .eq("branch_id", branchId)
-        .eq("financial_year_id", financialYearId)
-        .single();
+  // ── Invoice selection modal ──
+  const [invoiceSelectionModal, setInvoiceSelectionModal] = useState({ visible: false, invoices: [] });
+  const showInvoiceSelectionModal = (invoices) => {
+    setInvoiceSelectionModal({ visible: true, invoices });
+  };
 
-      if (invoiceError) throw invoiceError;
-
-      if (!invoice.invoice_items || invoice.invoice_items.length === 0) {
-        const { data: items, error: itemsError } = await supabase
-          .from("invoice_items")
-          .select("*")
-          .eq("invoice_id", invoiceId)
+  // ── Load invoices/receipts for expanded fee ──
+  const toggleExpandFee = async (feeId) => {
+    if (expandedFeeId === feeId) {
+      setExpandedFeeId(null);
+      return;
+    }
+    setExpandedFeeId(feeId);
+    // Load invoices and receipts
+    setLoadingInvoices(prev => ({ ...prev, [feeId]: true }));
+    try {
+      const [invoices, payments] = await Promise.all([
+        getInvoices({ student_fee_id: feeId }, branchId, financialYearId),
+        supabase
+          .from("fee_payments")
+          .select("*, receipts(*)")
+          .eq("student_fee_id", feeId)
           .eq("branch_id", branchId)
-          .eq("financial_year_id", financialYearId);
-        if (!itemsError && items && items.length > 0) {
-          invoice.invoice_items = items;
-        } else {
-          console.warn("Invoice has no items. Generating PDF with empty table.");
-          invoice.invoice_items = [];
-        }
-      }
-
-      const doc = await generateInvoicePDF(invoice, org, 'sales');
-      const pdfBlob = doc.output('blob');
-      const url = URL.createObjectURL(pdfBlob);
-      window.open(url, '_blank');
-      message.success("Invoice opened in new tab");
-
+          .eq("financial_year_id", financialYearId)
+          .order("payment_date", { ascending: false })
+      ]);
+      setInvoicesMap(prev => ({ ...prev, [feeId]: invoices || [] }));
+      setReceiptsMap(prev => ({ ...prev, [feeId]: payments.data || [] }));
     } catch (err) {
       console.error(err);
-      message.error(err?.message || "Failed to generate invoice");
+      message.error("Failed to load invoices/receipts");
     } finally {
-      setPrintingInvoice(false);
+      setLoadingInvoices(prev => ({ ...prev, [feeId]: false }));
     }
   };
 
   // ── Columns ──
-  const columns = [
+  const paymentColumns = [
+    {
+      title: "Student",
+      render: (_, p) => (
+        <span>
+          {p.student ? `${p.student.first_name} ${p.student.last_name}` : '—'}
+          <div style={{ fontSize: 12, color: "#888" }}>{p.student?.admission_no || ''}</div>
+        </span>
+      ),
+      sorter: (a, b) => ((a.student?.first_name || '') + (a.student?.last_name || '')).localeCompare((b.student?.first_name || '') + (b.student?.last_name || '')),
+    },
+    {
+      title: "Amount",
+      dataIndex: "amount",
+      render: (val) => <Text strong>{formatCurrency(val)}</Text>,
+      sorter: (a, b) => a.amount - b.amount,
+    },
+    {
+      title: "Date",
+      dataIndex: "payment_date",
+      sorter: (a, b) => dayjs(a.payment_date).unix() - dayjs(b.payment_date).unix(),
+    },
+    {
+      title: "Mode",
+      dataIndex: "payment_mode",
+      filters: [
+        { text: "Cash", value: "Cash" },
+        { text: "Card", value: "Card" },
+        { text: "UPI", value: "UPI" },
+        { text: "Bank Transfer", value: "Bank Transfer" },
+      ],
+      onFilter: (value, record) => record.payment_mode === value,
+    },
+    {
+      title: "Receipt",
+      render: (_, p) => p.receipt ? <Tag color="green">{p.receipt.receipt_no}</Tag> : <Tag color="orange">No Receipt</Tag>,
+    },
+    {
+      title: "Invoice",
+      render: (_, p) => p.invoice ? <Tag color="blue">{p.invoice.invoice_number}</Tag> : <Tag color="default">—</Tag>,
+    },
+    {
+      title: "Actions",
+      width: 280,
+      render: (_, p) => (
+        <Space size="small">
+          {p.receipt && (
+            <Tooltip title="Print Receipt">
+              <Button size="small" icon={<PrinterOutlined />} onClick={() => handlePrintReceipt(p.id)} loading={printingReceipt} />
+            </Tooltip>
+          )}
+          {p.invoice && (
+            <Tooltip title="Print Invoice">
+              <Button size="small" icon={<FilePdfOutlined />} onClick={() => handlePrintInvoice(p.invoice.id)} loading={printingInvoice} />
+            </Tooltip>
+          )}
+          <Tooltip title="Email Receipt">
+            <Button
+              size="small"
+              icon={<MailOutlined />}
+              onClick={() => handleResendReceiptEmail(p.id)}
+              loading={sendingEmailId === p.id}
+              disabled={!p.receipt}
+            />
+          </Tooltip>
+          <Tooltip title="Delete Payment">
+            <Popconfirm
+              title="Delete this payment?"
+              onConfirm={() => deletePaymentMutation.mutate(p.id)}
+              okText="Yes"
+              cancelText="No"
+            >
+              <Button size="small" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          </Tooltip>
+        </Space>
+      ),
+    },
+  ];
+
+  const feeColumns = [
     {
       title: "Student",
       render: (_, record) => (
@@ -571,10 +718,7 @@ export default function StudentFees() {
           <div style={{ fontSize: 12, color: "#888" }}>{record.students?.admission_no}</div>
         </span>
       ),
-      sorter: (a, b) =>
-        `${a.students?.first_name} ${a.students?.last_name}`.localeCompare(
-          `${b.students?.first_name} ${b.students?.last_name}`
-        ),
+      sorter: (a, b) => `${a.students?.first_name} ${a.students?.last_name}`.localeCompare(`${b.students?.first_name} ${b.students?.last_name}`),
     },
     {
       title: "Course",
@@ -583,22 +727,18 @@ export default function StudentFees() {
     {
       title: "Total Fee",
       dataIndex: "final_fee",
-      render: (val) => `₹${Number(val).toLocaleString()}`,
+      render: (val) => formatCurrency(val),
       sorter: (a, b) => a.final_fee - b.final_fee,
     },
     {
       title: "Paid",
       dataIndex: "total_paid",
-      render: (val) => `₹${Number(val || 0).toLocaleString()}`,
+      render: (val) => formatCurrency(val || 0),
     },
     {
       title: "Balance",
       dataIndex: "pending",
-      render: (val) => (
-        <Text style={{ color: val > 0 ? "#ff4d4f" : "#52c41a" }}>
-          ₹{Number(val).toLocaleString()}
-        </Text>
-      ),
+      render: (val) => <Text style={{ color: val > 0 ? "#ff4d4f" : "#52c41a" }}>{formatCurrency(val)}</Text>,
     },
     {
       title: "Status",
@@ -617,23 +757,12 @@ export default function StudentFees() {
         <Space>
           <Tooltip title="Edit"><Button size="small" icon={<EditOutlined />} onClick={() => openAssign(record)} /></Tooltip>
           <Tooltip title="Collect Payment"><Button size="small" icon={<DollarOutlined />} onClick={() => setCollectingFee(record)} /></Tooltip>
-          <Tooltip title="View Payments"><Button size="small" icon={<EyeOutlined />} /></Tooltip>
           <Tooltip title="Generate Invoice"><Button size="small" icon={<FileTextOutlined />} onClick={() => setConfirmInvoice(record.id)} /></Tooltip>
           <Tooltip title="Print Receipt">
-            <Button size="small" icon={<PrinterOutlined />} onClick={() => handlePrintReceiptClick(record)} />
+            <Button size="small" icon={<PrinterOutlined />} onClick={() => handlePrintReceiptFromFee(record)} />
           </Tooltip>
           <Tooltip title="Print Invoice">
-            <Button size="small" icon={<FilePdfOutlined />} onClick={() => handlePrintInvoiceClick(record)} />
-          </Tooltip>
-          {/* 👇 Resend Receipt Email */}
-          <Tooltip title="Resend Receipt Email">
-            <Button
-              size="small"
-              icon={<MailOutlined />}
-              onClick={() => resendReceiptEmail(record)}
-              loading={sendingEmailId === record.id}
-              disabled={sendingEmailId === record.id}
-            />
+            <Button size="small" icon={<FilePdfOutlined />} onClick={() => handlePrintInvoiceFromFee(record)} />
           </Tooltip>
           <Tooltip title="Delete"><Button size="small" danger icon={<DeleteOutlined />} onClick={() => setConfirmDelete(record.id)} /></Tooltip>
         </Space>
@@ -641,105 +770,274 @@ export default function StudentFees() {
     },
   ];
 
-  // Expandable installments
-  const expandable = {
-    expandedRowRender: (record) => {
-      const installments = record.installments || [];
-      if (!installments.length) return <Text type="secondary">No installments</Text>;
-      return (
-        <Table
-          dataSource={installments}
-          columns={[
-            { title: "#", dataIndex: "installment_number", width: 40 },
-            { title: "Amount", dataIndex: "amount", render: val => `₹${val}` },
-            { title: "Due Date", dataIndex: "due_date" },
-            { title: "Status", dataIndex: "status", render: (status) => <Tag color={status === "Paid" ? "green" : "orange"}>{status}</Tag> },
-          ]}
-          pagination={false}
-          rowKey="id"
-          size="small"
-        />
-      );
-    },
-    rowExpandable: (record) => record.installments && record.installments.length > 0,
-  };
-
+  // ── Render ──
   return (
     <div>
-      {/* Header */}
-      <Row gutter={[16, 16]} align="middle" style={{ marginBottom: 16 }}>
-        <Col xs={24} sm={8}>
-          <Input
-            placeholder="Search by student name..."
-            prefix={<SearchOutlined />}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            allowClear
+      <Tabs activeKey={activeTab} onChange={setActiveTab} type="card">
+        <Tabs.TabPane tab="Payments" key="payments">
+          {/* Payment filters and table (unchanged) */}
+          <Card size="small" style={{ marginBottom: 16 }}>
+            <Row gutter={[16, 8]} align="middle">
+              <Col xs={24} sm={8}>
+                <Input
+                  placeholder="Search by student name / admission no"
+                  prefix={<SearchOutlined />}
+                  value={paymentSearch}
+                  onChange={(e) => setPaymentSearch(e.target.value)}
+                  allowClear
+                />
+              </Col>
+              <Col xs={12} sm={6}>
+                <Select
+                  allowClear
+                  placeholder="Payment Mode"
+                  value={paymentMode}
+                  onChange={setPaymentMode}
+                  style={{ width: "100%" }}
+                >
+                  <Select.Option value="Cash">Cash</Select.Option>
+                  <Select.Option value="Card">Card</Select.Option>
+                  <Select.Option value="UPI">UPI</Select.Option>
+                  <Select.Option value="Bank Transfer">Bank Transfer</Select.Option>
+                </Select>
+              </Col>
+              <Col xs={12} sm={6}>
+                <Select
+                  allowClear
+                  placeholder="Receipt Status"
+                  value={paymentStatus}
+                  onChange={setPaymentStatus}
+                  style={{ width: "100%" }}
+                >
+                  <Select.Option value="has_receipt">Has Receipt</Select.Option>
+                  <Select.Option value="no_receipt">No Receipt</Select.Option>
+                </Select>
+              </Col>
+              <Col xs={24} sm={4}>
+                <Button
+                  icon={<FilterOutlined />}
+                  onClick={() => setShowFilters(!showFilters)}
+                >
+                  {showFilters ? "Hide" : "Show"} Date Range
+                </Button>
+              </Col>
+            </Row>
+            {showFilters && (
+              <Row style={{ marginTop: 8 }}>
+                <Col span={24}>
+                  <RangePicker
+                    onChange={(dates) => setPaymentDateRange(dates)}
+                    style={{ width: "100%" }}
+                  />
+                </Col>
+              </Row>
+            )}
+          </Card>
+
+          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+            <Col xs={24} sm={12}>
+              <Space>
+                <Button icon={<ExportOutlined />} onClick={handleExportPayments}>Export CSV</Button>
+                <Button icon={<MailOutlined />} onClick={sendReportEmail}>Send Report</Button>
+                <Button icon={<ReloadOutlined />} onClick={() => queryClient.invalidateQueries({ queryKey: ["payments"] })}>Refresh</Button>
+              </Space>
+            </Col>
+            <Col xs={24} sm={12} style={{ textAlign: "right" }}>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setActiveTab("fees")}>Assign Fee</Button>
+            </Col>
+          </Row>
+
+          <Table
+            columns={paymentColumns}
+            dataSource={allPayments}
+            rowKey="id"
+            loading={paymentsLoading}
+            pagination={false}
+            scroll={{ x: 1000 }}
+            expandable={{
+              expandedRowRender: (record) => (
+                <div style={{ padding: 8 }}>
+                  <p><strong>Course:</strong> {record.course || '—'}</p>
+                  <p><strong>Transaction No:</strong> {record.transaction_no || '—'}</p>
+                  <p><strong>Remarks:</strong> {record.remarks || '—'}</p>
+                  {record.receipt && <p><strong>Receipt No:</strong> {record.receipt.receipt_no}</p>}
+                  {record.invoice && <p><strong>Invoice No:</strong> {record.invoice.invoice_number} (Status: {record.invoice.status})</p>}
+                </div>
+              ),
+            }}
           />
-        </Col>
-        <Col xs={24} sm={16}>
-          <Space wrap style={{ float: "right" }}>
-            <Select
-              allowClear
-              placeholder="Status"
-              value={statusFilter}
-              onChange={setStatusFilter}
-              style={{ width: 120 }}
-              options={[
-                { label: "Paid", value: "Paid" },
-                { label: "Pending", value: "Pending" },
-              ]}
-            />
-            <Button icon={<ExportOutlined />} onClick={handleExport}>Export</Button>
-            <Button icon={<UploadOutlined />} onClick={() => fileInputRef.current?.click()}>Import</Button>
-            <input type="file" ref={fileInputRef} hidden accept=".csv" onChange={handleImport} />
-            {/* 👇 Send Report button */}
-            <Button icon={<MailOutlined />} onClick={sendReportEmail}>Send Report</Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => openAssign(null)}>
-              Assign Fee
-            </Button>
-          </Space>
-        </Col>
-      </Row>
+          {hasMorePayments && (
+            <div style={{ textAlign: "center", marginTop: 16 }}>
+              <Button onClick={() => fetchMorePayments()} loading={isFetchingMorePayments}>Load More</Button>
+            </div>
+          )}
+        </Tabs.TabPane>
 
-      {/* Bulk actions */}
-      {selectedRowKeys.length > 0 && (
-        <div style={{ marginBottom: 16, background: "#e6f7ff", padding: "8px 16px", borderRadius: 8 }}>
-          <Space>
-            <span>{selectedRowKeys.length} selected</span>
-            <Button icon={<DollarOutlined />} onClick={() => setBulkAssignOpen(true)}>Bulk Assign Fee</Button>
-            <Button icon={<SendOutlined />} onClick={() => setBulkReminderOpen(true)}>Send Reminders</Button>
-          </Space>
-        </div>
-      )}
+        <Tabs.TabPane tab="Fee Records" key="fees">
+          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+            <Col xs={24} sm={8}>
+              <Input
+                placeholder="Search by student name..."
+                prefix={<SearchOutlined />}
+                value={feeSearch}
+                onChange={(e) => setFeeSearch(e.target.value)}
+                allowClear
+              />
+            </Col>
+            <Col xs={24} sm={16}>
+              <Space wrap style={{ float: "right" }}>
+                <Select
+                  allowClear
+                  placeholder="Status"
+                  value={feeStatusFilter}
+                  onChange={setFeeStatusFilter}
+                  style={{ width: 120 }}
+                  options={[
+                    { label: "Paid", value: "Paid" },
+                    { label: "Pending", value: "Pending" },
+                  ]}
+                />
+                <Button icon={<ExportOutlined />} onClick={handleExportFees}>Export</Button>
+                <Button icon={<UploadOutlined />} onClick={() => fileInputRef.current?.click()}>Import</Button>
+                <input type="file" ref={fileInputRef} hidden accept=".csv" onChange={handleImport} />
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => openAssign(null)}>Assign Fee</Button>
+              </Space>
+            </Col>
+          </Row>
 
-      <Table
-        rowSelection={{
-          selectedRowKeys,
-          onChange: setSelectedRowKeys,
-        }}
-        columns={columns}
-        dataSource={studentFees}
-        rowKey="id"
-        loading={isLoading}
-        pagination={false}
-        expandable={expandable}
-        scroll={{ x: 1000 }}
-      />
+          {selectedRowKeys.length > 0 && (
+            <div style={{ marginBottom: 16, background: "#e6f7ff", padding: "8px 16px", borderRadius: 8 }}>
+              <Space>
+                <span>{selectedRowKeys.length} selected</span>
+                <Button icon={<DollarOutlined />} onClick={() => setBulkAssignOpen(true)}>Bulk Assign Fee</Button>
+                <Button icon={<SendOutlined />} onClick={() => setBulkReminderOpen(true)}>Send Reminders</Button>
+              </Space>
+            </div>
+          )}
 
-      {hasNextPage && (
-        <div style={{ textAlign: "center", marginTop: 16 }}>
-          <Button
-            onClick={() => fetchNextPage()}
-            loading={isFetchingNextPage}
-            disabled={isFetchingNextPage}
-          >
-            {isFetchingNextPage ? "Loading more…" : "Load More"}
-          </Button>
-        </div>
-      )}
+          <Table
+            rowSelection={{
+              selectedRowKeys,
+              onChange: setSelectedRowKeys,
+            }}
+            columns={feeColumns}
+            dataSource={studentFees}
+            rowKey="id"
+            loading={feesLoading}
+            pagination={false}
+            expandable={{
+              expandedRowKeys: expandedFeeId ? [expandedFeeId] : [],
+              onExpand: (expanded, record) => {
+                if (expanded) toggleExpandFee(record.id);
+                else setExpandedFeeId(null);
+              },
+              expandedRowRender: (record) => {
+                const feeId = record.id;
+                const isLoading = loadingInvoices[feeId];
+                const invoices = invoicesMap[feeId] || [];
+                const receipts = receiptsMap[feeId] || [];
 
-      {/* Assign / Edit Drawer */}
+                return (
+                  <div style={{ padding: 8 }}>
+                    <h4>Invoices</h4>
+                    {isLoading ? (
+                      <Text type="secondary">Loading...</Text>
+                    ) : invoices.length === 0 ? (
+                      <Text type="secondary">No invoices found.</Text>
+                    ) : (
+                      <Table
+                        dataSource={invoices}
+                        columns={[
+                          { title: "Invoice #", dataIndex: "invoice_number" },
+                          { title: "Date", dataIndex: "invoice_date" },
+                          { title: "Total", dataIndex: "grand_total", render: val => formatCurrency(val) },
+                          { title: "Paid", dataIndex: "paid_amount", render: val => formatCurrency(val || 0) },
+                          { title: "Balance", dataIndex: "balance_due", render: val => formatCurrency(val || 0) },
+                          {
+                            title: "Status",
+                            dataIndex: "status",
+                            render: (status) => (
+                              <Tag color={status === "Paid" ? "green" : status === "Partially Paid" ? "orange" : "volcano"}>
+                                {status}
+                              </Tag>
+                            ),
+                          },
+                          {
+                            title: "Action",
+                            render: (_, inv) => (
+                              <Button
+                                size="small"
+                                icon={<FilePdfOutlined />}
+                                onClick={() => handlePrintInvoice(inv.id)}
+                                loading={printingInvoice}
+                              >
+                                Print
+                              </Button>
+                            ),
+                          },
+                        ]}
+                        rowKey="id"
+                        pagination={false}
+                        size="small"
+                      />
+                    )}
+
+                    <h4 style={{ marginTop: 16 }}>Receipts</h4>
+                    {isLoading ? (
+                      <Text type="secondary">Loading...</Text>
+                    ) : receipts.length === 0 ? (
+                      <Text type="secondary">No receipts found.</Text>
+                    ) : (
+                      <Table
+                        dataSource={receipts}
+                        columns={[
+                          { title: "Receipt #", dataIndex: ["receipts", "receipt_no"] },
+                          { title: "Date", dataIndex: "payment_date" },
+                          { title: "Amount", dataIndex: "amount", render: val => formatCurrency(val) },
+                          { title: "Mode", dataIndex: "payment_mode" },
+                          {
+                            title: "Invoice",
+                            dataIndex: "invoice_id",
+                            render: (invoiceId) => {
+                              if (!invoiceId) return "—";
+                              const inv = invoices.find(i => i.id === invoiceId);
+                              return inv ? inv.invoice_number : "—";
+                            },
+                          },
+                          {
+                            title: "Action",
+                            render: (_, rec) => (
+                              <Button
+                                size="small"
+                                icon={<PrinterOutlined />}
+                                onClick={() => handlePrintReceipt(rec.id)}
+                                loading={printingReceipt}
+                              >
+                                Print
+                              </Button>
+                            ),
+                          },
+                        ]}
+                        rowKey="id"
+                        pagination={false}
+                        size="small"
+                      />
+                    )}
+                  </div>
+                );
+              },
+            }}
+          />
+          {hasMoreFees && (
+            <div style={{ textAlign: "center", marginTop: 16 }}>
+              <Button onClick={() => fetchMoreFees()} loading={isFetchingMoreFees}>Load More</Button>
+            </div>
+          )}
+        </Tabs.TabPane>
+      </Tabs>
+
+      {/* ─── Modals and Drawers ─────────────────────────────────────── */}
+
       <FeeAssignDrawer
         open={assignOpen}
         editingFee={editingFee}
@@ -753,7 +1051,6 @@ export default function StudentFees() {
         loading={createMutation.isLoading || updateMutation.isLoading}
       />
 
-      {/* Collect Payment */}
       {collectingFee && (
         <CollectPaymentModal
           fee={collectingFee}
@@ -761,11 +1058,11 @@ export default function StudentFees() {
           onSuccess={() => {
             setCollectingFee(null);
             queryClient.invalidateQueries({ queryKey: ["studentFees"] });
+            queryClient.invalidateQueries({ queryKey: ["payments"] });
           }}
         />
       )}
 
-      {/* Bulk Assign Modal */}
       <Modal
         title="Bulk Assign Fee"
         open={bulkAssignOpen}
@@ -782,7 +1079,6 @@ export default function StudentFees() {
         />
       </Modal>
 
-      {/* Bulk Reminder Modal */}
       <Modal
         title="Send Payment Reminders"
         open={bulkReminderOpen}
@@ -794,54 +1090,43 @@ export default function StudentFees() {
         <p>Send payment reminders to {selectedRowKeys.length} students?</p>
       </Modal>
 
-      {/* Print Receipt Selection Modal */}
+      {/* Invoice Selection Modal */}
       <Modal
-        title="Select Payment to Print Receipt"
-        open={printReceiptModal.open}
-        onCancel={() => setPrintReceiptModal({ open: false, feeId: null, payments: [] })}
-        footer={
-          <Space>
-            <Button onClick={() => setPrintReceiptModal({ open: false, feeId: null, payments: [] })}>Cancel</Button>
-            <Button
-              type="primary"
-              onClick={() => printReceipt(selectedPaymentId)}
-              loading={printingReceipt}
-              disabled={!selectedPaymentId}
-            >
-              Print Receipt
-            </Button>
-          </Space>
-        }
+        title="Select Invoice to Print"
+        open={invoiceSelectionModal.visible}
+        onCancel={() => setInvoiceSelectionModal({ visible: false, invoices: [] })}
+        footer={null}
         destroyOnHidden
       >
-        <Select
-          style={{ width: "100%" }}
-          value={selectedPaymentId}
-          onChange={(val) => setSelectedPaymentId(val)}
-          placeholder="Select a payment"
-        >
-          {printReceiptModal.payments.map((p) => (
-            <Select.Option key={p.id} value={p.id}>
-              {p.payment_date} – ₹{Number(p.amount).toLocaleString('en-IN')} {p.receipts?.[0]?.receipt_no ? `(Receipt: ${p.receipts[0].receipt_no})` : ''}
-            </Select.Option>
+        <div style={{ marginTop: 16 }}>
+          {invoiceSelectionModal.invoices.map(inv => (
+            <div key={inv.id} style={{ padding: 8, borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>{inv.invoice_number} – {formatCurrency(inv.grand_total)} ({inv.status})</span>
+              <Button
+                type="primary"
+                size="small"
+                icon={<FilePdfOutlined />}
+                onClick={() => {
+                  handlePrintInvoice(inv.id);
+                  setInvoiceSelectionModal({ visible: false, invoices: [] });
+                }}
+              >
+                Print
+              </Button>
+            </div>
           ))}
-        </Select>
-        <p style={{ marginTop: 12, color: '#888' }}>
-          {printReceiptModal.payments.length} payment(s) available
-        </p>
+        </div>
       </Modal>
 
-      {/* Confirmations */}
       {confirmDelete && (
         <ConfirmDialog
           message="Delete this fee record?"
-          onConfirm={() => { deleteMutation.mutate(confirmDelete); setConfirmDelete(null); }}
+          onConfirm={() => { deleteFeeMutation.mutate(confirmDelete); setConfirmDelete(null); }}
           onCancel={() => setConfirmDelete(null)}
           confirmText="Delete"
           variant="danger"
         />
       )}
-
       {confirmInvoice && (
         <ConfirmDialog
           message="Generate invoice for this fee?"
@@ -855,18 +1140,19 @@ export default function StudentFees() {
   );
 }
 
-// ─── Internal Components ────────────────────────────────────────────────
+// ─── Helper Components ────────────────────────────────────────────────
 
 function FeeAssignDrawer({ open, editingFee, students, feeStructures, onSubmit, onClose, loading }) {
   const [form] = Form.useForm();
   const [enableInstallments, setEnableInstallments] = useState(false);
   const [installments, setInstallments] = useState([]);
-  const [taxPreview, setTaxPreview] = useState(null);
+  const [selectedStructure, setSelectedStructure] = useState(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) return;
     if (editingFee) {
       const structure = feeStructures.find(fs => fs.id === editingFee.fee_structure_id);
+      setSelectedStructure(structure || null);
       const baseAmount = structure ? Number(structure.fee_amount) : Number(editingFee.total_fee);
       const discount = Number(editingFee.discount || 0);
       form.setFieldsValue({
@@ -891,8 +1177,20 @@ function FeeAssignDrawer({ open, editingFee, students, feeStructures, onSubmit, 
       form.resetFields();
       setEnableInstallments(false);
       setInstallments([]);
+      setSelectedStructure(null);
     }
   }, [open, editingFee, form, feeStructures]);
+
+  const handleStructureChange = (id) => {
+    const structure = feeStructures.find(s => s.id === id);
+    setSelectedStructure(structure || null);
+    if (structure) {
+      form.setFieldsValue({
+        total_fee: structure.fee_amount,
+        final_fee: structure.fee_amount,
+      });
+    }
+  };
 
   const handleFinish = (values) => {
     const payload = {
@@ -903,24 +1201,13 @@ function FeeAssignDrawer({ open, editingFee, students, feeStructures, onSubmit, 
     onSubmit(payload);
   };
 
-  const recalcTax = () => {
-    const structId = form.getFieldValue("fee_structure_id");
-    const finalFee = form.getFieldValue("final_fee") || 0;
-    if (!structId || !finalFee) return setTaxPreview(null);
-    const structure = feeStructures.find(s => s.id === structId);
-    if (!structure) return;
-    const rate = structure.tax_rates?.rate ? structure.tax_rates.rate / 100 : 0;
-    const inclusive = structure.tax_inclusive !== false;
-    let base, tax;
-    if (inclusive) {
-      base = finalFee / (1 + rate);
-      tax = finalFee - base;
-    } else {
-      base = finalFee;
-      tax = finalFee * rate;
-    }
-    setTaxPreview({ base: Math.round(base * 100) / 100, tax: Math.round(tax * 100) / 100, total: finalFee });
-  };
+  // Component display table
+  const componentColumns = [
+    { title: "Component", dataIndex: "component_name", key: "name" },
+    { title: "Amount", dataIndex: "amount", render: (val) => formatCurrency(val), align: "right" },
+    { title: "Tax Rate", dataIndex: "tax_rates", render: (tax) => tax ? `${tax.name} (${tax.rate}%)` : "No Tax", align: "center" },
+    { title: "Tax Type", dataIndex: "tax_inclusive", render: (val) => val ? "Inclusive" : "Exclusive", align: "center" },
+  ];
 
   return (
     <Drawer
@@ -953,19 +1240,27 @@ function FeeAssignDrawer({ open, editingFee, students, feeStructures, onSubmit, 
             placeholder="Select fee structure"
             optionFilterProp="label"
             options={feeStructures.map(fs => ({
-              label: `${fs.courses?.course_name} (₹${fs.fee_amount})`,
+              label: `${fs.courses?.course_name} (${formatCurrency(fs.fee_amount)})`,
               value: fs.id,
             }))}
-            onChange={() => {
-              const id = form.getFieldValue("fee_structure_id");
-              const structure = feeStructures.find(s => s.id === id);
-              if (structure) {
-                form.setFieldsValue({ total_fee: structure.fee_amount, final_fee: structure.fee_amount });
-                recalcTax();
-              }
-            }}
+            onChange={handleStructureChange}
           />
         </Form.Item>
+
+        {selectedStructure && selectedStructure.fee_structure_components && selectedStructure.fee_structure_components.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <Text strong>Components included:</Text>
+            <Table
+              dataSource={selectedStructure.fee_structure_components}
+              columns={componentColumns}
+              rowKey="id"
+              pagination={false}
+              size="small"
+              style={{ marginTop: 8 }}
+            />
+          </div>
+        )}
+
         <Form.Item name="total_fee" label="Total Fee">
           <InputNumber style={{ width: "100%" }} disabled />
         </Form.Item>
@@ -974,19 +1269,12 @@ function FeeAssignDrawer({ open, editingFee, students, feeStructures, onSubmit, 
             const total = form.getFieldValue("total_fee") || 0;
             const discount = form.getFieldValue("discount") || 0;
             form.setFieldsValue({ final_fee: total - discount });
-            recalcTax();
           }} />
         </Form.Item>
         <Form.Item name="final_fee" label="Final Fee">
           <InputNumber style={{ width: "100%" }} disabled />
         </Form.Item>
-        {taxPreview && (
-          <Card size="small" style={{ marginBottom: 16 }}>
-            <p>Base: ₹{taxPreview.base.toFixed(2)}</p>
-            <p>Tax: ₹{taxPreview.tax.toFixed(2)}</p>
-            <p>Total: ₹{taxPreview.total.toFixed(2)}</p>
-          </Card>
-        )}
+
         <Form.Item name="status" label="Status">
           <Select>
             <Select.Option value="Pending">Pending</Select.Option>
@@ -994,7 +1282,6 @@ function FeeAssignDrawer({ open, editingFee, students, feeStructures, onSubmit, 
           </Select>
         </Form.Item>
 
-        {/* Installments */}
         <Form.Item label="Installments">
           <Checkbox checked={enableInstallments} onChange={e => setEnableInstallments(e.target.checked)}>
             Enable Installments
@@ -1013,17 +1300,13 @@ function FeeAssignDrawer({ open, editingFee, students, feeStructures, onSubmit, 
 }
 
 function InstallmentEditor({ installments, onChange, totalAmount }) {
-  const add = () => {
-    onChange([...installments, { amount: 0, due_date: "" }]);
-  };
+  const add = () => onChange([...installments, { amount: 0, due_date: "" }]);
   const update = (index, field, value) => {
     const updated = [...installments];
     updated[index] = { ...updated[index], [field]: value };
     onChange(updated);
   };
-  const remove = (index) => {
-    onChange(installments.filter((_, i) => i !== index));
-  };
+  const remove = (index) => onChange(installments.filter((_, i) => i !== index));
   return (
     <div style={{ marginBottom: 16 }}>
       {installments.map((inst, idx) => (
@@ -1047,7 +1330,7 @@ function InstallmentEditor({ installments, onChange, totalAmount }) {
         + Add Installment
       </Button>
       <Text type="secondary" style={{ display: "block", marginTop: 4 }}>
-        Total installments: ₹{installments.reduce((sum, i) => sum + (Number(i.amount) || 0), 0)} / ₹{totalAmount}
+        Total installments: {formatCurrency(installments.reduce((sum, i) => sum + (Number(i.amount) || 0), 0))} / {formatCurrency(totalAmount)}
       </Text>
     </div>
   );
@@ -1064,7 +1347,7 @@ function BulkAssignForm({ students, feeStructures, selectedStudents, onSubmit, o
           placeholder="Select fee structure"
           optionFilterProp="label"
           options={feeStructures.map(fs => ({
-            label: `${fs.courses?.course_name} (₹${fs.fee_amount})`,
+            label: `${fs.courses?.course_name} (${formatCurrency(fs.fee_amount)})`,
             value: fs.id,
           }))}
         />

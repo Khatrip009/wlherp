@@ -8,7 +8,7 @@ import {
   Save,
   X,
 } from "lucide-react";
-import AdminLayout from "../layouts/AdminLayout";
+
 import {
   getMediums,
   createMedium,
@@ -71,7 +71,7 @@ export default function Mediums() {
   }
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-righteous text-primary-dark">Mediums</h1>
         <button
@@ -180,6 +180,6 @@ export default function Mediums() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }

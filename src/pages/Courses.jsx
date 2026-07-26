@@ -39,10 +39,10 @@ import { useOrg } from "../context/OrganizationContext";
 export default function Courses() {
   const queryClient = useQueryClient();
 
-  const { branch, selectedFinancialYear } = useOrg();
-  const branchId = branch?.id;
+  const { branch, selectedFinancialYear, org } = useOrg();
+  const organizationId = org?.id;
   const financialYearId = selectedFinancialYear?.id;
-  const ctx = { branchId, financialYearId };
+  const ctx = { organizationId, financialYearId };
 
   const [search, setSearch] = useState("");
   const [mediumFilter, setMediumFilter] = useState("");
@@ -55,19 +55,24 @@ export default function Courses() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["courses", filters, branchId, financialYearId],
+    queryKey: ["courses", filters, organizationId, financialYearId],
     queryFn: async ({ pageParam = 0 }) => {
+      if (!organizationId) throw new Error("Organization ID is required");
+
       const from = pageParam * 20;
       const to = from + 19;
 
       let query = supabase
         .from("courses")
         .select("*, mediums(name)", { count: "exact" })
-        .eq("branch_id", branchId)
-        .eq("financial_year_id", financialYearId)
+        .eq("organization_id", organizationId)
+        .is("deleted_at", null)               // ✅ filter out soft‑deleted courses
         .order("course_name", { ascending: true })
         .range(from, to);
 
+      if (financialYearId) {
+        query = query.eq("financial_year_id", financialYearId);
+      }
       if (search) {
         query = query.or(`course_name.ilike.%${search}%,description.ilike.%${search}%`);
       }
@@ -93,7 +98,7 @@ export default function Courses() {
       return undefined;
     },
     initialPageParam: 0,
-    enabled: !!branchId && !!financialYearId,
+    enabled: !!organizationId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -166,7 +171,11 @@ export default function Courses() {
 
   async function handleCSVExport() {
     try {
-      const allData = await getAllCoursesForExport(filters, branchId, financialYearId);
+      const allData = await getAllCoursesForExport({
+        filters,
+        organizationId,
+        financialYearId,
+      });
       const csv = Papa.unparse(
         allData.map((c) => ({
           course_name: c.course_name,
@@ -193,9 +202,9 @@ export default function Courses() {
   const [levelsMap, setLevelsMap] = useState({});
 
   async function loadLevels(courseId) {
-    if (!branchId || !financialYearId) return;
+    if (!organizationId || !financialYearId) return;
     try {
-      const levels = await getCourseLevels(courseId, branchId, financialYearId);
+      const levels = await getCourseLevels(courseId, organizationId, financialYearId);
       setLevelsMap((prev) => ({ ...prev, [courseId]: levels }));
     } catch {
       toast.error("Failed to load levels");
@@ -232,7 +241,7 @@ export default function Courses() {
   });
 
   const deleteLevelMutation = useMutation({
-    mutationFn: (id) => deleteCourseLevel(id, branchId, financialYearId),
+    mutationFn: (id) => deleteCourseLevel(id, ctx),
     onSuccess: () => {
       toast.success("Level deleted");
       if (expandedCourseId) loadLevels(expandedCourseId);

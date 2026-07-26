@@ -18,6 +18,7 @@ import { useAuth } from '../context/AuthContext';
 import { useOrg } from '../context/OrganizationContext';
 import { supabase } from '../api/supabase';
 import { sendEmail } from '../services/emailService';
+import { useTheme } from '../context/ThemeContext';
 
 // ─── Category definitions ──────────────────────────────────
 const CATEGORIES = {
@@ -60,19 +61,21 @@ const CATEGORIES = {
     color: 'text-amber-600',
     bg: 'bg-amber-50',
     reports: [
-      'fee_collection',
-      'pending_fees',
-      'fee_aging_analysis',
-      'payment_mode_summary',
-      'daily_cashbook',
-      'income_statement',
-      'expense_statement',
-      'expense_category_summary',
-      'profit_loss_summary',
-      'tax_collected',
-      'receipts_journal',
-      'fee_instalments',
-    ],
+    'fee_collection',
+    'pending_fees',
+    'student_ledger',           // <-- add this line
+    'account_ledger',
+    'fee_aging_analysis',
+    'payment_mode_summary',
+    'daily_cashbook',
+    'income_statement',
+    'expense_statement',
+    'expense_category_summary',
+    'profit_loss_summary',
+    'tax_collected',
+    'receipts_journal',
+    'fee_instalments',
+  ],
   },
   hr: {
     label: 'HR & Teachers',
@@ -106,7 +109,8 @@ const CATEGORIES = {
 
 export default function Reports() {
   const { profile } = useAuth();
-  const { org, theme } = useOrg();
+  const { org } = useOrg();           // ✅ org from OrganizationContext
+  const { theme } = useTheme();       // ✅ theme from ThemeContext
   const [search, setSearch] = useState('');
 
   // ── Admin role check ──
@@ -116,7 +120,7 @@ export default function Reports() {
     return <Navigate to="/" replace />;
   }
 
-  const primaryColor = theme?.primary_color || '#0D47A1';
+   const primaryColor = theme?.primary_color || '#0D47A1';
   const accentColor = theme?.accent_color || '#D15839';
 
   // ── Filter categories based on search ──

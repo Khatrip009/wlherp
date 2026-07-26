@@ -1,3 +1,4 @@
+// src/pages/MasterData.jsx
 import { useState } from "react";
 import { Layout, Menu, Typography, message, Tabs } from "antd";
 import { useQueryClient } from "@tanstack/react-query";
@@ -66,8 +67,9 @@ const tabs = [
     label: "Courses",
     icon: <BookOutlined />,
     queryKey: "courses",
-    queryFn: ({ search, branchId, financialYearId }) =>
-      courseService.getCourses({ search, branchId, financialYearId }),
+    // queryFn uses organizationId, not branchId
+    queryFn: ({ search, organizationId, financialYearId }) =>
+      courseService.getCourses({ filters: { search }, organizationId, financialYearId }),
     columns: [
       { title: "Course Name", dataIndex: "course_name" },
       { title: "Duration (months)", dataIndex: "duration_months" },
@@ -77,6 +79,11 @@ const tabs = [
     createService: courseService.createCourse,
     updateService: courseService.updateCourse,
     deleteService: courseService.deleteCourse,
+    // getContext returns organization-based context for courses
+    getContext: ({ organizationId, financialYearId }) => ({
+      organizationId,
+      financialYearId,
+    }),
   },
   {
     key: "batches",
@@ -95,6 +102,7 @@ const tabs = [
     createService: batchService.createBatch,
     updateService: batchService.updateBatch,
     deleteService: batchService.deleteBatch,
+    getContext: ({ branchId, financialYearId }) => ({ branchId, financialYearId }),
   },
   {
     key: "subjects",
@@ -111,6 +119,7 @@ const tabs = [
     createService: subjectService.createSubject,
     updateService: subjectService.updateSubject,
     deleteService: subjectService.deleteSubject,
+    getContext: ({ branchId, financialYearId }) => ({ branchId, financialYearId }),
   },
   {
     key: "feeStructures",
@@ -136,6 +145,7 @@ const tabs = [
     createService: null,
     updateService: null,
     deleteService: feeService.deleteFeeStructure,
+    getContext: ({ branchId, financialYearId }) => ({ branchId, financialYearId }),
   },
   {
     key: "teachers",
@@ -154,6 +164,7 @@ const tabs = [
     createService: teacherService.createTeacher,
     updateService: teacherService.updateTeacher,
     deleteService: teacherService.deleteTeacher,
+    getContext: ({ branchId, financialYearId }) => ({ branchId, financialYearId }),
   },
   {
     key: "parents",
@@ -171,6 +182,7 @@ const tabs = [
     createService: parentService.createParent,
     updateService: parentService.updateParent,
     deleteService: parentService.deleteParent,
+    getContext: ({ branchId, financialYearId }) => ({ branchId, financialYearId }),
   },
   {
     key: "mediums",
@@ -184,6 +196,7 @@ const tabs = [
     createService: mediumService.createMedium,
     updateService: mediumService.updateMedium,
     deleteService: mediumService.deleteMedium,
+    getContext: ({ branchId, financialYearId }) => ({ branchId, financialYearId }),
   },
   {
     key: "taxRates",
@@ -202,6 +215,7 @@ const tabs = [
     createService: feeService.createTaxRate,
     updateService: feeService.updateTaxRate,
     deleteService: feeService.deleteTaxRate,
+    getContext: ({ branchId, financialYearId }) => ({ branchId, financialYearId }),
   },
   {
     key: "inventoryItems",
@@ -222,6 +236,7 @@ const tabs = [
     createService: inventoryService.createInventoryItem,
     updateService: inventoryService.updateInventoryItem,
     deleteService: inventoryService.deleteInventoryItem,
+    getContext: ({ branchId, financialYearId }) => ({ branchId, financialYearId }),
   },
 ];
 
@@ -231,10 +246,10 @@ export default function MasterData() {
   const [editingItem, setEditingItem] = useState(null);
   const queryClient = useQueryClient();
 
-  const { branch, selectedFinancialYear } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
-  const ctx = { branchId, financialYearId };
+  const organizationId = org?.id;
 
   const currentTab = tabs.find((t) => t.key === activeTab);
 
@@ -248,18 +263,27 @@ export default function MasterData() {
     setModalOpen(true);
   };
 
+  // ── Get the context for the current tab ──
+  const getTabContext = () => {
+    if (!currentTab) return {};
+    // For courses, use organizationId, otherwise use branchId
+    return currentTab.getContext({ organizationId, branchId, financialYearId });
+  };
+
   const handleModalSubmit = async (values) => {
     try {
-      if (!branchId || !financialYearId) {
-        message.error("Branch or Financial Year not selected. Please refresh.");
+      const context = getTabContext();
+
+      if (!context || (activeTab === "courses" && !context.organizationId) || (!activeTab === "courses" && !context.branchId)) {
+        message.error("Missing required context (organization or branch). Please refresh.");
         return;
       }
 
       if (editingItem) {
-        await currentTab.updateService(editingItem.id, values, ctx);
+        await currentTab.updateService(editingItem.id, values, context);
         message.success(`${currentTab.label} updated successfully`);
       } else {
-        await currentTab.createService(values, ctx);
+        await currentTab.createService(values, context);
         message.success(`${currentTab.label} created successfully`);
       }
 
@@ -274,7 +298,8 @@ export default function MasterData() {
 
   const handleDelete = async (id) => {
     try {
-      await currentTab.deleteService(id, ctx);
+      const context = getTabContext();
+      await currentTab.deleteService(id, context);
       queryClient.invalidateQueries({ queryKey: [currentTab.queryKey] });
     } catch (err) {
       message.error(err.message || "Delete failed");
@@ -284,12 +309,22 @@ export default function MasterData() {
   const renderContent = () => {
     if (!currentTab) return <div>Tab not found</div>;
 
-    const wrappedQueryFn = ({ search }) =>
-      currentTab.queryFn({ search, branchId, financialYearId });
+    // Build the queryFn for MasterTable – passes the correct parameters
+    const wrappedQueryFn = ({ search }) => {
+      if (activeTab === "courses") {
+        return currentTab.queryFn({ search, organizationId, financialYearId });
+      }
+      return currentTab.queryFn({ search, branchId, financialYearId });
+    };
+
+    // For the query key, include the scoping parameters to properly invalidate
+    const queryKey = activeTab === "courses"
+      ? [currentTab.queryKey, organizationId, financialYearId]
+      : [currentTab.queryKey, branchId, financialYearId];
 
     return (
       <MasterTable
-        queryKey={[currentTab.queryKey, branchId, financialYearId]}
+        queryKey={queryKey}
         queryFn={wrappedQueryFn}
         columns={currentTab.columns}
         searchPlaceholder={`Search ${currentTab.label}...`}

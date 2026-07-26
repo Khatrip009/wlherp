@@ -2,24 +2,63 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { Plus, Edit3, Trash2, BarChart3 } from "lucide-react";
+import { Plus, Edit3, Trash2, BarChart3, Printer } from "lucide-react";
 import { Link } from "react-router-dom";
-import {
-  getBudgets,
-  createBudget,
-  updateBudget,
-  deleteBudget,
-} from "../services/budgetService";
-import { getChartOfAccounts } from "../services/accountingService";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
+import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+
+/* ─── PDF helpers ──────────────────────────────────────────── */
+async function loadImageAsBase64(url) {
+  if (!url) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch { return null; }
+}
+
+function createRupeeSymbolImage() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 30; canvas.height = 30;
+  const ctx = canvas.getContext("2d");
+  ctx.font = "bold 24px sans-serif"; ctx.fillStyle = "#000";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("₹", 15, 15);
+  return canvas.toDataURL("image/png");
+}
+let rupeeImage = null;
+function getRupeeImage() { if (!rupeeImage) rupeeImage = createRupeeSymbolImage(); return rupeeImage; }
+
+function drawCurrency(doc, amount, x, y, fontSize = 10, align = "left", color = "#000") {
+  const img = getRupeeImage();
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(fontSize);
+  doc.setTextColor(color);
+  const amountText = amount.toLocaleString("en-IN");
+  if (align === "left") {
+    doc.addImage(img, "PNG", x, y - fontSize * 0.35, 4, 4);
+    doc.text(amountText, x + 5, y);
+  } else {
+    const textWidth = doc.getTextWidth(amountText);
+    doc.addImage(img, "PNG", x - textWidth - 5, y - fontSize * 0.35, 4, 4);
+    doc.text(amountText, x - textWidth, y);
+  }
+}
 
 export default function Budgets() {
   const queryClient = useQueryClient();
-  const { branch, selectedFinancialYear } = useOrg();
+  const { org, branch, selectedFinancialYear } = useOrg();
+  const orgId = org?.id;
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
-
-  const context = { branchId, financialYearId };
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -30,40 +69,95 @@ export default function Budgets() {
     amount: "",
   });
 
-  // Budgets – scoped
+  // ✅ Fetch budgets – scoped by branch & FY only (no org_id column in budgets table)
   const { data: budgets = [], isLoading } = useQuery({
     queryKey: ["budgets", branchId, financialYearId],
-    queryFn: () => getBudgets(branchId, financialYearId),
+    queryFn: async () => {
+      let query = supabase
+        .from("budgets")
+        .select("*, chart_of_accounts!inner(account_code, account_name)")
+        .order("period_start", { ascending: false });
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
     enabled: !!branchId && !!financialYearId,
     staleTime: 5 * 60 * 1000,
   });
 
-  // Chart of Accounts – scoped
+  // ✅ Fetch expense accounts for dropdown – scoped by organisation, branch, FY
   const { data: accounts = [] } = useQuery({
-    queryKey: ["chart-of-accounts", branchId, financialYearId],
-    queryFn: () => getChartOfAccounts(branchId, financialYearId),
-    enabled: !!branchId && !!financialYearId,
+    queryKey: ["expense-accounts", orgId, branchId, financialYearId],
+    queryFn: async () => {
+      let query = supabase
+        .from("chart_of_accounts")
+        .select("id, account_code, account_name")
+        .eq("organization_id", orgId)
+        .eq("account_type", "expense")
+        .order("account_code");
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!orgId,
     staleTime: 10 * 60 * 1000,
   });
 
-  const expenseAccounts = accounts.filter((a) => a.account_type === "expense");
-
-  // Mutations with context
+  // ✅ Mutations – no org_id, only branch/fy
   const createMut = useMutation({
-    mutationFn: (payload) => createBudget(payload, context),
+    mutationFn: async (payload) => {
+      const { data, error } = await supabase
+        .from("budgets")
+        .insert({
+          account_id: payload.account_id,
+          period_start: payload.period_start,
+          period_end: payload.period_end,
+          amount: payload.amount,
+          branch_id: branchId,
+          financial_year_id: financialYearId,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
     onSuccess: () => {
       toast.success("Budget created");
-      queryClient.invalidateQueries(["budgets"]);
+      queryClient.invalidateQueries({ queryKey: ["budgets"] });
       setShowForm(false);
     },
     onError: () => toast.error("Failed to create budget"),
   });
 
   const updateMut = useMutation({
-    mutationFn: ({ id, payload }) => updateBudget(id, payload, context),
+    mutationFn: async ({ id, payload }) => {
+      const { data, error } = await supabase
+        .from("budgets")
+        .update({
+          account_id: payload.account_id,
+          period_start: payload.period_start,
+          period_end: payload.period_end,
+          amount: payload.amount,
+          branch_id: branchId,
+          financial_year_id: financialYearId,
+        })
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
     onSuccess: () => {
       toast.success("Budget updated");
-      queryClient.invalidateQueries(["budgets"]);
+      queryClient.invalidateQueries({ queryKey: ["budgets"] });
       setEditing(null);
       setShowForm(false);
     },
@@ -71,10 +165,16 @@ export default function Budgets() {
   });
 
   const deleteMut = useMutation({
-    mutationFn: (id) => deleteBudget(id, branchId, financialYearId),
+    mutationFn: async (id) => {
+      let query = supabase.from("budgets").delete().eq("id", id);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { error } = await query;
+      if (error) throw error;
+    },
     onSuccess: () => {
       toast.success("Budget deleted");
-      queryClient.invalidateQueries(["budgets"]);
+      queryClient.invalidateQueries({ queryKey: ["budgets"] });
     },
     onError: () => toast.error("Delete failed"),
   });
@@ -106,36 +206,132 @@ export default function Budgets() {
     else createMut.mutate(payload);
   };
 
+  // ─── PDF Export ────────────────────────────────────────────
+  const handlePrintPDF = async () => {
+    if (budgets.length === 0) return;
+
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 14;
+    let y = margin;
+
+    // Logo
+    let logoBase64 = null;
+    if (org?.logo_dark_url) {
+      logoBase64 = await loadImageAsBase64(org.logo_dark_url);
+    }
+
+    // Header
+    const logoWidth = 30, logoHeight = 12;
+    if (logoBase64) {
+      doc.addImage(logoBase64, "PNG", margin, y, logoWidth, logoHeight);
+    }
+    const textX = margin + (logoBase64 ? logoWidth + 4 : 0);
+    const textY = y + 1;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor("#000000");
+    doc.text(org?.company_name || "Academy", textX, textY);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor("#000000");
+    let detailY = textY + 4.5;
+    if (org?.address) {
+      const addrLines = doc.splitTextToSize(org.address, pageWidth - textX - margin - 10);
+      doc.text(addrLines, textX, detailY);
+      detailY += addrLines.length * 3.5 + 1;
+    }
+    if (org?.gstin) { doc.text(`GSTIN: ${org.gstin}`, textX, detailY); detailY += 4; }
+    if (org?.phone) { doc.text(`Phone: ${org.phone}`, textX, detailY); detailY += 4; }
+    if (org?.email) { doc.text(`Email: ${org.email}`, textX, detailY); detailY += 4; }
+
+    const headerHeight = Math.max(logoHeight + 4, detailY - textY + 4);
+    y += headerHeight + 2;
+    doc.setDrawColor("#000000");
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 6;
+
+    // Title
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor("#000000");
+    doc.text("Budgets", pageWidth / 2, y, { align: "center" });
+    y += 10;
+
+    // Build rows
+    const rows = budgets.map((b) => [
+      `${b.chart_of_accounts?.account_code || ""} - ${b.chart_of_accounts?.account_name || ""}`,
+      b.period_start,
+      b.period_end,
+      b.amount,
+    ]);
+
+    autoTable(doc, {
+      startY: y,
+      head: [["Account", "Period Start", "Period End", "Budget Amount"]],
+      body: rows,
+      theme: "plain",
+      styles: { fontSize: 9, textColor: [0,0,0], fillColor: [255,255,255], lineColor: [0,0,0], lineWidth: 0.2 },
+      headStyles: { fillColor: [255,255,255], textColor: [0,0,0], fontStyle: "bold", lineWidth: 0.2, lineColor: [0,0,0] },
+      columnStyles: {
+        0: { cellWidth: 80, halign: "left" },
+        1: { cellWidth: 35 },
+        2: { cellWidth: 35 },
+        3: { cellWidth: 40, halign: "right" },
+      },
+      margin: { left: margin, right: margin },
+      willDrawCell: (data) => {
+        if (data.column.index === 3 && typeof data.cell.raw === "number") {
+          data.cell.text = [];
+        }
+      },
+      didDrawCell: (data) => {
+        if (data.column.index === 3 && typeof data.cell.raw === "number") {
+          drawCurrency(doc, data.cell.raw, data.cell.x + data.cell.width - 2, data.cell.y + data.cell.height / 2 + 1.5, 9, "right", "#000");
+        }
+      },
+    });
+
+    y = doc.lastAutoTable.finalY + 10;
+
+    // Footer
+    const footerY = pageHeight - margin - 5;
+    doc.setFontSize(7);
+    doc.setTextColor("#000000");
+    doc.setFont("helvetica", "italic");
+    doc.text(`Generated on ${new Date().toLocaleString()}`, margin, footerY);
+    doc.text(`© ${org?.company_name || "Academy"}`, pageWidth / 2, footerY, { align: "center" });
+
+    doc.save(`Budgets_${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
   return (
     <div className="space-y-6 px-4 sm:px-6 lg:px-0">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1
-            className="text-2xl sm:text-3xl font-bold"
-            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
-          >
-            Budgets
-          </h1>
-          <p
-            className="text-sm text-gray-600 dark:text-gray-400 mt-1"
-            style={{ fontFamily: "var(--font-body)" }}
-          >
-            Set and manage expense budgets
-          </p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Budgets</h1>
+          <p className="text-sm text-gray-600 mt-1">Set and manage expense budgets</p>
         </div>
         <div className="flex gap-2">
           <Link
             to="/budget-vs-actual"
-            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
           >
             <BarChart3 size={16} /> Budget vs Actual
           </Link>
           <button
+            onClick={handlePrintPDF}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg transition-colors text-sm font-medium"
+          >
+            <Printer size={16} /> Print PDF
+          </button>
+          <button
             onClick={openCreate}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg transition-colors text-sm font-medium"
           >
             <Plus size={16} /> Add Budget
           </button>
@@ -143,68 +339,48 @@ export default function Budgets() {
       </div>
 
       {/* Budgets Table */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[600px]">
-            <thead className="bg-gray-50 dark:bg-gray-700">
+            <thead className="bg-gray-50">
               <tr>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Account
-                </th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Period Start
-                </th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Period End
-                </th>
-                <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Budget Amount
-                </th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Actions
-                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Account</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Period Start</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Period End</th>
+                <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Budget Amount</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="divide-y divide-gray-200">
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="p-6 text-center text-gray-500 dark:text-gray-400">
-                    Loading…
-                  </td>
+                  <td colSpan={5} className="p-6 text-center text-gray-500">Loading…</td>
                 </tr>
               ) : budgets.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-6 text-center text-gray-500 dark:text-gray-400">
-                    No budgets set. Create one to start.
-                  </td>
+                  <td colSpan={5} className="p-6 text-center text-gray-500">No budgets set. Create one to start.</td>
                 </tr>
               ) : (
                 budgets.map((b) => (
-                  <tr
-                    key={b.id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                  >
-                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">
+                  <tr key={b.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="p-3 text-sm text-gray-900">
                       {b.chart_of_accounts?.account_code} - {b.chart_of_accounts?.account_name}
                     </td>
-                    <td className="text-sm text-gray-700 dark:text-gray-200">{b.period_start}</td>
-                    <td className="text-sm text-gray-700 dark:text-gray-200">{b.period_end}</td>
-                    <td className="text-sm text-right font-medium text-gray-800 dark:text-gray-100">
+                    <td className="text-sm text-gray-900">{b.period_start}</td>
+                    <td className="text-sm text-gray-900">{b.period_end}</td>
+                    <td className="text-sm text-right font-medium text-gray-900">
                       ₹ {Number(b.amount).toLocaleString("en-IN")}
                     </td>
                     <td className="text-sm">
                       <div className="flex gap-2">
-                        <button
-                          onClick={() => openEdit(b)}
-                          className="text-blue-600 dark:text-blue-400 hover:underline"
-                        >
+                        <button onClick={() => openEdit(b)} className="text-blue-600 hover:underline">
                           <Edit3 size={15} />
                         </button>
                         <button
                           onClick={() => {
                             if (window.confirm("Delete?")) deleteMut.mutate(b.id);
                           }}
-                          className="text-red-600 dark:text-red-400 hover:underline"
+                          className="text-red-600 hover:underline"
                         >
                           <Trash2 size={15} />
                         </button>
@@ -221,29 +397,21 @@ export default function Budgets() {
       {/* Add / Edit Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-md w-full p-6 shadow-xl border border-gray-200 dark:border-gray-700">
-            <h2
-              className="text-xl font-bold mb-4"
-              style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
-            >
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl border border-gray-200">
+            <h2 className="text-xl font-bold mb-4 text-gray-900">
               {editing ? "Edit Budget" : "Add Budget"}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                  style={{ fontFamily: "var(--font-body)" }}
-                >
-                  Account *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Account *</label>
                 <select
                   value={form.account_id}
                   onChange={(e) => setForm({ ...form, account_id: e.target.value })}
-                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+                  className="w-full border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm"
                   required
                 >
                   <option value="">Select account</option>
-                  {expenseAccounts.map((a) => (
+                  {accounts.map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.account_code} - {a.account_name}
                     </option>
@@ -252,48 +420,33 @@ export default function Budgets() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label
-                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                    style={{ fontFamily: "var(--font-body)" }}
-                  >
-                    Period Start *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Period Start *</label>
                   <input
                     type="date"
                     value={form.period_start}
                     onChange={(e) => setForm({ ...form, period_start: e.target.value })}
-                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+                    className="w-full border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm"
                     required
                   />
                 </div>
                 <div>
-                  <label
-                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                    style={{ fontFamily: "var(--font-body)" }}
-                  >
-                    Period End *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Period End *</label>
                   <input
                     type="date"
                     value={form.period_end}
                     onChange={(e) => setForm({ ...form, period_end: e.target.value })}
-                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+                    className="w-full border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm"
                     required
                   />
                 </div>
               </div>
               <div>
-                <label
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                  style={{ fontFamily: "var(--font-body)" }}
-                >
-                  Budget Amount *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Budget Amount *</label>
                 <input
                   type="number"
                   value={form.amount}
                   onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+                  className="w-full border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm"
                   required
                 />
               </div>
@@ -301,15 +454,13 @@ export default function Budgets() {
                 <button
                   type="button"
                   onClick={() => setShowForm(false)}
-                  className="border border-gray-300 dark:border-gray-600 px-4 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                  style={{ fontFamily: "var(--font-body)" }}
+                  className="border border-gray-300 px-4 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  style={{ fontFamily: "var(--font-body)" }}
+                  className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                 >
                   {editing ? "Update" : "Create"}
                 </button>

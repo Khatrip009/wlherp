@@ -2,18 +2,15 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
-import { getOrganization } from "../services/organizationService";
 import { useOrg } from "../context/OrganizationContext";
 import { sendEmail } from "../services/emailService";
 import toast from "react-hot-toast";
 
 import {
   Search,
-  Calendar,
   Download,
   Printer,
   Loader,
-  TrendingUp,
   IndianRupee,
   FileText,
   Building,
@@ -22,6 +19,50 @@ import {
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import Papa from "papaparse";
+
+/* ─── PDF helpers (identical to other reports) ─────────────── */
+async function loadImageAsBase64(url) {
+  if (!url) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch { return null; }
+}
+
+function createRupeeSymbolImage() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 30; canvas.height = 30;
+  const ctx = canvas.getContext("2d");
+  ctx.font = "bold 24px sans-serif"; ctx.fillStyle = "#000";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("₹", 15, 15);
+  return canvas.toDataURL("image/png");
+}
+let rupeeImage = null;
+function getRupeeImage() { if (!rupeeImage) rupeeImage = createRupeeSymbolImage(); return rupeeImage; }
+
+function drawCurrency(doc, amount, x, y, fontSize = 10, align = "left", color = "#000") {
+  const img = getRupeeImage();
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(fontSize);
+  doc.setTextColor(color);
+  const amountText = amount.toLocaleString("en-IN");
+  if (align === "left") {
+    doc.addImage(img, "PNG", x, y - fontSize * 0.35, 4, 4);
+    doc.text(amountText, x + 5, y);
+  } else {
+    const textWidth = doc.getTextWidth(amountText);
+    doc.addImage(img, "PNG", x - textWidth - 5, y - fontSize * 0.35, 4, 4);
+    doc.text(amountText, x - textWidth, y);
+  }
+}
 
 export default function PurchaseRegister() {
   const today = new Date();
@@ -32,23 +73,116 @@ export default function PurchaseRegister() {
   const [taxRateFilter, setTaxRateFilter] = useState("");
   const [search, setSearch] = useState("");
 
-  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const { org, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  const { data: org } = useQuery({
-    queryKey: ["organization", currentOrg?.id],
-    queryFn: () => getOrganization(currentOrg?.id),
-    enabled: !!currentOrg?.id,
+  /* ─── Vendors dropdown ────────────────────────────────── */
+  const { data: vendors = [] } = useQuery({
+    queryKey: ["vendors-dropdown", branchId, financialYearId],
+    queryFn: async () => {
+      let query = supabase.from("vendors").select("id, vendor_name").order("vendor_name");
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
+      return data || [];
+    },
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 10 * 60 * 1000,
   });
 
-  // ─── Helper: get admin emails ──────────────────────────────────────
+  /* ─── Tax rates dropdown ──────────────────────────────── */
+  const { data: taxRates = [] } = useQuery({
+    queryKey: ["tax-rates-dropdown", branchId, financialYearId],
+    queryFn: async () => {
+      let query = supabase.from("tax_rates").select("id, name, rate").eq("is_active", true);
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      const { data } = await query;
+      return data || [];
+    },
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  /* ─── Main expenses query ──────────────────────────────── */
+  const {
+    data: expenses = [],
+    isLoading,
+    refetch,
+  } = useQuery({
+    queryKey: ["purchase-register", startDate, endDate, vendorFilter, taxRateFilter, search, branchId, financialYearId],
+    queryFn: async () => {
+      let query = supabase
+        .from("expenses")
+        .select(`*, vendors(id, vendor_name, gstin), tax_rates(id, name, rate)`)
+        .gte("expense_date", startDate)
+        .lte("expense_date", endDate)
+        .order("expense_date", { ascending: false });
+
+      if (branchId) query = query.eq("branch_id", branchId);
+      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+      if (vendorFilter) query = query.eq("vendor_id", vendorFilter);
+      if (taxRateFilter) query = query.eq("tax_rate_id", taxRateFilter);
+      if (search) {
+        query = query.or(`description.ilike.%${search}%,bill_number.ilike.%${search}%,vendors.vendor_name.ilike.%${search}%`);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!branchId && !!financialYearId,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  /* ─── Summaries ────────────────────────────────────────── */
+  const summaries = useMemo(() => {
+    const totalTaxable = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+    const totalGST = expenses.reduce((s, e) => s + Number(e.gst_amount || 0), 0);
+    const totalITC = expenses.filter(e => e.itc_claimed).reduce((s, e) => s + Number(e.gst_amount || 0), 0);
+    const totalAmount = totalTaxable + totalGST;
+    const invoiceCount = expenses.filter(e => e.invoice_number).length;
+    const vendorCount = new Set(expenses.map(e => e.vendor_id).filter(Boolean)).size;
+
+    const rateMap = {};
+    expenses.forEach(e => {
+      const rateId = e.tax_rate_id || "0";
+      const rateName = e.tax_rates?.name || "No Tax";
+      const ratePercent = e.tax_rates?.rate || 0;
+      if (!rateMap[rateId]) {
+        rateMap[rateId] = { rateName, ratePercent, taxable: 0, gst: 0, itc: 0, count: 0 };
+      }
+      rateMap[rateId].taxable += Number(e.amount || 0);
+      rateMap[rateId].gst += Number(e.gst_amount || 0);
+      if (e.itc_claimed) rateMap[rateId].itc += Number(e.gst_amount || 0);
+      rateMap[rateId].count += 1;
+    });
+    const byRate = Object.values(rateMap).sort((a, b) => b.ratePercent - a.ratePercent);
+
+    const vendorMap = {};
+    expenses.forEach(e => {
+      const vid = e.vendor_id || "0";
+      const name = e.vendors?.vendor_name || "Unknown Vendor";
+      if (!vendorMap[vid]) {
+        vendorMap[vid] = { vendor_name: name, gstin: e.vendors?.gstin || "", count: 0, taxable: 0, gst: 0, itc: 0 };
+      }
+      vendorMap[vid].count += 1;
+      vendorMap[vid].taxable += Number(e.amount || 0);
+      vendorMap[vid].gst += Number(e.gst_amount || 0);
+      if (e.itc_claimed) vendorMap[vid].itc += Number(e.gst_amount || 0);
+    });
+    const byVendor = Object.values(vendorMap).sort((a, b) => b.taxable - a.taxable);
+
+    return { totalTaxable, totalGST, totalITC, totalAmount, invoiceCount, vendorCount, byRate, byVendor };
+  }, [expenses]);
+
+  /* ─── Email helpers ────────────────────────────────────── */
   const getAdminEmails = async () => {
-    if (!currentOrg?.id) return [];
+    if (!org?.id) return [];
     const { data, error } = await supabase
       .from("profiles")
       .select("email")
-      .eq("organization_id", currentOrg.id)
+      .eq("organization_id", org.id)
       .in("role", ["admin", "super_admin", "organization_admin"])
       .eq("is_active", true);
     if (error) {
@@ -58,13 +192,11 @@ export default function PurchaseRegister() {
     return data?.map(p => p.email).filter(Boolean) || [];
   };
 
-  // ─── Send Report Email ─────────────────────────────────────────────
   const sendReportEmail = async () => {
     if (expenses.length === 0) {
       alert("No data to send.");
       return;
     }
-
     try {
       const adminEmails = await getAdminEmails();
       if (adminEmails.length === 0) {
@@ -77,7 +209,7 @@ export default function PurchaseRegister() {
       const orgPhone = org?.phone || "";
       const orgEmail = org?.email || "";
 
-      // Build summary cards HTML
+      // Summary cards
       const summaryCards = `
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:10px 0;">
           <div style="border:1px solid #ddd;padding:8px 12px;border-radius:6px;background:#f9f9f9;text-align:center;">
@@ -107,7 +239,7 @@ export default function PurchaseRegister() {
         </div>
       `;
 
-      // Tax Rate table
+      // Tax rate breakdown rows
       let taxRows = summaries.byRate.map(rate => `
         <tr>
           <td style="padding:4px 8px;border:1px solid #ddd;">${rate.rateName} (${rate.ratePercent}%)</td>
@@ -118,7 +250,7 @@ export default function PurchaseRegister() {
         </tr>
       `).join('');
 
-      // Vendor table
+      // Vendor rows
       let vendorRows = summaries.byVendor.map(v => `
         <tr>
           <td style="padding:4px 8px;border:1px solid #ddd;">${v.vendor_name}</td>
@@ -130,7 +262,7 @@ export default function PurchaseRegister() {
         </tr>
       `).join('');
 
-      // Detailed entries (first 20 rows to keep email size manageable)
+      // Detailed rows (first 20)
       const detailRows = expenses.slice(0, 20).map(e => `
         <tr>
           <td style="padding:4px 8px;border:1px solid #ddd;">${e.expense_date}</td>
@@ -148,7 +280,7 @@ export default function PurchaseRegister() {
 
       const htmlBody = `
         <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
-          <h2 style="color:#0D47A1;">Purchase Register</h2>
+          <h2 style="color:#000;">Purchase Register</h2>
           <p><strong>Organization:</strong> ${orgName}</p>
           <p>${orgAddr}</p>
           <p>Phone: ${orgPhone} | Email: ${orgEmail}</p>
@@ -156,9 +288,9 @@ export default function PurchaseRegister() {
           <p><strong>Period:</strong> ${startDate} – ${endDate}</p>
           <hr />
           ${summaryCards}
-          <h3 style="color:#0D47A1;margin-top:15px;">Tax Rate Breakdown</h3>
+          <h3 style="color:#000;margin-top:15px;">Tax Rate Breakdown</h3>
           <table style="width:100%;border-collapse:collapse;font-size:11px;">
-            <thead style="background:#e3f2fd;">
+            <thead style="background:#f5f5f5;">
               <tr>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Tax Rate</th>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Count</th>
@@ -178,10 +310,9 @@ export default function PurchaseRegister() {
               </tr>
             </tbody>
           </table>
-
-          <h3 style="color:#0D47A1;margin-top:15px;">Vendor Summary</h3>
+          <h3 style="color:#000;margin-top:15px;">Vendor Summary</h3>
           <table style="width:100%;border-collapse:collapse;font-size:11px;">
-            <thead style="background:#e3f2fd;">
+            <thead style="background:#f5f5f5;">
               <tr>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Vendor</th>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">GSTIN</th>
@@ -203,10 +334,9 @@ export default function PurchaseRegister() {
               </tr>
             </tbody>
           </table>
-
-          <h3 style="color:#0D47A1;margin-top:15px;">Detailed Entries (first ${Math.min(expenses.length, 20)} of ${expenses.length})</h3>
+          <h3 style="color:#000;margin-top:15px;">Detailed Entries (first ${Math.min(expenses.length, 20)} of ${expenses.length})</h3>
           <table style="width:100%;border-collapse:collapse;font-size:10px;">
-            <thead style="background:#e3f2fd;">
+            <thead style="background:#f5f5f5;">
               <tr>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Date</th>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Vendor</th>
@@ -231,9 +361,7 @@ export default function PurchaseRegister() {
         to: adminEmails,
         subject: `Purchase Register - ${startDate} to ${endDate}`,
         html: htmlBody,
-       // from: org?.email || undefined,
       });
-
       toast.success("Report sent to admins.");
     } catch (err) {
       console.error("Failed to send report:", err);
@@ -241,145 +369,7 @@ export default function PurchaseRegister() {
     }
   };
 
-  // ─── Vendors dropdown ──────────────────────────────────────────────
-  const { data: vendors = [] } = useQuery({
-    queryKey: ["vendors-dropdown", branchId, financialYearId],
-    queryFn: async () => {
-      let query = supabase
-        .from("vendors")
-        .select("id, vendor_name")
-        .order("vendor_name");
-      if (branchId) query = query.eq("branch_id", branchId);
-      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
-      const { data } = await query;
-      return data || [];
-    },
-    enabled: !!branchId && !!financialYearId,
-    staleTime: 10 * 60 * 1000,
-  });
-
-  // ─── Tax rates dropdown ────────────────────────────────────────────
-  const { data: taxRates = [] } = useQuery({
-    queryKey: ["tax-rates-dropdown", branchId, financialYearId],
-    queryFn: async () => {
-      let query = supabase
-        .from("tax_rates")
-        .select("id, name, rate")
-        .eq("is_active", true);
-      if (branchId) query = query.eq("branch_id", branchId);
-      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
-      const { data } = await query;
-      return data || [];
-    },
-    enabled: !!branchId && !!financialYearId,
-    staleTime: 10 * 60 * 1000,
-  });
-
-  // ─── Main query ─────────────────────────────────────────────────────
-  const {
-    data: expenses = [],
-    isLoading,
-    refetch,
-  } = useQuery({
-    queryKey: ["purchase-register", startDate, endDate, vendorFilter, taxRateFilter, search, branchId, financialYearId],
-    queryFn: async () => {
-      let query = supabase
-        .from("expenses")
-        .select(`
-          *,
-          vendors(id, vendor_name, gstin),
-          tax_rates(id, name, rate)
-        `)
-        .gte("expense_date", startDate)
-        .lte("expense_date", endDate)
-        .order("expense_date", { ascending: false });
-
-      if (branchId) query = query.eq("branch_id", branchId);
-      if (financialYearId) query = query.eq("financial_year_id", financialYearId);
-
-      if (vendorFilter) query = query.eq("vendor_id", vendorFilter);
-      if (taxRateFilter) query = query.eq("tax_rate_id", taxRateFilter);
-      if (search) {
-        query = query.or(
-          `description.ilike.%${search}%,bill_number.ilike.%${search}%,vendors.vendor_name.ilike.%${search}%`
-        );
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!branchId && !!financialYearId,
-    staleTime: 2 * 60 * 1000,
-  });
-
-  // ─── Summaries ─────────────────────────────────────────────────────
-  const summaries = useMemo(() => {
-    const totalTaxable = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
-    const totalGST = expenses.reduce((s, e) => s + Number(e.gst_amount || 0), 0);
-    const totalITC = expenses
-      .filter((e) => e.itc_claimed)
-      .reduce((s, e) => s + Number(e.gst_amount || 0), 0);
-    const totalAmount = totalTaxable + totalGST;
-    const invoiceCount = expenses.filter((e) => e.invoice_number).length;
-    const vendorCount = new Set(expenses.map((e) => e.vendor_id).filter(Boolean)).size;
-
-    const rateMap = {};
-    expenses.forEach((e) => {
-      const rateId = e.tax_rate_id || "0";
-      const rateName = e.tax_rates?.name || "No Tax";
-      const ratePercent = e.tax_rates?.rate || 0;
-      if (!rateMap[rateId]) {
-        rateMap[rateId] = {
-          rateName,
-          ratePercent,
-          taxable: 0,
-          gst: 0,
-          itc: 0,
-          count: 0,
-        };
-      }
-      rateMap[rateId].taxable += Number(e.amount || 0);
-      rateMap[rateId].gst += Number(e.gst_amount || 0);
-      if (e.itc_claimed) rateMap[rateId].itc += Number(e.gst_amount || 0);
-      rateMap[rateId].count += 1;
-    });
-    const byRate = Object.values(rateMap).sort((a, b) => b.ratePercent - a.ratePercent);
-
-    const vendorMap = {};
-    expenses.forEach((e) => {
-      const vid = e.vendor_id || "0";
-      const name = e.vendors?.vendor_name || "Unknown Vendor";
-      if (!vendorMap[vid]) {
-        vendorMap[vid] = {
-          vendor_name: name,
-          gstin: e.vendors?.gstin || "",
-          count: 0,
-          taxable: 0,
-          gst: 0,
-          itc: 0,
-        };
-      }
-      vendorMap[vid].count += 1;
-      vendorMap[vid].taxable += Number(e.amount || 0);
-      vendorMap[vid].gst += Number(e.gst_amount || 0);
-      if (e.itc_claimed) vendorMap[vid].itc += Number(e.gst_amount || 0);
-    });
-    const byVendor = Object.values(vendorMap).sort((a, b) => b.taxable - a.taxable);
-
-    return {
-      totalTaxable,
-      totalGST,
-      totalITC,
-      totalAmount,
-      invoiceCount,
-      vendorCount,
-      byRate,
-      byVendor,
-    };
-  }, [expenses]);
-
-  // ─── Export handlers (unchanged) ──────────────────────────────────
+  /* ─── CSV Export ────────────────────────────────────────── */
   const handleExportCSV = () => {
     if (expenses.length === 0) {
       toast.error("No data to export");
@@ -410,7 +400,8 @@ export default function PurchaseRegister() {
     toast.success("CSV exported");
   };
 
-  const handleExportPDF = () => {
+  /* ─── PDF Export (all black, transparent table) ──────────── */
+  const handleExportPDF = async () => {
     if (expenses.length === 0) {
       toast.error("No data to export");
       return;
@@ -418,64 +409,94 @@ export default function PurchaseRegister() {
 
     const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
     const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 14;
-    let y = 16;
+    let y = margin;
 
-    const orgName = org?.company_name || "ShreeVidhya Academy";
-    const address = org?.address || "";
-    const phone = org?.phone || "";
-    const email = org?.email || "";
+    // Logo
+    let logoBase64 = null;
+    if (org?.logo_dark_url) {
+      logoBase64 = await loadImageAsBase64(org.logo_dark_url);
+    }
 
-    doc.setFontSize(16);
+    // Header
+    const logoWidth = 30, logoHeight = 12;
+    if (logoBase64) {
+      doc.addImage(logoBase64, "PNG", margin, y, logoWidth, logoHeight);
+    }
+    const textX = margin + (logoBase64 ? logoWidth + 4 : 0);
+    const textY = y + 1;
+
     doc.setFont("helvetica", "bold");
-    doc.setTextColor("#0D47A1");
-    doc.text(orgName, margin, y);
-    y += 7;
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor("#555");
-    doc.text(address, margin, y);
-    y += 5;
-    doc.text(`Phone: ${phone} | Email: ${email}`, margin, y);
-    y += 10;
+    doc.setFontSize(14);
+    doc.setTextColor("#000000");
+    doc.text(org?.company_name || "Academy", textX, textY);
 
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor("#000000");
+    let detailY = textY + 4.5;
+    if (org?.address) {
+      const addrLines = doc.splitTextToSize(org.address, pageWidth - textX - margin - 10);
+      doc.text(addrLines, textX, detailY);
+      detailY += addrLines.length * 3.5 + 1;
+    }
+    if (org?.gstin) { doc.text(`GSTIN: ${org.gstin}`, textX, detailY); detailY += 4; }
+    if (org?.phone) { doc.text(`Phone: ${org.phone}`, textX, detailY); detailY += 4; }
+    if (org?.email) { doc.text(`Email: ${org.email}`, textX, detailY); detailY += 4; }
+
+    const headerHeight = Math.max(logoHeight + 4, detailY - textY + 4);
+    y += headerHeight + 2;
+    doc.setDrawColor("#000000");
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 6;
+
+    // Title
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor("#0D47A1");
-    const title = `Purchase Register – ${startDate} to ${endDate}`;
-    doc.text(title, pageWidth / 2, y, { align: "center" });
+    doc.setTextColor("#000000");
+    doc.text(`Purchase Register – ${startDate} to ${endDate}`, pageWidth / 2, y, { align: "center" });
     y += 10;
 
-    const summaryData = [
-      ["Total Taxable", `₹ ${summaries.totalTaxable.toLocaleString("en-IN")}`],
-      ["Total GST", `₹ ${summaries.totalGST.toLocaleString("en-IN")}`],
-      ["Total ITC Claimed", `₹ ${summaries.totalITC.toLocaleString("en-IN")}`],
-      ["Total Amount", `₹ ${summaries.totalAmount.toLocaleString("en-IN")}`],
-      ["Invoices", summaries.invoiceCount],
-      ["Vendors", summaries.vendorCount],
+    // Summary boxes
+    const boxWidth = (pageWidth - 2 * margin - 30) / 6;
+    const boxHeight = 16;
+    const boxY = y;
+    const summaryItems = [
+      { label: "Total Taxable", value: summaries.totalTaxable },
+      { label: "Total GST", value: summaries.totalGST },
+      { label: "ITC Claimed", value: summaries.totalITC },
+      { label: "Total Amount", value: summaries.totalAmount },
+      { label: "Invoices", value: summaries.invoiceCount },
+      { label: "Vendors", value: summaries.vendorCount },
     ];
-    autoTable(doc, {
-      startY: y,
-      body: summaryData,
-      theme: "plain",
-      styles: { fontSize: 8, cellPadding: 2 },
-      columnStyles: {
-        0: { fontStyle: "bold", cellWidth: 40 },
-        1: { cellWidth: 40, halign: "right" },
-      },
-      margin: { left: margin, right: margin },
-    });
-    y = doc.lastAutoTable.finalY + 8;
 
+    summaryItems.forEach((item, i) => {
+      const x = margin + i * (boxWidth + 5);
+      doc.setDrawColor("#000000");
+      doc.setFillColor(255, 255, 255);
+      doc.rect(x, boxY, boxWidth, boxHeight, "FD");
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.text(item.label, x + 2, boxY + 5);
+      if (typeof item.value === "number") {
+        drawCurrency(doc, item.value, x + 2, boxY + 13, 8, "left", "#000");
+      } else {
+        doc.text(item.value.toString(), x + 2, boxY + 13);
+      }
+    });
+    y += boxHeight + 12;
+
+    // Table
     const tableRows = expenses.map((e) => [
       e.expense_date,
       e.vendors?.vendor_name || "—",
       e.invoice_number || "—",
       e.category || "—",
-      `₹ ${Number(e.amount || 0).toLocaleString("en-IN")}`,
-      `₹ ${Number(e.gst_amount || 0).toLocaleString("en-IN")}`,
-      `₹ ${(Number(e.amount || 0) + Number(e.gst_amount || 0)).toLocaleString("en-IN")}`,
-      e.itc_claimed ? "✓" : "✗",
+      e.amount || 0,
+      e.gst_amount || 0,
+      (Number(e.amount || 0) + Number(e.gst_amount || 0)),
+      e.itc_claimed ? "Yes" : "No",
       e.tax_rates?.name || "—",
     ]);
 
@@ -483,9 +504,9 @@ export default function PurchaseRegister() {
       startY: y,
       head: [["Date", "Vendor", "Invoice No", "Category", "Taxable", "GST", "Total", "ITC", "Tax Rate"]],
       body: tableRows,
-      theme: "grid",
-      styles: { fontSize: 7, cellPadding: 2 },
-      headStyles: { fillColor: "#0D47A1", textColor: "#FFFFFF", fontSize: 7 },
+      theme: "plain",
+      styles: { fontSize: 7, textColor: [0,0,0], fillColor: [255,255,255], lineColor: [0,0,0], lineWidth: 0.2 },
+      headStyles: { fillColor: [255,255,255], textColor: [0,0,0], fontStyle: "bold", lineWidth: 0.2, lineColor: [0,0,0] },
       columnStyles: {
         0: { cellWidth: 22 },
         1: { cellWidth: 35 },
@@ -494,24 +515,37 @@ export default function PurchaseRegister() {
         4: { cellWidth: 22, halign: "right" },
         5: { cellWidth: 22, halign: "right" },
         6: { cellWidth: 22, halign: "right" },
-        7: { cellWidth: 12, halign: "center" },
-        8: { cellWidth: 20 },
+        7: { cellWidth: 15, halign: "center" },
+        8: { cellWidth: 25 },
       },
       margin: { left: margin, right: margin },
+      willDrawCell: (data) => {
+        if ([4,5,6].includes(data.column.index) && typeof data.cell.raw === "number") {
+          data.cell.text = [];
+        }
+      },
+      didDrawCell: (data) => {
+        if ([4,5,6].includes(data.column.index) && typeof data.cell.raw === "number") {
+          drawCurrency(doc, data.cell.raw, data.cell.x + data.cell.width - 2, data.cell.y + data.cell.height / 2 + 1.5, 7, "right", "#000");
+        }
+      },
     });
 
-    const footerY = doc.internal.pageSize.getHeight() - 10;
+    y = doc.lastAutoTable.finalY + 10;
+
+    // Footer
+    const footerY = pageHeight - margin - 5;
     doc.setFontSize(7);
-    doc.setTextColor("#999");
+    doc.setTextColor("#000000");
     doc.setFont("helvetica", "italic");
     doc.text(`Generated on ${new Date().toLocaleString()}`, margin, footerY);
-    doc.text(`© ${orgName}`, pageWidth / 2, footerY, { align: "center" });
+    doc.text(`© ${org?.company_name || "Academy"}`, pageWidth / 2, footerY, { align: "center" });
 
     doc.save(`Purchase_Register_${startDate}_${endDate}.pdf`);
     toast.success("PDF exported");
   };
 
-  // ─── Print handler ─────────────────────────────────────────────────
+  /* ─── Print (window.print) kept as fallback ──────────────── */
   const handlePrint = () => {
     const content = document.getElementById("purchase-register-content")?.innerHTML;
     if (!content) return;
@@ -520,20 +554,20 @@ export default function PurchaseRegister() {
       <html><head><title>Purchase Register</title>
       <style>
         body { font-family: Arial, sans-serif; margin: 30px; color: #222; }
-        .header { display: flex; align-items: center; border-bottom: 2px solid #0D47A1; padding-bottom: 8px; margin-bottom: 15px; }
-        .header .org-name { font-size: 18px; font-weight: 700; color: #0D47A1; }
+        .header { display: flex; align-items: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 15px; }
+        .header .org-name { font-size: 18px; font-weight: 700; color: #000; }
         .header .org-details { font-size: 10px; color: #555; }
-        h1 { text-align: center; color: #0D47A1; font-size: 16px; margin: 10px 0; }
+        h1 { text-align: center; color: #000; font-size: 16px; margin: 10px 0; }
         table { width: 100%; border-collapse: collapse; font-size: 9px; }
         th, td { padding: 4px 6px; border: 1px solid #bbb; text-align: right; }
-        th { background-color: #E3F2FD; text-align: left; }
+        th { background-color: #f0f0f0; text-align: left; }
         .summary-card { border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 6px; display: inline-block; min-width: 120px; }
         .summary-card .label { font-size: 8px; color: #888; }
         .summary-card .value { font-size: 14px; font-weight: 700; }
         .footer { margin-top: 20px; font-size: 8px; color: #888; text-align: center; border-top: 1px solid #ddd; padding-top: 8px; }
       </style></head>
       <body>
-        <div class="header"><div><div class="org-name">${org?.company_name || "ShreeVidhya Academy"}</div><div class="org-details">${org?.address || ""}</div><div class="org-details">Ph: ${org?.phone || ""} | Email: ${org?.email || ""}</div></div></div>
+        <div class="header"><div><div class="org-name">${org?.company_name || "Academy"}</div><div class="org-details">${org?.address || ""}</div><div class="org-details">Ph: ${org?.phone || ""} | Email: ${org?.email || ""}</div></div></div>
         <h1>Purchase Register – ${startDate} to ${endDate}</h1>
         <div id="purchase-register-content">${content}</div>
         <div class="footer">Generated on ${new Date().toLocaleString()} – ${org?.company_name || ""}</div>
@@ -546,38 +580,21 @@ export default function PurchaseRegister() {
   return (
     <>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-        <h1 className="text-3xl font-righteous text-primary-dark">Purchase Register</h1>
+        <h1 className="text-3xl font-righteous text-gray-900">Purchase Register</h1>
         <div className="flex flex-wrap gap-2">
-          {/* 👇 Send Report button */}
-          <button
-            onClick={sendReportEmail}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
-          >
+          <button onClick={sendReportEmail} className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors">
             <Mail size={16} /> Send Report
           </button>
-          <button
-            onClick={handlePrint}
-            className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
-          >
+          <button onClick={handlePrint} className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-sm font-medium transition-colors">
             <Printer size={16} /> Print
           </button>
-          <button
-            onClick={handleExportCSV}
-            className="border border-primary text-primary px-4 py-2 rounded-lg text-sm flex items-center gap-2 hover:bg-primary/10 transition"
-          >
+          <button onClick={handleExportCSV} className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm">
             <Download size={16} /> CSV
           </button>
-          <button
-            onClick={handleExportPDF}
-            className="border border-primary text-primary px-4 py-2 rounded-lg text-sm flex items-center gap-2 hover:bg-primary/10 transition"
-          >
+          <button onClick={handleExportPDF} className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm">
             <FileText size={16} /> PDF
           </button>
-          <button
-            onClick={() => refetch()}
-            disabled={isLoading}
-            className="border px-4 py-2 rounded-lg text-sm flex items-center gap-2 hover:bg-gray-50 transition disabled:opacity-50"
-          >
+          <button onClick={() => refetch()} disabled={isLoading} className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm disabled:opacity-50">
             <Loader size={16} className={isLoading ? "animate-spin" : ""} />
             Refresh
           </button>
@@ -585,59 +602,37 @@ export default function PurchaseRegister() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-4 mb-6 bg-white p-4 rounded-xl shadow-sm">
+      <div className="flex flex-wrap gap-4 mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-200">
         <div>
-          <label className="text-sm font-medium text-secondary-dark">From:</label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="ml-2 border rounded-lg p-2 text-sm focus:ring-1 focus:ring-primary"
-          />
+          <label className="text-sm font-medium text-gray-700 mr-2">From:</label>
+          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="border rounded-lg p-2 text-sm" />
         </div>
         <div>
-          <label className="text-sm font-medium text-secondary-dark">To:</label>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="ml-2 border rounded-lg p-2 text-sm focus:ring-1 focus:ring-primary"
-          />
+          <label className="text-sm font-medium text-gray-700 mr-2">To:</label>
+          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="border rounded-lg p-2 text-sm" />
         </div>
         <div>
-          <label className="text-sm font-medium text-secondary-dark">Vendor:</label>
-          <select
-            value={vendorFilter}
-            onChange={(e) => setVendorFilter(e.target.value)}
-            className="ml-2 border rounded-lg p-2 text-sm focus:ring-1 focus:ring-primary"
-          >
+          <label className="text-sm font-medium text-gray-700 mr-2">Vendor:</label>
+          <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)} className="border rounded-lg p-2 text-sm">
             <option value="">All Vendors</option>
-            {vendors.map((v) => (
-              <option key={v.id} value={v.id}>{v.vendor_name}</option>
-            ))}
+            {vendors.map(v => <option key={v.id} value={v.id}>{v.vendor_name}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-sm font-medium text-secondary-dark">Tax Rate:</label>
-          <select
-            value={taxRateFilter}
-            onChange={(e) => setTaxRateFilter(e.target.value)}
-            className="ml-2 border rounded-lg p-2 text-sm focus:ring-1 focus:ring-primary"
-          >
+          <label className="text-sm font-medium text-gray-700 mr-2">Tax Rate:</label>
+          <select value={taxRateFilter} onChange={(e) => setTaxRateFilter(e.target.value)} className="border rounded-lg p-2 text-sm">
             <option value="">All Rates</option>
-            {taxRates.map((t) => (
-              <option key={t.id} value={t.id}>{t.name} ({t.rate}%)</option>
-            ))}
+            {taxRates.map(t => <option key={t.id} value={t.id}>{t.name} ({t.rate}%)</option>)}
           </select>
         </div>
         <div className="relative flex-1 min-w-[200px]">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
             placeholder="Search by description, bill no, vendor..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm focus:ring-1 focus:ring-primary"
+            className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm"
           />
         </div>
       </div>
@@ -647,78 +642,70 @@ export default function PurchaseRegister() {
         {/* Summary Cards */}
         {!isLoading && expenses.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-            <div className="bg-white rounded-xl shadow-sm p-4 border">
-              <p className="text-xs text-secondary-light">Total Taxable</p>
-              <p className="text-xl font-bold text-primary-dark">
-                ₹ {summaries.totalTaxable.toLocaleString("en-IN")}
-              </p>
+            <div className="bg-white rounded-xl shadow-sm p-4 border text-center">
+              <p className="text-xs text-gray-500">Total Taxable</p>
+              <p className="text-xl font-bold text-gray-900">₹ {summaries.totalTaxable.toLocaleString("en-IN")}</p>
             </div>
-            <div className="bg-white rounded-xl shadow-sm p-4 border">
-              <p className="text-xs text-secondary-light">Total GST</p>
-              <p className="text-xl font-bold text-blue-700">
-                ₹ {summaries.totalGST.toLocaleString("en-IN")}
-              </p>
+            <div className="bg-white rounded-xl shadow-sm p-4 border text-center">
+              <p className="text-xs text-gray-500">Total GST</p>
+              <p className="text-xl font-bold text-gray-900">₹ {summaries.totalGST.toLocaleString("en-IN")}</p>
             </div>
-            <div className="bg-white rounded-xl shadow-sm p-4 border border-green-200">
-              <p className="text-xs text-secondary-light">ITC Claimed</p>
-              <p className="text-xl font-bold text-green-700">
-                ₹ {summaries.totalITC.toLocaleString("en-IN")}
-              </p>
+            <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200 text-center">
+              <p className="text-xs text-gray-500">ITC Claimed</p>
+              <p className="text-xl font-bold text-gray-900">₹ {summaries.totalITC.toLocaleString("en-IN")}</p>
             </div>
-            <div className="bg-white rounded-xl shadow-sm p-4 border">
-              <p className="text-xs text-secondary-light">Total Amount</p>
-              <p className="text-xl font-bold text-indigo-700">
-                ₹ {summaries.totalAmount.toLocaleString("en-IN")}
-              </p>
+            <div className="bg-white rounded-xl shadow-sm p-4 border text-center">
+              <p className="text-xs text-gray-500">Total Amount</p>
+              <p className="text-xl font-bold text-gray-900">₹ {summaries.totalAmount.toLocaleString("en-IN")}</p>
             </div>
-            <div className="bg-white rounded-xl shadow-sm p-4 border">
-              <p className="text-xs text-secondary-light">Invoices</p>
-              <p className="text-xl font-bold text-secondary-dark">{summaries.invoiceCount}</p>
+            <div className="bg-white rounded-xl shadow-sm p-4 border text-center">
+              <p className="text-xs text-gray-500">Invoices</p>
+              <p className="text-xl font-bold text-gray-900">{summaries.invoiceCount}</p>
             </div>
-            <div className="bg-white rounded-xl shadow-sm p-4 border">
-              <p className="text-xs text-secondary-light">Vendors</p>
-              <p className="text-xl font-bold text-secondary-dark">{summaries.vendorCount}</p>
+            <div className="bg-white rounded-xl shadow-sm p-4 border text-center">
+              <p className="text-xs text-gray-500">Vendors</p>
+              <p className="text-xl font-bold text-gray-900">{summaries.vendorCount}</p>
             </div>
           </div>
         )}
 
         {/* Tax Rate Breakdown */}
         {summaries.byRate.length > 0 && (
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
-            <h2 className="text-lg font-semibold p-4 border-b bg-slate-50 flex items-center gap-2">
-              <IndianRupee size={18} /> Tax Rate Breakdown
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6 border border-gray-200">
+            <h2 className="text-lg font-semibold p-4 border-b bg-gray-50 text-gray-900">
+              <IndianRupee size={18} className="inline mr-2" /> Tax Rate Breakdown
             </h2>
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-slate-100">
+                <thead className="bg-gray-50">
                   <tr>
-                    <th className="p-3 text-left text-sm">Tax Rate</th>
-                    <th className="p-3 text-right text-sm">Count</th>
-                    <th className="p-3 text-right text-sm">Taxable</th>
-                    <th className="p-3 text-right text-sm">GST</th>
-                    <th className="p-3 text-right text-sm">ITC</th>
+                    <th className="p-3 text-left text-sm text-gray-700">Tax Rate</th>
+                    <th className="p-3 text-right text-sm text-gray-700">Count</th>
+                    <th className="p-3 text-right text-sm text-gray-700">Taxable</th>
+                    <th className="p-3 text-right text-sm text-gray-700">GST</th>
+                    <th className="p-3 text-right text-sm text-gray-700">ITC</th>
                   </tr>
                 </thead>
                 <tbody>
                   {summaries.byRate.map((rate, idx) => (
                     <tr key={idx} className="border-t hover:bg-gray-50">
-                      <td className="p-3 text-sm">{rate.rateName} ({rate.ratePercent}%)</td>
-                      <td className="p-3 text-sm text-right">{rate.count}</td>
-                      <td className="p-3 text-sm text-right">₹ {rate.taxable.toLocaleString("en-IN")}</td>
-                      <td className="p-3 text-sm text-right">₹ {rate.gst.toLocaleString("en-IN")}</td>
-                      <td className="p-3 text-sm text-right">₹ {rate.itc.toLocaleString("en-IN")}</td>
+                      <td className="p-3 text-sm text-gray-900">{rate.rateName} ({rate.ratePercent}%)</td>
+                      <td className="p-3 text-sm text-right text-gray-900">{rate.count}</td>
+                      <td className="p-3 text-sm text-right text-gray-900">₹ {rate.taxable.toLocaleString("en-IN")}</td>
+                      <td className="p-3 text-sm text-right text-gray-900">₹ {rate.gst.toLocaleString("en-IN")}</td>
+                      <td className="p-3 text-sm text-right text-gray-900">₹ {rate.itc.toLocaleString("en-IN")}</td>
                     </tr>
                   ))}
-                  <tfoot className="bg-slate-50 border-t font-medium">
-                    <tr>
-                      <td className="p-3">Total</td>
-                      <td className="p-3 text-right">{expenses.length}</td>
-                      <td className="p-3 text-right">₹ {summaries.totalTaxable.toLocaleString("en-IN")}</td>
-                      <td className="p-3 text-right">₹ {summaries.totalGST.toLocaleString("en-IN")}</td>
-                      <td className="p-3 text-right">₹ {summaries.totalITC.toLocaleString("en-IN")}</td>
-                    </tr>
-                  </tfoot>
                 </tbody>
+                <tfoot className="bg-gray-50 border-t font-medium">
+                  <tr>
+                    <td className="p-3 text-gray-900">Total</td>
+                    <td className="p-3 text-right text-gray-900">{expenses.length}</td>
+                    <td className="p-3 text-right text-gray-900">₹ {summaries.totalTaxable.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-right text-gray-900">₹ {summaries.totalGST.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-right text-gray-900">₹ {summaries.totalITC.toLocaleString("en-IN")}</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           </div>
@@ -726,86 +713,86 @@ export default function PurchaseRegister() {
 
         {/* Vendor Breakdown */}
         {summaries.byVendor.length > 0 && (
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
-            <h2 className="text-lg font-semibold p-4 border-b bg-slate-50 flex items-center gap-2">
-              <Building size={18} /> Vendor Summary
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6 border border-gray-200">
+            <h2 className="text-lg font-semibold p-4 border-b bg-gray-50 text-gray-900">
+              <Building size={18} className="inline mr-2" /> Vendor Summary
             </h2>
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-slate-100">
+                <thead className="bg-gray-50">
                   <tr>
-                    <th className="p-3 text-left text-sm">Vendor</th>
-                    <th className="p-3 text-left text-sm">GSTIN</th>
-                    <th className="p-3 text-right text-sm">Count</th>
-                    <th className="p-3 text-right text-sm">Taxable</th>
-                    <th className="p-3 text-right text-sm">GST</th>
-                    <th className="p-3 text-right text-sm">ITC</th>
+                    <th className="p-3 text-left text-sm text-gray-700">Vendor</th>
+                    <th className="p-3 text-left text-sm text-gray-700">GSTIN</th>
+                    <th className="p-3 text-right text-sm text-gray-700">Count</th>
+                    <th className="p-3 text-right text-sm text-gray-700">Taxable</th>
+                    <th className="p-3 text-right text-sm text-gray-700">GST</th>
+                    <th className="p-3 text-right text-sm text-gray-700">ITC</th>
                   </tr>
                 </thead>
                 <tbody>
                   {summaries.byVendor.map((vendor, idx) => (
                     <tr key={idx} className="border-t hover:bg-gray-50">
-                      <td className="p-3 text-sm">{vendor.vendor_name}</td>
-                      <td className="p-3 text-sm">{vendor.gstin || "—"}</td>
-                      <td className="p-3 text-sm text-right">{vendor.count}</td>
-                      <td className="p-3 text-sm text-right">₹ {vendor.taxable.toLocaleString("en-IN")}</td>
-                      <td className="p-3 text-sm text-right">₹ {vendor.gst.toLocaleString("en-IN")}</td>
-                      <td className="p-3 text-sm text-right">₹ {vendor.itc.toLocaleString("en-IN")}</td>
+                      <td className="p-3 text-sm text-gray-900">{vendor.vendor_name}</td>
+                      <td className="p-3 text-sm text-gray-900">{vendor.gstin || "—"}</td>
+                      <td className="p-3 text-sm text-right text-gray-900">{vendor.count}</td>
+                      <td className="p-3 text-sm text-right text-gray-900">₹ {vendor.taxable.toLocaleString("en-IN")}</td>
+                      <td className="p-3 text-sm text-right text-gray-900">₹ {vendor.gst.toLocaleString("en-IN")}</td>
+                      <td className="p-3 text-sm text-right text-gray-900">₹ {vendor.itc.toLocaleString("en-IN")}</td>
                     </tr>
                   ))}
-                  <tfoot className="bg-slate-50 border-t font-medium">
-                    <tr>
-                      <td className="p-3">Total</td>
-                      <td className="p-3"></td>
-                      <td className="p-3 text-right">{expenses.length}</td>
-                      <td className="p-3 text-right">₹ {summaries.totalTaxable.toLocaleString("en-IN")}</td>
-                      <td className="p-3 text-right">₹ {summaries.totalGST.toLocaleString("en-IN")}</td>
-                      <td className="p-3 text-right">₹ {summaries.totalITC.toLocaleString("en-IN")}</td>
-                    </tr>
-                  </tfoot>
                 </tbody>
+                <tfoot className="bg-gray-50 border-t font-medium">
+                  <tr>
+                    <td className="p-3 text-gray-900">Total</td>
+                    <td className="p-3"></td>
+                    <td className="p-3 text-right text-gray-900">{expenses.length}</td>
+                    <td className="p-3 text-right text-gray-900">₹ {summaries.totalTaxable.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-right text-gray-900">₹ {summaries.totalGST.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-right text-gray-900">₹ {summaries.totalITC.toLocaleString("en-IN")}</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           </div>
         )}
 
         {/* Detailed Table */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <h2 className="text-lg font-semibold p-4 border-b bg-slate-50 flex items-center gap-2">
-            <FileText size={18} /> Detailed Entries
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
+          <h2 className="text-lg font-semibold p-4 border-b bg-gray-50 text-gray-900">
+            <FileText size={18} className="inline mr-2" /> Detailed Entries
           </h2>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px]">
-              <thead className="bg-slate-100">
+              <thead className="bg-gray-50">
                 <tr>
-                  <th className="p-3 text-left text-sm">Date</th>
-                  <th className="p-3 text-left text-sm">Vendor</th>
-                  <th className="p-3 text-left text-sm">Invoice No</th>
-                  <th className="p-3 text-left text-sm">Category</th>
-                  <th className="p-3 text-left text-sm">Description</th>
-                  <th className="p-3 text-right text-sm">Taxable</th>
-                  <th className="p-3 text-right text-sm">GST</th>
-                  <th className="p-3 text-right text-sm">Total</th>
-                  <th className="p-3 text-center text-sm">ITC</th>
-                  <th className="p-3 text-left text-sm">Tax Rate</th>
+                  <th className="p-3 text-left text-sm text-gray-700">Date</th>
+                  <th className="p-3 text-left text-sm text-gray-700">Vendor</th>
+                  <th className="p-3 text-left text-sm text-gray-700">Invoice No</th>
+                  <th className="p-3 text-left text-sm text-gray-700">Category</th>
+                  <th className="p-3 text-left text-sm text-gray-700">Description</th>
+                  <th className="p-3 text-right text-sm text-gray-700">Taxable</th>
+                  <th className="p-3 text-right text-sm text-gray-700">GST</th>
+                  <th className="p-3 text-right text-sm text-gray-700">Total</th>
+                  <th className="p-3 text-center text-sm text-gray-700">ITC</th>
+                  <th className="p-3 text-left text-sm text-gray-700">Tax Rate</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={10} className="p-6 text-center text-secondary">Loading…</td></tr>
+                  <tr><td colSpan={10} className="p-6 text-center text-gray-500">Loading…</td></tr>
                 ) : expenses.length === 0 ? (
-                  <tr><td colSpan={10} className="p-6 text-center text-secondary">No expenses found</td></tr>
+                  <tr><td colSpan={10} className="p-6 text-center text-gray-500">No expenses found</td></tr>
                 ) : (
                   expenses.map((e) => (
                     <tr key={e.id} className="border-t hover:bg-gray-50">
-                      <td className="p-3 text-sm">{e.expense_date}</td>
-                      <td className="p-3 text-sm">{e.vendors?.vendor_name || "—"}</td>
-                      <td className="p-3 text-sm">{e.invoice_number || "—"}</td>
-                      <td className="p-3 text-sm">{e.category || "—"}</td>
-                      <td className="p-3 text-sm">{e.description || "—"}</td>
-                      <td className="p-3 text-sm text-right">₹ {Number(e.amount || 0).toLocaleString("en-IN")}</td>
-                      <td className="p-3 text-sm text-right">₹ {Number(e.gst_amount || 0).toLocaleString("en-IN")}</td>
-                      <td className="p-3 text-sm text-right font-medium">
+                      <td className="p-3 text-sm text-gray-900">{e.expense_date}</td>
+                      <td className="p-3 text-sm text-gray-900">{e.vendors?.vendor_name || "—"}</td>
+                      <td className="p-3 text-sm text-gray-900">{e.invoice_number || "—"}</td>
+                      <td className="p-3 text-sm text-gray-900">{e.category || "—"}</td>
+                      <td className="p-3 text-sm text-gray-900">{e.description || "—"}</td>
+                      <td className="p-3 text-sm text-right text-gray-900">₹ {Number(e.amount || 0).toLocaleString("en-IN")}</td>
+                      <td className="p-3 text-sm text-right text-gray-900">₹ {Number(e.gst_amount || 0).toLocaleString("en-IN")}</td>
+                      <td className="p-3 text-sm text-right font-medium text-gray-900">
                         ₹ {(Number(e.amount || 0) + Number(e.gst_amount || 0)).toLocaleString("en-IN")}
                       </td>
                       <td className="p-3 text-sm text-center">
@@ -815,19 +802,19 @@ export default function PurchaseRegister() {
                           <span className="text-gray-400">—</span>
                         )}
                       </td>
-                      <td className="p-3 text-sm">{e.tax_rates?.name || "—"}</td>
+                      <td className="p-3 text-sm text-gray-900">{e.tax_rates?.name || "—"}</td>
                     </tr>
                   ))
                 )}
               </tbody>
               {expenses.length > 0 && (
-                <tfoot className="bg-slate-50 border-t font-medium">
+                <tfoot className="bg-gray-50 border-t font-medium">
                   <tr>
-                    <td colSpan={5} className="p-3 text-right">Total</td>
-                    <td className="p-3 text-right">₹ {summaries.totalTaxable.toLocaleString("en-IN")}</td>
-                    <td className="p-3 text-right">₹ {summaries.totalGST.toLocaleString("en-IN")}</td>
-                    <td className="p-3 text-right">₹ {summaries.totalAmount.toLocaleString("en-IN")}</td>
-                    <td className="p-3 text-center">₹ {summaries.totalITC.toLocaleString("en-IN")}</td>
+                    <td colSpan={5} className="p-3 text-right text-gray-900">Total</td>
+                    <td className="p-3 text-right text-gray-900">₹ {summaries.totalTaxable.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-right text-gray-900">₹ {summaries.totalGST.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-right text-gray-900">₹ {summaries.totalAmount.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-center text-gray-900">₹ {summaries.totalITC.toLocaleString("en-IN")}</td>
                     <td className="p-3"></td>
                   </tr>
                 </tfoot>
@@ -840,8 +827,8 @@ export default function PurchaseRegister() {
       {/* Loading overlay */}
       {isLoading && (
         <div className="fixed bottom-4 right-4 bg-white shadow-lg rounded-lg p-4 flex items-center gap-3 border">
-          <Loader className="w-5 h-5 animate-spin text-primary" />
-          <span className="text-sm text-secondary-dark">Loading purchase data...</span>
+          <Loader className="w-5 h-5 animate-spin text-gray-600" />
+          <span className="text-sm text-gray-700">Loading purchase data...</span>
         </div>
       )}
     </>

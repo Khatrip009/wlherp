@@ -81,12 +81,6 @@ async function sendPurchaseInvoiceReceivedNotification(invoiceId, context) {
 
 // ─── HELPERS (existing) ─────────────────────────────────────────────
 
-async function generateInvoiceNumber() {
-  const { data, error } = await supabase.rpc("generate_purchase_invoice_number");
-  if (error) throw error;
-  return data;
-}
-
 // Scoped tax‑rate fetch
 async function computeTaxableAmounts(item, vendorState, orgState, branchId, financialYearId) {
   const taxable = parseFloat(item.quantity) * parseFloat(item.unit_price);
@@ -204,8 +198,7 @@ export async function createPurchaseInvoice(payload, context) {
     })
   );
 
-  const invoiceNumber = await generateInvoiceNumber();
-
+  
   // Determine final status
   const finalStatus = status || "Draft";
 
@@ -213,7 +206,7 @@ export async function createPurchaseInvoice(payload, context) {
   const { data: invoice, error } = await supabase
     .from("purchase_invoices")
     .insert({
-      invoice_number: invoiceNumber,
+      
       invoice_date: invoice_date || new Date().toISOString().split("T")[0],
       vendor_id,
       purchase_order_id: purchase_order_id || null,

@@ -82,6 +82,7 @@ function getMenuItems(role) {
         { key: "/subjects", label: <Link to="/subjects">Subjects</Link> },
         { key: "/parents", label: <Link to="/parents">Parents</Link> },
         { key: "/mediums", label: <Link to="/mediums">Mediums</Link> },
+        { key: "/fees/structures", label: <Link to="/fees/structures">Fee Structures</Link> }, // ✅ Added
         { key: "/tax-settings", label: <Link to="/tax-settings">Tax Rates</Link> },
       ],
     },
@@ -198,7 +199,7 @@ function getMenuItems(role) {
 
 export default function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);   // NEW
+  const [showHelp, setShowHelp] = useState(false);
 
   const location = useLocation();
   const { profile } = useAuth();
@@ -227,7 +228,6 @@ export default function AdminLayout() {
     { key: "l", ctrl: true, shift: true, path: "/learning-resources", description: "Learning Resources" },
     { key: "p", ctrl: true, shift: true, path: "/parents", description: "Parents" },
     { key: "g", ctrl: true, shift: true, path: "/accounting", description: "Accounting" },
-    // Help shortcut
     { key: "?", ctrl: true, shift: true, description: "Show Help", handler: () => setShowHelp(true) },
   ];
 
@@ -265,10 +265,8 @@ export default function AdminLayout() {
     }),
   ];
 
-  // Determine selected key
   const selectedKey = pathSnippets.length === 0 ? "/" : "/" + pathSnippets[0];
 
-  // ── Branch / FY change handlers ──
   const handleBranchChange = (e) => {
     const selected = branches.find((b) => b.id == e.target.value);
     if (selected) {
@@ -332,22 +330,23 @@ export default function AdminLayout() {
       </Sider>
 
       <Layout style={{ marginLeft: collapsed ? 0 : 200 }}>
+        {/* ── Responsive Header ── */}
         <Header
           style={{
-            padding: "0 12px sm:0 24px",
+            padding: "8px 12px",
             background: token.colorBgContainer,
             display: "flex",
+            flexWrap: "wrap",
             alignItems: "center",
-            justifyContent: "space-between",
+            gap: "8px",
             boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
             zIndex: 1,
-            flexWrap: "wrap",
-            gap: "8px",
             minHeight: "56px",
             height: "auto",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* Left section: toggle + date */}
+          <div className="flex items-center gap-2 order-1 flex-shrink-0">
             <Button
               type="text"
               icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
@@ -367,24 +366,18 @@ export default function AdminLayout() {
             </div>
           </div>
 
-          <div style={{ flex: "1 1 160px", minWidth: "120px", margin: "0 8px" }}>
+          {/* Search bar: full width on small, flex-1 on larger */}
+          <div className="w-full sm:w-auto sm:flex-1 order-3 sm:order-2">
             <GlobalSearch />
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              flexWrap: "wrap",
-              justifyContent: "flex-end",
-            }}
-          >
+          {/* Right section: branch, FY, notification, user */}
+          <div className="flex items-center gap-2 order-2 sm:order-3 flex-shrink-0 flex-wrap justify-end">
             {!isStudent && (
               <select
                 value={branch?.id || ""}
                 onChange={handleBranchChange}
-                className="border border-gray-300 rounded px-1.5 py-1 text-xs sm:text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600 max-w-[100px] sm:max-w-[140px] truncate"
+                className="border border-gray-300 rounded px-1.5 py-1 text-xs sm:text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600 max-w-[80px] sm:max-w-[120px] truncate"
               >
                 {branches.length === 0 ? (
                   <option value="" disabled>Loading...</option>
@@ -402,7 +395,7 @@ export default function AdminLayout() {
               <select
                 value={selectedFinancialYear?.id || ""}
                 onChange={handleFinancialYearChange}
-                className="border border-gray-300 rounded px-1.5 py-1 text-xs sm:text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600 max-w-[80px] sm:max-w-[120px] truncate"
+                className="border border-gray-300 rounded px-1.5 py-1 text-xs sm:text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600 max-w-[70px] sm:max-w-[100px] truncate"
               >
                 {financialYears.length === 0 ? (
                   <option value="" disabled>Loading...</option>
@@ -447,7 +440,7 @@ export default function AdminLayout() {
         </Content>
       </Layout>
 
-      {/* ── Help Modal (Keyboard Shortcuts) ── */}
+      {/* ── Help Modal ── */}
       <Modal
         title="Keyboard Shortcuts"
         open={showHelp}

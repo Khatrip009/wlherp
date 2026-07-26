@@ -95,7 +95,7 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
         const studentName = a.students ? `${a.students.first_name || ''} ${a.students.last_name || ''}`.trim() : '—';
         const admissionNo = a.students?.admission_no || '—';
         const batchName = a.batches?.batch_name || '—';
-        const mediumName = mediumMap[a.batch_id] || '—';
+        const mediumName = a.batches?.mediums?.name || '—';
         const courseName = a.batches?.courses?.course_name || '-';
         const enrollmentDate = a.enrollment_date || '—';
         const statusColor = a.status === "active" ? "#2e7d32" : a.status === "completed" ? "#1565C0" : "#757575";
@@ -273,13 +273,7 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
     staleTime: 10 * 60 * 1000,
   });
 
-  const mediumMap = useMemo(() => {
-    const map = {};
-    batches.forEach((b) => {
-      map[b.id] = b.mediums?.name || "";
-    });
-    return map;
-  }, [batches]);
+
 
   // ---- Mutations ----
   const updateMutation = useMutation({
@@ -346,7 +340,7 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
           student: `${a.students?.first_name} ${a.students?.last_name}`,
           admission_no: a.students?.admission_no,
           batch: a.batches?.batch_name,
-          medium: mediumMap[a.batch_id] || "",
+          medium: a.batches?.mediums?.name || "",
           course: a.batches?.courses?.course_name,
           enrollment_date: a.enrollment_date,
           status: a.status,
@@ -613,7 +607,7 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
                       {assignment.batches?.batch_name}
                     </td>
                     <td className="text-sm">
-                      {mediumMap[assignment.batch_id] || "—"}
+                      {assignment.batches?.mediums?.name || "—"}
                     </td>
                     <td className="text-sm">
                       {assignment.batches?.courses?.course_name || "-"}

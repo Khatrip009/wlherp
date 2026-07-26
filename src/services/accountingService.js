@@ -1,30 +1,39 @@
 // src/services/accountingService.js
 import { supabase } from "../api/supabase";
 
-// ---------- Helper to clean payload ----------
 function cleanPayload(payload) {
   const cleaned = { ...payload };
-
-  // Remove empty date fields so DB defaults can apply
   if (cleaned.entry_date === '') delete cleaned.entry_date;
   if (cleaned.date === '') delete cleaned.date;
-
-  // Convert empty strings to null for integer fields
   ['branch_id', 'financial_year_id', 'account_id'].forEach(field => {
     if (cleaned[field] === '') cleaned[field] = null;
   });
-
   return cleaned;
 }
 
-// ---------- Chart of Accounts (reads) ----------
-export async function getChartOfAccounts(branchId, financialYearId) {
+// ── Chart of Accounts (scoped by organisation & branch) ──
+export async function getChartOfAccounts(orgId, branchId, financialYearId) {
   let query = supabase
     .from("chart_of_accounts")
     .select("*")
+    .eq("organization_id", orgId)
     .order("account_code");
 
-  if (branchId) query = query.eq("branch_id", branchId);
+  if (branchId) {
+    query = query.eq("branch_id", branchId);
+  } else {
+    const { data: branches } = await supabase
+      .from("branches")
+      .select("id")
+      .eq("organization_id", orgId);
+    const branchIds = branches?.map(b => b.id) || [];
+    if (branchIds.length > 0) {
+      query = query.in("branch_id", branchIds);
+    } else {
+      return [];
+    }
+  }
+
   if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
   const { data, error } = await query;
@@ -32,8 +41,7 @@ export async function getChartOfAccounts(branchId, financialYearId) {
   return data || [];
 }
 
-// ---------- Journal Entry creation ----------
-// context: { branchId, financialYearId }
+// ── Journal Entry creation (unchanged) ──
 export async function createJournalEntry(entry, context) {
   const { date, reference, description, lines } = entry;
   const { branchId, financialYearId } = context;
@@ -72,28 +80,41 @@ export async function createJournalEntry(entry, context) {
   return journal;
 }
 
-// ---------- Ledger ----------
-export async function getAccountLedger(accountId, startDate, endDate, branchId, financialYearId) {
+// ── Account Ledger (NO mandatory financial_year_id filter) ──
+export async function getAccountLedger(accountId, startDate, endDate, orgId, branchId) {
+  let branchIds = [];
+  if (orgId) {
+    const { data: branches } = await supabase
+      .from("branches")
+      .select("id")
+      .eq("organization_id", orgId);
+    branchIds = branches?.map(b => b.id) || [];
+    if (branchIds.length === 0) return [];
+  }
+
   let query = supabase
     .from("journal_entry_lines")
-    .select("debit, credit, description, journal_entries(entry_date, reference)")
+    .select("debit, credit, description, journal_entries!inner(entry_date, reference)")
     .eq("account_id", accountId)
     .order("id", { ascending: true });
 
+  if (branchId) {
+    query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
+  } else if (branchIds.length > 0) {
+    query = query.or(`branch_id.in.(${branchIds.join(',')}),branch_id.is.null`);
+  }
+
   if (startDate) query = query.gte("journal_entries.entry_date", startDate);
   if (endDate) query = query.lte("journal_entries.entry_date", endDate);
-  if (branchId) query = query.eq("branch_id", branchId);
-  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
+  // ❗ NO financial_year_id filter – shows all transactions regardless of FY.
 
   const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
-// ---------- Trial Balance ----------
+// ── Trial Balance (unchanged) ──
 export async function getTrialBalance(asOfDate, branchId, financialYearId) {
-  // NOTE: Ensure your PostgreSQL function `get_trial_balance` accepts these parameters:
-  // p_as_of_date, p_branch_id, p_financial_year_id
   const { data, error } = await supabase
     .rpc("get_trial_balance", {
       as_of_date: asOfDate,
@@ -104,8 +125,7 @@ export async function getTrialBalance(asOfDate, branchId, financialYearId) {
   return data || [];
 }
 
-// ---------- Create Account ----------
-// context: { branchId, financialYearId }
+// ── Create Account ──
 export async function createAccount(payload, context) {
   const { branchId, financialYearId } = context;
   const cleaned = cleanPayload({
@@ -122,8 +142,7 @@ export async function createAccount(payload, context) {
   return data;
 }
 
-// ---------- Update Account ----------
-// context: { branchId, financialYearId }
+// ── Update Account ──
 export async function updateAccount(id, payload, context) {
   const { branchId, financialYearId } = context;
   const cleaned = cleanPayload({
@@ -141,7 +160,7 @@ export async function updateAccount(id, payload, context) {
   return data;
 }
 
-// ---------- Delete Account (now scoped) ----------
+// ── Delete Account ──
 export async function deleteAccount(id, branchId, financialYearId) {
   let query = supabase
     .from("chart_of_accounts")

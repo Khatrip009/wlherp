@@ -3,11 +3,8 @@ import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import { X, BookOpen, FileText, Clock, Layers } from "lucide-react";
 import { supabase } from "../api/supabase";
-import { useOrg } from "../context/OrganizationContext";
 
 export default function CourseForm({ onSubmit, onClose, initialData = {} }) {
-  const { branch, selectedFinancialYear } = useOrg();
-
   const [form, setForm] = useState({
     course_name: initialData.course_name || "",
     description: initialData.description || "",
@@ -17,17 +14,10 @@ export default function CourseForm({ onSubmit, onClose, initialData = {} }) {
   });
 
   const [mediums, setMediums] = useState([]);
-  const [isContextReady, setIsContextReady] = useState(false);
 
   useEffect(() => {
     loadMediums();
   }, []);
-
-  useEffect(() => {
-    if (branch !== undefined && selectedFinancialYear !== undefined) {
-      setIsContextReady(true);
-    }
-  }, [branch, selectedFinancialYear]);
 
   async function loadMediums() {
     try {
@@ -54,21 +44,6 @@ export default function CourseForm({ onSubmit, onClose, initialData = {} }) {
       return;
     }
 
-    // ── Context guards ──
-    if (!branch?.id) {
-      toast.error("No branch selected – please refresh.");
-      return;
-    }
-    if (!selectedFinancialYear?.id) {
-      toast.error("No financial year selected.");
-      return;
-    }
-
-    const context = {
-      branchId: branch.id,
-      financialYearId: selectedFinancialYear.id,
-    };
-
     const payload = {
       ...form,
       course_name: form.course_name.trim(),
@@ -77,17 +52,8 @@ export default function CourseForm({ onSubmit, onClose, initialData = {} }) {
       medium_id: form.medium_id || null,
     };
 
-    await onSubmit(payload, context);
-  }
-
-  if (!isContextReady) {
-    return (
-      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl p-8 shadow-xl">
-          <p className="text-secondary font-montserrat">Loading organisation data…</p>
-        </div>
-      </div>
-    );
+    // The parent component (Courses) will inject organization/financial year
+    await onSubmit(payload);
   }
 
   return (

@@ -1,5 +1,5 @@
 // src/pages/InvoiceView.jsx
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
@@ -70,6 +70,16 @@ export default function InvoiceView() {
     enabled: !!id && !!branchId && !!financialYearId,
   });
 
+  // ── Compute total paid, balance, and latest receipt number ──
+  const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+  const balance = invoice?.grand_total ? invoice.grand_total - totalPaid : 0;
+  const receiptNumber = useMemo(() => {
+    if (!payments || payments.length === 0) return null;
+    // Find the first payment that has a receipt (we want the latest one)
+    const paymentWithReceipt = payments.find(p => p.receipts && p.receipts.length > 0);
+    return paymentWithReceipt?.receipts?.[0]?.receipt_no || null;
+  }, [payments]);
+
   // ── Mutations ──
   const finalizeMutation = useMutation({
     mutationFn: () => finalizeInvoice(id, ctx),
@@ -117,7 +127,7 @@ export default function InvoiceView() {
         return;
       }
 
-      // 2. Build HTML invoice content
+      // 2. Build HTML invoice content (unchanged)
       const formatCurrency = (amount) =>
         `₹ ${Number(amount).toLocaleString("en-IN", {
           minimumFractionDigits: 2,
@@ -156,8 +166,6 @@ export default function InvoiceView() {
       `).join('');
 
       // Build payment history rows
-      const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-      const balance = grandTotal - totalPaid;
       let paymentRows = payments.map(p => `
         <tr>
           <td style="padding:4px 8px;border:1px solid #ddd;">${p.payment_date}</td>
@@ -183,6 +191,7 @@ export default function InvoiceView() {
               <div>Date: ${invoice.invoice_date}</div>
               <div>Status: ${invoice.status}</div>
               ${invoice.due_date ? `<div>Due Date: ${invoice.due_date}</div>` : ''}
+              ${receiptNumber ? `<div>Receipt No: ${receiptNumber}</div>` : ''}
             </div>
           </div>
 
@@ -215,6 +224,14 @@ export default function InvoiceView() {
               <div style="display:flex;justify-content:space-between;font-weight:bold;font-size:1.2em;border-top:2px solid ${primaryColor};margin-top:4px;padding-top:4px;">
                 <span>Grand Total:</span>
                 <span style="color:${primaryColor};">${formatCurrency(grandTotal)}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;margin-top:4px;">
+                <span>Total Paid:</span>
+                <span style="color:#2e7d32;">${formatCurrency(totalPaid)}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span>Balance Due:</span>
+                <span style="color:${balance > 0 ? '#cc0000' : '#2e7d32'};">${formatCurrency(balance)}</span>
               </div>
             </div>
           </div>
@@ -263,7 +280,7 @@ export default function InvoiceView() {
         to: recipientEmail,
         subject: `Invoice ${invoice.invoice_number} from ${org.company_name || 'Academy'}`,
         html: htmlBody,
-       // from: org?.email || undefined,
+        // from: org?.email || undefined,
       });
 
       toast.success(`Invoice sent to ${recipientEmail}`);
@@ -283,6 +300,8 @@ export default function InvoiceView() {
       const doc = await generateInvoicePDF(invoice, org, "sales", {
         autoPrint: true,
         theme,
+        paidAmount: totalPaid,
+        receiptNumber: receiptNumber,
       });
       doc.output("dataurlnewwindow");
     } catch (err) {
@@ -300,6 +319,8 @@ export default function InvoiceView() {
     try {
       const doc = await generateInvoicePDF(invoice, org, "sales", {
         theme,
+        paidAmount: totalPaid,
+        receiptNumber: receiptNumber,
       });
       doc.save(`Invoice_${invoice.invoice_number}.pdf`);
       toast.success("PDF downloaded");
@@ -328,11 +349,6 @@ export default function InvoiceView() {
   if (!invoice) {
     return <div className="p-8 text-center text-red-600">Invoice not found</div>;
   }
-
-  // ── Compute totals ──
-  const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-  const balance = invoice.grand_total - totalPaid;
-  const isFullyPaid = balance <= 0;
 
   const orgName = org?.company_name || "Academy";
   const student = invoice.students || {};
@@ -370,7 +386,6 @@ export default function InvoiceView() {
           <ArrowLeft size={18} /> Back to Invoices
         </button>
         <div className="flex flex-wrap gap-2">
-          {/* 👇 NEW Email Invoice button */}
           <button
             onClick={sendInvoiceEmail}
             disabled={sendingEmail}
@@ -424,7 +439,7 @@ export default function InvoiceView() {
               <Trash2 size={16} /> Delete
             </button>
           )}
-          {!isFullyPaid && (
+          {!balance <= 0 && (
             <button
               onClick={() => {
                 setSelectedFee({
@@ -480,6 +495,7 @@ export default function InvoiceView() {
             <div>Date: {invoice.invoice_date}</div>
             <div>Status: {invoice.status}</div>
             {invoice.due_date && <div>Due Date: {invoice.due_date}</div>}
+            {receiptNumber && <div>Receipt No: {receiptNumber}</div>}
           </div>
         </div>
 
@@ -553,6 +569,14 @@ export default function InvoiceView() {
             >
               <span>Grand Total:</span>
               <span style={{ color: primaryColor }}>{formatCurrency(grandTotal)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "4px" }}>
+              <span>Total Paid:</span>
+              <span style={{ color: "#2e7d32" }}>{formatCurrency(totalPaid)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span>Balance Due:</span>
+              <span style={{ color: balance > 0 ? "#cc0000" : "#2e7d32" }}>{formatCurrency(balance)}</span>
             </div>
           </div>
         </div>

@@ -1,3 +1,4 @@
+// src/utils/generateReportPdf.js
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -56,8 +57,7 @@ function resolvePath(obj, path) {
 export async function generateReportPdf(config, data, filters, org, theme = {}, options = {}) {
   const safeData = Array.isArray(data) ? data : [];
 
-  // ─── SET THIS VALUE TO CONTROL TOP MARGIN ON ALL PAGES ───
-  const TOP_MARGIN = 35; // mm (adjust as needed)
+  const TOP_MARGIN = 35;
 
   const pdfConfig = {
     orientation: 'landscape',
@@ -83,13 +83,7 @@ export async function generateReportPdf(config, data, filters, org, theme = {}, 
     topMargin,
   } = pdfConfig;
 
-  // ─── Theme colors and fonts ──────────────────────────────
-  const primaryColor = theme?.primary_color || "#0D47A1";
-  const primaryLight = theme?.primary_light_color || "#1565C0";
-  const primaryDark = theme?.primary_dark_color || "#0A3478";
-  const accentColor = theme?.accent_color || "#D15839";
-  const accentLight = theme?.accent_light_color || "#DD7A5F";
-  const accentDark = theme?.accent_dark_color || "#A63E2A";
+  const primaryColor = "#000000";
   const fontHeading = theme?.font_heading || "Righteous";
   const fontBody = theme?.font_body || "Montserrat";
 
@@ -97,24 +91,20 @@ export async function generateReportPdf(config, data, filters, org, theme = {}, 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
-  // ── Load logo (only for header) ──
   let logoBase64 = null;
   if (org?.logo_dark_url) {
     logoBase64 = await loadImageAsBase64(org.logo_dark_url);
   }
 
-  // ── Header drawing function ──
+  // ── Header ──
   const drawHeader = (doc, pageWidth, org, startY) => {
     if (!showHeader) return startY || 12;
-
     const logoWidth = 35;
     const logoHeight = 14;
     let y = startY || 12;
-
     if (logoBase64) {
       doc.addImage(logoBase64, "PNG", 14, y, logoWidth, logoHeight);
     }
-
     const textX = logoBase64 ? 14 + logoWidth + 4 : 14;
     const textY = y + 1;
     const companyName = org?.company_name || "ShreeVidhya Academy";
@@ -123,17 +113,14 @@ export async function generateReportPdf(config, data, filters, org, theme = {}, 
     const phone = org?.phone || "";
     const email = org?.email || "";
 
-    const headerFont = fontHeading || "helvetica";
-    const bodyFont = fontBody || "helvetica";
-
-    doc.setFont(headerFont, "bold");
+    doc.setFont(fontHeading, "bold");
     doc.setFontSize(headerFontSize);
-    doc.setTextColor(primaryColor);
+    doc.setTextColor("#000000");
     doc.text(companyName, textX, textY);
 
-    doc.setFont(bodyFont, "normal");
+    doc.setFont(fontBody, "normal");
     doc.setFontSize(7);
-    doc.setTextColor("#333");
+    doc.setTextColor("#000000");
     let detailY = textY + 4.5;
     if (address) {
       const addrLines = doc.splitTextToSize(address, pageWidth - textX - 14 - 10);
@@ -155,11 +142,10 @@ export async function generateReportPdf(config, data, filters, org, theme = {}, 
 
     const headerHeight = Math.max(logoHeight + 4, detailY - textY + 4);
     y += headerHeight + 4;
-    doc.setDrawColor(primaryColor);
+    doc.setDrawColor("#000000");
     doc.setLineWidth(0.4);
     doc.line(14, y, pageWidth - 14, y);
     y += 6;
-
     return y;
   };
 
@@ -167,10 +153,9 @@ export async function generateReportPdf(config, data, filters, org, theme = {}, 
   const drawFooter = (doc, pageWidth, pageHeight, pageNumber, totalPages) => {
     if (!showFooter) return;
     const dateStr = new Date().toLocaleString();
-    const bodyFont = fontBody || "helvetica";
-    doc.setFont(bodyFont, "italic");
+    doc.setFont(fontBody, "italic");
     doc.setFontSize(footerFontSize);
-    doc.setTextColor("#888");
+    doc.setTextColor("#000000");
     doc.text(
       `Generated on ${dateStr} | Page ${pageNumber} of ${totalPages}`,
       pageWidth / 2,
@@ -179,19 +164,18 @@ export async function generateReportPdf(config, data, filters, org, theme = {}, 
     );
   };
 
-  // ─── First page setup ──
+  // ─── First page ──
   let y = drawHeader(doc, pageWidth, org, 12);
 
-  // Title (only on first page)
+  // Title
   const title = config.title || "Report";
-  const headingFont = fontHeading || "helvetica";
-  doc.setFont(headingFont, "bold");
+  doc.setFont(fontHeading, "bold");
   doc.setFontSize(16);
-  doc.setTextColor(primaryColor);
+  doc.setTextColor("#000000");
   doc.text(title, pageWidth / 2, y, { align: "center" });
   y += 8;
 
-  // Subtitle (only on first page)
+  // Subtitle
   let subtitle = "";
   if (filters.start_date && filters.end_date) {
     subtitle = `${filters.start_date} to ${filters.end_date}`;
@@ -201,25 +185,23 @@ export async function generateReportPdf(config, data, filters, org, theme = {}, 
     subtitle = `Until ${filters.end_date}`;
   }
   if (subtitle) {
-    const bodyFont = fontBody || "helvetica";
-    doc.setFont(bodyFont, "normal");
+    doc.setFont(fontBody, "normal");
     doc.setFontSize(10);
-    doc.setTextColor("#333");
+    doc.setTextColor("#000000");
     doc.text(subtitle, pageWidth / 2, y, { align: "center" });
     y += 6;
   }
 
-  // Ensure top margin is respected
   y = Math.max(y, topMargin);
 
-  // ─── Table ──
+  // ─── Table columns and data ──
   const columns = config.columns || [];
   const head = [columns.map((col) => col.header)];
   const body = safeData.map((row) =>
     columns.map((col) => resolvePath(row, col.accessor))
   );
 
-  // Column widths
+  // Column width overrides
   const columnStyles = {};
   columns.forEach((col, idx) => {
     if (['inquiry_no', 'student', 'parent', 'course', 'source', 'status'].includes(col.accessor)) {
@@ -231,7 +213,7 @@ export async function generateReportPdf(config, data, filters, org, theme = {}, 
     }
   });
 
-  // ─── Generate table ──
+  // ─── Generate table with borders, transparent background ──
   autoTable(doc, {
     head,
     body,
@@ -241,17 +223,24 @@ export async function generateReportPdf(config, data, filters, org, theme = {}, 
       fontSize,
       cellPadding: 2,
       font: fontBody || "helvetica",
+      textColor: [0, 0, 0],
+      fillColor: [255, 255, 255],       // white background for all cells
+      lineWidth: 0.2,                   // thin border
+      lineColor: [0, 0, 0],             // black border
     },
     headStyles: {
-      fillColor: hexToRgb(primaryColor),
-      textColor: [255, 255, 255],
+      fillColor: [255, 255, 255],       // transparent header
+      textColor: [0, 0, 0],
       fontStyle: "bold",
       font: fontHeading || "helvetica",
+      lineWidth: 0.2,                   // ✅ FULL border for header cells (all sides)
+      lineColor: [0, 0, 0],
     },
-    alternateRowStyles: { fillColor: [245, 245, 245] },
+    alternateRowStyles: {
+      fillColor: [255, 255, 255],       // no alternate row color
+    },
     columnStyles,
     didDrawPage: (data) => {
-      // Draw header and footer on every page (no background)
       drawHeader(doc, pageWidth, org, 12);
       const totalPages = doc.internal.getNumberOfPages();
       drawFooter(doc, pageWidth, pageHeight, data.pageNumber, totalPages);
@@ -259,12 +248,4 @@ export async function generateReportPdf(config, data, filters, org, theme = {}, 
   });
 
   return doc;
-}
-
-// ─── Helper: convert hex color to RGB array for jsPDF ──
-function hexToRgb(hex) {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result
-    ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)]
-    : [13, 71, 161]; // fallback to #0D47A1
 }

@@ -21,9 +21,9 @@ export async function generateDailyTeacherAttendancePDF(
   data,
   startDate,
   endDate,
-  options = {}               // { org, branch, theme }
+  options = {}               // { org, branch }
 ) {
-  const { org, branch, theme } = options;
+  const { org, branch } = options;
 
   // ── Organisation & styling ─────────────────────────
   const companyName = org?.company_name || "ShreeVidhya Academy";
@@ -35,9 +35,6 @@ export async function generateDailyTeacherAttendancePDF(
 
   const branchName = branch?.branch_name || "";
   const branchAddress = branch?.address || "";
-
-  const primaryColor = theme?.primary_color || "#0D47A1";
-  const fontBody = theme?.font_body || "helvetica";
 
   // A4 Portrait
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -51,7 +48,7 @@ export async function generateDailyTeacherAttendancePDF(
     logoBase64 = await loadImage(logoUrl);
   }
 
-  // ── HEADER ────────────────────────────────────────
+  // ── HEADER (all black) ──────────────────────────────
   let y = margin;
   const logoWidth = 30;
   const logoHeight = 12;
@@ -61,14 +58,14 @@ export async function generateDailyTeacherAttendancePDF(
 
   const textX = logoBase64 ? margin + logoWidth + 4 : margin;
   const textY = y + 1;
-  doc.setFont(fontBody, "bold");
+  doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
-  doc.setTextColor(primaryColor);
+  doc.setTextColor("#000000");
   doc.text(companyName, textX, textY);
 
-  doc.setFont(fontBody, "normal");
+  doc.setFont("helvetica", "normal");
   doc.setFontSize(7.5);
-  doc.setTextColor("#555");
+  doc.setTextColor("#000000");
   let detailY = textY + 4.5;
 
   // Org address
@@ -80,15 +77,15 @@ export async function generateDailyTeacherAttendancePDF(
 
   // Branch info
   if (branchName) {
-    doc.setFont(fontBody, "bold");
+    doc.setFont("helvetica", "bold");
     doc.setFontSize(7.5);
-    doc.setTextColor(primaryColor);
+    doc.setTextColor("#000000");
     doc.text(`Branch: ${branchName}`, textX, detailY);
     detailY += 3.5;
     if (branchAddress) {
-      doc.setFont(fontBody, "normal");
+      doc.setFont("helvetica", "normal");
       doc.setFontSize(7);
-      doc.setTextColor("#555");
+      doc.setTextColor("#000000");
       const brAddrLines = doc.splitTextToSize(branchAddress, pageWidth - textX - margin - 10);
       doc.text(brAddrLines, textX, detailY);
       detailY += brAddrLines.length * 3.5 + 1;
@@ -97,7 +94,7 @@ export async function generateDailyTeacherAttendancePDF(
 
   // Contact / GSTIN line
   if (phone || email || gstin) {
-    doc.setFont(fontBody, "normal");
+    doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
     let infoLine = "";
     if (phone) infoLine += `Phone: ${phone}`;
@@ -111,29 +108,29 @@ export async function generateDailyTeacherAttendancePDF(
   y += headerHeight + 4;
 
   // Divider line
-  doc.setDrawColor(primaryColor);
+  doc.setDrawColor("#000000");
   doc.setLineWidth(0.5);
   doc.line(margin, y, pageWidth - margin, y);
   y += 6;
 
   // ── Title ──────────────────────────────────────────
-  doc.setFont(fontBody, "bold");
+  doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
-  doc.setTextColor(primaryColor);
+  doc.setTextColor("#000000");
   doc.text("Teacher Daily Attendance Report", pageWidth / 2, y, { align: "center" });
   y += 8;
-  doc.setFont(fontBody, "normal");
+  doc.setFont("helvetica", "normal");
   doc.setFontSize(11);
-  doc.setTextColor("#333");
+  doc.setTextColor("#000000");
   doc.text(`Period: ${startDate} to ${endDate}`, pageWidth / 2, y, { align: "center" });
   y += 12;
 
   if (!data.length) {
     // Add footer before returning
     const footerY = pageHeight - margin - 5;
-    doc.setFont(fontBody, "italic");
+    doc.setFont("helvetica", "italic");
     doc.setFontSize(6);
-    doc.setTextColor("#999");
+    doc.setTextColor("#000000");
     doc.text(`Generated on ${new Date().toLocaleString()}`, margin, footerY);
     doc.text(`© ${companyName}`, pageWidth - margin, footerY, { align: "right" });
     return doc;
@@ -155,13 +152,22 @@ export async function generateDailyTeacherAttendancePDF(
     startY: y,
     head: [headers],
     body: rows,
-    theme: "grid",
-    styles: { fontSize: 10, cellPadding: 3, halign: "center" },
+    theme: "plain",
+    styles: {
+      fontSize: 10,
+      cellPadding: 3,
+      textColor: [0, 0, 0],
+      fillColor: [255, 255, 255],
+      lineColor: [0, 0, 0],
+      lineWidth: 0.2,
+    },
     headStyles: {
-      fillColor: primaryColor,
-      textColor: "#FFFFFF",
+      fillColor: [255, 255, 255],
+      textColor: [0, 0, 0],
       fontSize: 10,
       fontStyle: "bold",
+      lineWidth: 0.2,
+      lineColor: [0, 0, 0],
     },
     columnStyles: {
       0: { cellWidth: 30, halign: "left" },
@@ -171,11 +177,10 @@ export async function generateDailyTeacherAttendancePDF(
     },
     margin: { left: margin, right: margin },
     didDrawPage: () => {
-      // Footer on every new page
       const footerY = pageHeight - margin - 5;
-      doc.setFont(fontBody, "italic");
+      doc.setFont("helvetica", "italic");
       doc.setFontSize(6);
-      doc.setTextColor("#999");
+      doc.setTextColor("#000000");
       doc.text(`Generated on ${new Date().toLocaleString()}`, margin, footerY);
       doc.text(`© ${companyName}`, pageWidth - margin, footerY, { align: "right" });
     },
@@ -186,15 +191,14 @@ export async function generateDailyTeacherAttendancePDF(
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
     const footerY = pageHeight - margin - 5;
-    doc.setFont(fontBody, "italic");
+    doc.setFont("helvetica", "italic");
     doc.setFontSize(6);
-    doc.setTextColor("#999");
+    doc.setTextColor("#000000");
     doc.text(`Generated on ${new Date().toLocaleString()}`, margin, footerY);
     doc.text(`© ${companyName}`, pageWidth - margin, footerY, { align: "right" });
 
-    // Optional: page numbers
     doc.setFontSize(7);
-    doc.setTextColor("#aaa");
+    doc.setTextColor("#000000");
     doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin, pageHeight - 8, { align: "right" });
   }
 

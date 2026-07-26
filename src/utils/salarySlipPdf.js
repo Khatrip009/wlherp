@@ -2,7 +2,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
-// ─── Helpers (unchanged) ──────────────────────────────────
+// ─── Helpers (black‑only version) ─────────────────────────
 function createRupeeSymbolImage() {
   const canvas = document.createElement("canvas");
   canvas.width = 30;
@@ -22,7 +22,7 @@ function getRupeeImage() {
   return rupeeImage;
 }
 
-function drawCurrency(doc, amount, x, y, fontSize = 9, align = "left", color = "#333") {
+function drawCurrency(doc, amount, x, y, fontSize = 9, align = "left", color = "#000") {
   const img = getRupeeImage();
   doc.setFontSize(fontSize);
   doc.setTextColor(color);
@@ -73,9 +73,9 @@ async function loadImageAsBase64(url) {
   }
 }
 
-// ─── Main PDF Generator (balanced A5 landscape) ───────────
+// ─── Main PDF Generator (all black, transparent table) ────
 export async function generateSalarySlipPDF(paymentData, options = {}) {
-  const { org, branch, theme } = options;
+  const { org, branch } = options;
 
   const companyName = org?.company_name || "ShreeVidhya Academy";
   const orgAddress = org?.address || "";
@@ -88,10 +88,6 @@ export async function generateSalarySlipPDF(paymentData, options = {}) {
   const branchName = branch?.branch_name || "";
   const branchAddress = branch?.address || "";
 
-  const primaryColor = theme?.primary_color || "#0D47A1";
-  const fontBody = theme?.font_body || "helvetica";
-
-  // A5 landscape: width 210, height 148
   const doc = new jsPDF({ unit: "mm", format: "a5", orientation: "landscape" });
   const pageWidth = doc.internal.pageSize.getWidth();   // 210
   const pageHeight = doc.internal.pageSize.getHeight(); // 148
@@ -102,9 +98,8 @@ export async function generateSalarySlipPDF(paymentData, options = {}) {
     logoBase64 = await loadImageAsBase64(logoUrl);
   }
 
-  // ── Header (comfortably spaced) ──
+  // ── Header ──
   let y = margin;
-
   const logoWidth = 28;
   const logoHeight = 10;
   if (logoBase64) {
@@ -113,43 +108,41 @@ export async function generateSalarySlipPDF(paymentData, options = {}) {
 
   const textX = margin + (logoBase64 ? logoWidth + 3 : 0);
   const textY = y + 1;
-  doc.setFont(fontBody, "bold");
+  // All text black
+  doc.setFont("helvetica", "bold");
   doc.setFontSize(13);
-  doc.setTextColor(primaryColor);
+  doc.setTextColor("#000000");
   doc.text(companyName, textX, textY);
 
-  doc.setFont(fontBody, "normal");
+  doc.setFont("helvetica", "normal");
   doc.setFontSize(7);
-  doc.setTextColor("#333");
+  doc.setTextColor("#000000");
   let detailY = textY + 4.5;
 
-  // Org address
   if (orgAddress) {
     const addrLines = doc.splitTextToSize(orgAddress, pageWidth - textX - margin - 10);
     doc.text(addrLines, textX, detailY);
     detailY += addrLines.length * 3.5 + 1;
   }
 
-  // Branch info
   if (branchName) {
-    doc.setFont(fontBody, "bold");
+    doc.setFont("helvetica", "bold");
     doc.setFontSize(7.5);
-    doc.setTextColor(primaryColor);
+    doc.setTextColor("#000000");
     doc.text(`Branch: ${branchName}`, textX, detailY);
     detailY += 3.5;
     if (branchAddress) {
-      doc.setFont(fontBody, "normal");
+      doc.setFont("helvetica", "normal");
       doc.setFontSize(7);
-      doc.setTextColor("#333");
+      doc.setTextColor("#000000");
       const brLines = doc.splitTextToSize(branchAddress, pageWidth - textX - margin - 10);
       doc.text(brLines, textX, detailY);
       detailY += brLines.length * 3.5 + 1;
     }
   }
 
-  // GST / registration (on one line if possible)
   if (gstin || stateCode) {
-    doc.setFont(fontBody, "normal");
+    doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
     let infoLine = "";
     if (gstin) infoLine += `GSTIN: ${gstin}`;
@@ -161,30 +154,30 @@ export async function generateSalarySlipPDF(paymentData, options = {}) {
   }
 
   y = detailY + 2;
-  doc.setDrawColor(primaryColor);
+  doc.setDrawColor("#000000");
   doc.line(margin, y, pageWidth - margin, y);
   y += 5;
 
   // ── Title ──
-  doc.setFont(fontBody, "bold");
+  doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
-  doc.setTextColor(primaryColor);
+  doc.setTextColor("#000000");
   doc.text("SALARY SLIP", pageWidth / 2, y, { align: "center" });
   y += 10;
 
-  // ── Two‑column info (nice readable size) ──
+  // ── Two‑column info ──
   const leftX = margin;
   const rightX = pageWidth - margin - 80;
 
-  doc.setFont(fontBody, "bold");
+  doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
-  doc.setTextColor(primaryColor);
+  doc.setTextColor("#000000");
   doc.text("Teacher Details", leftX, y);
   doc.text("Payment Details", rightX, y);
 
-  doc.setFont(fontBody, "normal");
+  doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.setTextColor("#333");
+  doc.setTextColor("#000000");
   let lY = y + 5;
   doc.text(`Name: ${paymentData.teacher_name || "—"}`, leftX, lY);
   lY += 5;
@@ -197,7 +190,7 @@ export async function generateSalarySlipPDF(paymentData, options = {}) {
 
   y = Math.max(lY, rY) + 5;
 
-  // ── Salary table (comfortable) ──
+  // ── Salary table (transparent, full black borders) ──
   const gross = Number(paymentData.amount || 0);
   const tdsAmount = Number(paymentData.tds_amount || 0);
   const tdsPercent = paymentData.tds_percentage || 0;
@@ -216,12 +209,26 @@ export async function generateSalarySlipPDF(paymentData, options = {}) {
     startY: y,
     head: [["Particulars", "Details"]],
     body: tableRows,
-    theme: "grid",
-    styles: { fontSize: 8, cellPadding: 2, halign: "left" },
-    headStyles: { fillColor: primaryColor, textColor: "#FFFFFF", fontStyle: "bold", fontSize: 8 },
+    theme: "plain",
+    styles: {
+      fontSize: 8,
+      cellPadding: 2,
+      textColor: [0, 0, 0],
+      fillColor: [255, 255, 255],
+      lineColor: [0, 0, 0],
+      lineWidth: 0.2,
+    },
+    headStyles: {
+      textColor: [0, 0, 0],
+      fontStyle: "bold",
+      fontSize: 8,
+      fillColor: [255, 255, 255],
+      lineWidth: 0.2,
+      lineColor: [0, 0, 0],
+    },
     columnStyles: {
-      0: { cellWidth: 65 },
-      1: { cellWidth: 85, halign: "right" },
+      0: { cellWidth: 'auto' },
+      1: { cellWidth: 'auto', halign: "right" },
     },
     margin: { left: margin, right: margin },
     willDrawCell: (data) => {
@@ -233,29 +240,29 @@ export async function generateSalarySlipPDF(paymentData, options = {}) {
       if (data.column.index === 1 && typeof data.cell.raw === "number") {
         const x = data.cell.x + data.cell.width - 2;
         const yPos = data.cell.y + data.cell.height / 2 + 1.2;
-        drawCurrency(doc, data.cell.raw, x, yPos, 8, "right", "#333");
+        drawCurrency(doc, data.cell.raw, x, yPos, 8, "right", "#000");
       }
     },
   });
 
   const tableEndY = doc.lastAutoTable.finalY;
 
-  // ── Amount in words (clear) ──
+  // ── Amount in words ──
   const wordsY = tableEndY + 6;
-  doc.setFont(fontBody, "italic");
+  doc.setFont("helvetica", "italic");
   doc.setFontSize(8);
-  doc.setTextColor("#555");
+  doc.setTextColor("#000000");
   const netWords = numberToWords(Math.round(net));
   doc.text(`In words: ${netWords} Only`, pageWidth / 2, wordsY, { align: "center" });
 
-  // ── Signatures (bottom) ──
+  // ── Signatures ──
   const footerY = pageHeight - margin - 5;
-  doc.setDrawColor("#ccc");
+  doc.setDrawColor("#000000");
   doc.line(margin, footerY, margin + 42, footerY);
   doc.line(pageWidth - margin - 42, footerY, pageWidth - margin, footerY);
-  doc.setFont(fontBody, "normal");
+  doc.setFont("helvetica", "normal");
   doc.setFontSize(7);
-  doc.setTextColor("#333");
+  doc.setTextColor("#000000");
   doc.text("Authorized Signatory", margin + 8, footerY + 4);
   doc.text("Employee", pageWidth - margin - 30, footerY + 4);
 

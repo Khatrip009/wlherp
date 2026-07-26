@@ -2,53 +2,137 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import { supabase } from "../api/supabase";
-import { getOrganization } from "../services/organizationService";
 import { useOrg } from "../context/OrganizationContext";
 
+/* ─── Correct parent IDs from your actual chart of accounts ─── */
 const GROUP_CONFIG = {
-  "Current Assets": { parent: 1000, type: "asset" },
-  "Fixed Assets": { parent: 1100, type: "asset" },
-  "Current Liabilities": { parent: 2000, type: "liability" },
-  "Long‑Term Liabilities": { parent: 2100, type: "liability" },
-  "Equity": { parent: 3000, type: "equity" },
+  "Current Assets":      { parent_id: 34, type: "asset" },
+  "Fixed Assets":        { parent_id: 35, type: "asset" },
+  "Current Liabilities": { parent_id: 36, type: "liability" },
+  "Long‑Term Liabilities":{ parent_id: 37, type: "liability" },
+  "Equity Capital":      { parent_id: 38, type: "equity" },
 };
+
+/* ─── PDF helpers ──────────────────────────────────────────── */
+async function loadImageAsBase64(url) {
+  if (!url) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch { return null; }
+}
+
+function createRupeeSymbolImage() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 30; canvas.height = 30;
+  const ctx = canvas.getContext("2d");
+  ctx.font = "bold 24px sans-serif"; ctx.fillStyle = "#000";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("₹", 15, 15);
+  return canvas.toDataURL("image/png");
+}
+let rupeeImage = null;
+function getRupeeImage() { if (!rupeeImage) rupeeImage = createRupeeSymbolImage(); return rupeeImage; }
+
+function drawCurrency(doc, amount, x, y, fontSize = 10, align = "left", color = "#000") {
+  const img = getRupeeImage();
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(fontSize);
+  doc.setTextColor(color);
+  const amountText = amount.toLocaleString("en-IN");
+  if (align === "left") {
+    doc.addImage(img, "PNG", x, y - fontSize * 0.35, 4, 4);
+    doc.text(amountText, x + 5, y);
+  } else {
+    const textWidth = doc.getTextWidth(amountText);
+    doc.addImage(img, "PNG", x - textWidth - 5, y - fontSize * 0.35, 4, 4);
+    doc.text(amountText, x - textWidth, y);
+  }
+}
 
 export default function BalanceSheet() {
   const [asOfDate, setAsOfDate] = useState(new Date().toISOString().split("T")[0]);
-  const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+
+  const { org, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  // Fetch organization details
-  const { data: org } = useQuery({
-    queryKey: ["organization", currentOrg?.id],
-    queryFn: () => getOrganization(currentOrg?.id),
-    enabled: !!currentOrg?.id,
-  });
-
-  // Fetch balance sheet accounts – scoped
+  /* ─── Data fetching (same reliable approach as P&L) ───────── */
   const { data: accounts = [], isLoading } = useQuery({
-    queryKey: ["balance-sheet", asOfDate, branchId, financialYearId],
+    queryKey: ["balance-sheet", asOfDate, branchId, financialYearId, org?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_balance_sheet", {
-        as_of_date: asOfDate,
-        p_branch_id: branchId,
-        p_financial_year_id: financialYearId,
-      });
-      if (error) throw error;
-      return data || [];
+      // 1. All accounts for org / branch / FY
+      let acctQuery = supabase
+        .from("chart_of_accounts")
+        .select("id, account_code, account_name, account_type, parent_id")
+        .eq("organization_id", org?.id)
+        .order("account_code");
+
+      if (branchId) acctQuery = acctQuery.eq("branch_id", branchId);
+      if (financialYearId) acctQuery = acctQuery.eq("financial_year_id", financialYearId);
+
+      const { data: accts, error: acctErr } = await acctQuery;
+      if (acctErr) throw acctErr;
+      if (!accts?.length) return [];
+
+      // 2. Fetch ALL journal lines up to the as‑of date
+      let lineQuery = supabase
+        .from("journal_entry_lines")
+        .select("account_id, debit, credit, journal_entries!inner(entry_date)")
+        .lte("journal_entries.entry_date", asOfDate);
+
+      if (branchId) {
+        lineQuery = lineQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+      }
+
+      const { data: lines, error: lineErr } = await lineQuery;
+      if (lineErr) throw lineErr;
+
+      // 3. Aggregate per account
+      const totals = {};
+      for (const l of lines || []) {
+        const aid = l.account_id;
+        if (!totals[aid]) totals[aid] = { debit: 0, credit: 0 };
+        totals[aid].debit += Number(l.debit) || 0;
+        totals[aid].credit += Number(l.credit) || 0;
+      }
+
+      // 4. Compute balance for each account
+      const results = [];
+      for (const a of accts) {
+        const t = totals[a.id];
+        if (!t) continue;
+        let balance = 0;
+        if (a.account_type === "asset") {
+          balance = t.debit - t.credit;
+        } else if (a.account_type === "liability" || a.account_type === "equity") {
+          balance = t.credit - t.debit;
+        }
+        if (balance !== 0) {
+          results.push({ ...a, balance });
+        }
+      }
+      return results;
     },
-    enabled: !!asOfDate && !!branchId && !!financialYearId,
+    enabled: !!(asOfDate && org?.id),
   });
 
-  // Group accounts by parent
+  /* ─── Grouping (now uses actual parent IDs) ─────────────── */
   const groups = useMemo(() => {
     const result = {};
     for (const [name] of Object.entries(GROUP_CONFIG)) {
       result[name] = { items: [], total: 0 };
     }
-
     const otherAssets = { items: [], total: 0 };
     const otherLiabilities = { items: [], total: 0 };
     const otherEquity = { items: [], total: 0 };
@@ -59,14 +143,13 @@ export default function BalanceSheet() {
 
       let placed = false;
       for (const [name, cfg] of Object.entries(GROUP_CONFIG)) {
-        if (a.parent_id === cfg.parent && a.account_type === cfg.type) {
+        if (a.parent_id === cfg.parent_id && a.account_type === cfg.type) {
           result[name].items.push({ ...a, balance: bal });
           result[name].total += bal;
           placed = true;
           break;
         }
       }
-
       if (!placed) {
         if (a.account_type === "asset") {
           otherAssets.items.push({ ...a, balance: bal });
@@ -100,278 +183,265 @@ export default function BalanceSheet() {
     .filter(([name]) => name.toLowerCase().includes("equity"))
     .reduce((s, [_, g]) => s + g.total, 0);
 
-  // ── Professional Print ──
-  const handlePrint = () => {
-    const printArea = document.getElementById("balance-sheet-print")?.innerHTML;
-    if (!printArea) return;
+  /* ─── PDF Export (fixed difference display) ─────────────── */
+  const handlePrintPDF = async () => {
+    if (Object.keys(groups).length === 0) return;
 
-    const logoUrl = org?.logo_dark_url || "/ShreeVidhyaDark.png";
-    const orgName = org?.company_name || "ShreeVidhya Academy";
-    const orgAddr = org?.address || "";
-    const orgPhone = org?.phone || "";
-    const orgEmail = org?.email || "";
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 12;
+    let y = margin;
 
-    const printWindow = window.open("", "_blank", "width=1000,height=750");
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Balance Sheet</title>
-          <style>
-            @page { size: A4; margin: 12mm; }
-            body { font-family: Montserrat, sans-serif; color: #222; font-size: 11px; }
-            .header { display: flex; align-items: center; border-bottom: 2px solid #0D47A1; padding-bottom: 8px; margin-bottom: 15px; }
-            .header img { height: 45px; margin-right: 15px; }
-            .org-name { font-size: 18px; font-weight: 700; color: #0D47A1; }
-            .org-details { font-size: 9px; color: #555; }
-            h1 { text-align: center; color: #0D47A1; margin: 15px 0 5px; font-size: 16px; }
-            .date { text-align: center; font-size: 10px; color: #666; margin-bottom: 15px; }
-            .section { margin-bottom: 15px; }
-            .section-title { font-weight: 700; font-size: 12px; color: #0D47A1; border-bottom: 1px solid #0D47A1; padding-bottom: 3px; margin-bottom: 5px; }
-            table { width: 100%; border-collapse: collapse; border: 1px solid #bbb; }
-            th, td { padding: 5px 10px; border: 1px solid #bbb; }
-            th { background-color: #E3F2FD; font-weight: 600; }
-            .total-row td { font-weight: 700; background-color: #f0f4ff; border-top: 2px solid #0D47A1; }
-            .grand-total { font-size: 13px; font-weight: 700; margin-top: 15px; border-top: 2px solid #0D47A1; border-bottom: 2px solid #0D47A1; padding: 8px 0; }
-            .footer { margin-top: 25px; font-size: 9px; color: #888; text-align: center; border-top: 1px solid #ddd; padding-top: 8px; }
-            @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <img src="${logoUrl}" alt="Logo" onerror="this.style.display='none'" />
-            <div>
-              <div class="org-name">${orgName}</div>
-              <div class="org-details">${orgAddr}</div>
-              <div class="org-details">Ph: ${orgPhone}  |  Email: ${orgEmail}</div>
-            </div>
-          </div>
-          <h1>Balance Sheet</h1>
-          <div class="date">As of ${asOfDate}</div>
-          ${printArea}
-          <div class="footer">Computer‑generated financial statement – ${orgName}</div>
-          <script>window.print();</script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+    // Logo
+    let logoBase64 = null;
+    if (org?.logo_dark_url) {
+      logoBase64 = await loadImageAsBase64(org.logo_dark_url);
+    }
+
+    // Header
+    const logoWidth = 30, logoHeight = 12;
+    if (logoBase64) {
+      doc.addImage(logoBase64, "PNG", margin, y, logoWidth, logoHeight);
+    }
+    const textX = margin + (logoBase64 ? logoWidth + 4 : 0);
+    const textY = y + 1;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor("#000000");
+    doc.text(org?.company_name || "Academy", textX, textY);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor("#000000");
+    let detailY = textY + 4.5;
+    if (org?.address) {
+      const addrLines = doc.splitTextToSize(org.address, pageWidth - textX - margin - 10);
+      doc.text(addrLines, textX, detailY);
+      detailY += addrLines.length * 3.5 + 1;
+    }
+    if (org?.gstin) { doc.text(`GSTIN: ${org.gstin}`, textX, detailY); detailY += 4; }
+    if (org?.phone) { doc.text(`Phone: ${org.phone}`, textX, detailY); detailY += 4; }
+    if (org?.email) { doc.text(`Email: ${org.email}`, textX, detailY); detailY += 4; }
+
+    const headerHeight = Math.max(logoHeight + 4, detailY - textY + 4);
+    y += headerHeight + 2;
+    doc.setDrawColor("#000000");
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 6;
+
+    // Title
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor("#000000");
+    doc.text("Balance Sheet", pageWidth / 2, y, { align: "center" });
+    y += 8;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`As of: ${asOfDate}`, pageWidth / 2, y, { align: "center" });
+    y += 10;
+
+    // Helper to print a section
+    const printSection = (title, groupsArray, total, totalLabel) => {
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text(title, margin, y);
+      y += 8;
+
+      for (const [name, group] of groupsArray) {
+        if (group.items.length === 0) continue;
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.text(name, margin, y);
+        y += 5;
+
+        const rows = group.items.map((item) => [item.account_name, Math.round(item.balance * 100) / 100]);
+        autoTable(doc, {
+          startY: y,
+          head: [["Account", "Amount"]],
+          body: rows,
+          theme: "plain",
+          styles: { fontSize: 9, textColor: [0,0,0], fillColor: [255,255,255], lineColor: [0,0,0], lineWidth: 0.2 },
+          headStyles: { fillColor: [255,255,255], textColor: [0,0,0], fontStyle: "bold", lineWidth: 0.2, lineColor: [0,0,0] },
+          columnStyles: { 0: { cellWidth: 120 }, 1: { cellWidth: 50, halign: "right" } },
+          margin: { left: margin, right: margin },
+          willDrawCell: (data) => {
+            if (data.column.index === 1 && typeof data.cell.raw === "number") data.cell.text = [];
+          },
+          didDrawCell: (data) => {
+            if (data.column.index === 1 && typeof data.cell.raw === "number") {
+              drawCurrency(doc, data.cell.raw, data.cell.x + data.cell.width - 2, data.cell.y + data.cell.height / 2 + 1.5, 9, "right", "#000");
+            }
+          },
+        });
+        y = doc.lastAutoTable.finalY + 4;
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        drawCurrency(doc, Math.round(group.total * 100) / 100, margin + 170, y, 9, "right", "#000");
+        doc.text(`Total ${name}`, margin, y);
+        y += 8;
+      }
+
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text(totalLabel, margin, y);
+      drawCurrency(doc, Math.round(total * 100) / 100, margin + 170, y, 11, "right", "#000");
+      y += 12;
+    };
+
+    // Assets
+    const assetGroups = Object.entries(groups).filter(([name]) => name.toLowerCase().includes("asset"));
+    printSection("Assets", assetGroups, totalAssets, "Total Assets");
+
+    // Liabilities
+    const liabilityGroups = Object.entries(groups).filter(([name]) => name.toLowerCase().includes("liabilit"));
+    printSection("Liabilities", liabilityGroups, totalLiabilities, "Total Liabilities");
+
+    // Equity
+    const equityGroups = Object.entries(groups).filter(([name]) => name.toLowerCase().includes("equity"));
+    printSection("Equity", equityGroups, totalEquity, "Total Equity");
+
+    // ─── Balance Check (no emojis, proper rupee symbol) ───
+    const totalLiabEquity = totalLiabilities + totalEquity;
+    const balanced = Math.abs(totalAssets - totalLiabEquity) < 0.01;
+
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor("#000000");
+    if (balanced) {
+      doc.text("Balanced", margin, y);
+    } else {
+      doc.text("Difference:", margin, y);
+      drawCurrency(doc, totalAssets - totalLiabEquity, margin + 170, y, 12, "right", "#000");
+    }
+    y += 8;
+
+    // Footer
+    const footerY = pageHeight - margin - 5;
+    doc.setFontSize(7);
+    doc.setTextColor("#000000");
+    doc.setFont("helvetica", "italic");
+    doc.text(`Generated on ${new Date().toLocaleString()}`, margin, footerY);
+    doc.text(`© ${org?.company_name || "Academy"}`, pageWidth / 2, footerY, { align: "center" });
+
+    doc.save(`Balance_Sheet_${asOfDate}.pdf`);
   };
 
   const formatCurrency = (val) => `₹ ${Math.abs(val).toLocaleString("en-IN")}`;
 
   return (
     <div className="space-y-6 px-4 sm:px-6 lg:px-0">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900" style={{ fontFamily: "var(--font-heading)" }}>
             Balance Sheet
           </h1>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>
+          <p className="text-sm text-gray-600 mt-1" style={{ fontFamily: "var(--font-body)" }}>
             Financial position snapshot
           </p>
         </div>
         <button
-          onClick={handlePrint}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
-          style={{ fontFamily: "var(--font-body)" }}
+          onClick={handlePrintPDF}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg transition-colors text-sm font-medium"
         >
-          <Printer size={16} /> Print
+          <Printer size={16} /> Print PDF
         </button>
       </div>
 
-      {/* Date selector */}
       <div className="flex items-center gap-3">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>
-          As of Date:
-        </label>
+        <label className="text-sm font-medium text-gray-700">As of Date:</label>
         <input
           type="date"
           value={asOfDate}
           onChange={(e) => setAsOfDate(e.target.value)}
-          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
-          style={{ fontFamily: "var(--font-body)" }}
+          className="border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm"
         />
       </div>
 
-      {/* Balance Sheet Content */}
       {isLoading ? (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">Loading balance sheet…</div>
+        <div className="text-center py-12 text-gray-500">Loading balance sheet…</div>
       ) : (
-        <div
-          id="balance-sheet-print"
-          className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
-        >
-          {/* ── Assets ── */}
-          <h2 className="text-xl font-semibold mb-4 border-b pb-2" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
-            Assets
-          </h2>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          {/* Assets */}
+          <h2 className="text-xl font-semibold mb-4 border-b pb-2 text-gray-900">Assets</h2>
           {Object.entries(groups)
             .filter(([name]) => name.toLowerCase().includes("asset"))
             .map(([name, group]) => (
               <div key={name} className="mb-4">
-                <h3 className="font-bold text-sm mb-2" style={{ color: "var(--color-primary)" }}>
-                  {name}
-                </h3>
-                <table className="w-full text-sm border border-gray-200 dark:border-gray-600">
-                  <thead>
-                    <tr className="bg-gray-50 dark:bg-gray-700">
-                      <th className="p-2 text-left border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300">
-                        Account
-                      </th>
-                      <th className="p-2 text-right border border-gray-200 dark:border-gray-600 w-32 text-gray-600 dark:text-gray-300">
-                        Amount
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {group.items.map((item) => (
-                      <tr key={item.account_code}>
-                        <td className="p-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200">
-                          {item.account_name}
-                        </td>
-                        <td className="p-2 border border-gray-200 dark:border-gray-600 text-right text-gray-700 dark:text-gray-200">
-                          {formatCurrency(item.balance)}
-                        </td>
-                      </tr>
+                <h3 className="font-bold text-sm mb-2 text-gray-900">{name}</h3>
+                <table className="w-full text-sm border">
+                  <thead><tr className="bg-slate-50"><th className="p-2 text-left border">Account</th><th className="p-2 text-right border w-32">Amount</th></tr></thead>
+                  <tbody>
+                    {group.items.map(item => (
+                      <tr key={item.account_code}><td className="p-2 border">{item.account_name}</td><td className="p-2 border text-right">{formatCurrency(item.balance)}</td></tr>
                     ))}
-                    <tr className="font-bold bg-blue-50 dark:bg-blue-900/20">
-                      <td className="p-2 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100">
-                        Total {name}
-                      </td>
-                      <td className="p-2 border border-gray-200 dark:border-gray-600 text-right text-gray-800 dark:text-gray-100">
-                        {formatCurrency(group.total)}
-                      </td>
-                    </tr>
+                    <tr className="font-bold bg-blue-50"><td className="p-2 border">Total {name}</td><td className="p-2 border text-right">{formatCurrency(group.total)}</td></tr>
                   </tbody>
                 </table>
               </div>
             ))}
-          <div className="text-lg font-bold border-t-2 pt-3 mt-4 mb-8" style={{ borderColor: "var(--color-primary)", color: "var(--color-primary)" }}>
-            Total Assets: {formatCurrency(totalAssets)}
-          </div>
+          <div className="text-lg font-bold border-t-2 pt-3 mt-4 mb-8 text-gray-900">Total Assets: {formatCurrency(totalAssets)}</div>
 
-          {/* ── Liabilities ── */}
-          <h2 className="text-xl font-semibold mb-4 border-b pb-2" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
-            Liabilities
-          </h2>
+          {/* Liabilities */}
+          <h2 className="text-xl font-semibold mb-4 border-b pb-2 text-gray-900">Liabilities</h2>
           {Object.entries(groups)
             .filter(([name]) => name.toLowerCase().includes("liabilit"))
             .map(([name, group]) => (
               <div key={name} className="mb-4">
-                <h3 className="font-bold text-sm mb-2" style={{ color: "var(--color-primary)" }}>
-                  {name}
-                </h3>
-                <table className="w-full text-sm border border-gray-200 dark:border-gray-600">
-                  <thead>
-                    <tr className="bg-gray-50 dark:bg-gray-700">
-                      <th className="p-2 text-left border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300">
-                        Account
-                      </th>
-                      <th className="p-2 text-right border border-gray-200 dark:border-gray-600 w-32 text-gray-600 dark:text-gray-300">
-                        Amount
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {group.items.map((item) => (
-                      <tr key={item.account_code}>
-                        <td className="p-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200">
-                          {item.account_name}
-                        </td>
-                        <td className="p-2 border border-gray-200 dark:border-gray-600 text-right text-gray-700 dark:text-gray-200">
-                          {formatCurrency(item.balance)}
-                        </td>
-                      </tr>
+                <h3 className="font-bold text-sm mb-2 text-gray-900">{name}</h3>
+                <table className="w-full text-sm border">
+                  <thead><tr className="bg-slate-50"><th className="p-2 text-left border">Account</th><th className="p-2 text-right border w-32">Amount</th></tr></thead>
+                  <tbody>
+                    {group.items.map(item => (
+                      <tr key={item.account_code}><td className="p-2 border">{item.account_name}</td><td className="p-2 border text-right">{formatCurrency(item.balance)}</td></tr>
                     ))}
-                    <tr className="font-bold bg-blue-50 dark:bg-blue-900/20">
-                      <td className="p-2 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100">
-                        Total {name}
-                      </td>
-                      <td className="p-2 border border-gray-200 dark:border-gray-600 text-right text-gray-800 dark:text-gray-100">
-                        {formatCurrency(group.total)}
-                      </td>
-                    </tr>
+                    <tr className="font-bold bg-blue-50"><td className="p-2 border">Total {name}</td><td className="p-2 border text-right">{formatCurrency(group.total)}</td></tr>
                   </tbody>
                 </table>
               </div>
             ))}
-          <div className="text-lg font-bold border-t-2 pt-3 mt-4 mb-8" style={{ borderColor: "var(--color-primary)", color: "var(--color-primary)" }}>
-            Total Liabilities: {formatCurrency(totalLiabilities)}
-          </div>
+          <div className="text-lg font-bold border-t-2 pt-3 mt-4 mb-8 text-gray-900">Total Liabilities: {formatCurrency(totalLiabilities)}</div>
 
-          {/* ── Equity ── */}
-          <h2 className="text-xl font-semibold mb-4 border-b pb-2" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
-            Equity
-          </h2>
+          {/* Equity */}
+          <h2 className="text-xl font-semibold mb-4 border-b pb-2 text-gray-900">Equity</h2>
           {Object.entries(groups)
             .filter(([name]) => name.toLowerCase().includes("equity"))
             .map(([name, group]) => (
               <div key={name} className="mb-4">
-                <h3 className="font-bold text-sm mb-2" style={{ color: "var(--color-primary)" }}>
-                  {name}
-                </h3>
-                <table className="w-full text-sm border border-gray-200 dark:border-gray-600">
-                  <thead>
-                    <tr className="bg-gray-50 dark:bg-gray-700">
-                      <th className="p-2 text-left border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300">
-                        Account
-                      </th>
-                      <th className="p-2 text-right border border-gray-200 dark:border-gray-600 w-32 text-gray-600 dark:text-gray-300">
-                        Amount
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {group.items.map((item) => (
-                      <tr key={item.account_code}>
-                        <td className="p-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200">
-                          {item.account_name}
-                        </td>
-                        <td className="p-2 border border-gray-200 dark:border-gray-600 text-right text-gray-700 dark:text-gray-200">
-                          {formatCurrency(item.balance)}
-                        </td>
-                      </tr>
+                <h3 className="font-bold text-sm mb-2 text-gray-900">{name}</h3>
+                <table className="w-full text-sm border">
+                  <thead><tr className="bg-slate-50"><th className="p-2 text-left border">Account</th><th className="p-2 text-right border w-32">Amount</th></tr></thead>
+                  <tbody>
+                    {group.items.map(item => (
+                      <tr key={item.account_code}><td className="p-2 border">{item.account_name}</td><td className="p-2 border text-right">{formatCurrency(item.balance)}</td></tr>
                     ))}
-                    <tr className="font-bold bg-blue-50 dark:bg-blue-900/20">
-                      <td className="p-2 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100">
-                        Total {name}
-                      </td>
-                      <td className="p-2 border border-gray-200 dark:border-gray-600 text-right text-gray-800 dark:text-gray-100">
-                        {formatCurrency(group.total)}
-                      </td>
-                    </tr>
+                    <tr className="font-bold bg-blue-50"><td className="p-2 border">Total {name}</td><td className="p-2 border text-right">{formatCurrency(group.total)}</td></tr>
                   </tbody>
                 </table>
               </div>
             ))}
-          <div className="text-lg font-bold border-t-2 pt-3 mt-4 mb-8" style={{ borderColor: "var(--color-primary)", color: "var(--color-primary)" }}>
-            Total Equity: {formatCurrency(totalEquity)}
-          </div>
+          <div className="text-lg font-bold border-t-2 pt-3 mt-4 mb-8 text-gray-900">Total Equity: {formatCurrency(totalEquity)}</div>
 
-          {/* ── Grand Total ── */}
-          <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border-2" style={{ borderColor: "var(--color-primary)" }}>
+          {/* Balance Check */}
+          <div className="mt-6 p-4 bg-gray-50 rounded-lg border-2 border-gray-900">
             <div className="grid grid-cols-2 gap-4 text-center">
               <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Total Liabilities + Equity</p>
-                <p className="text-2xl font-bold" style={{ color: "var(--color-primary)" }}>
-                  {formatCurrency(totalLiabilities + totalEquity)}
-                </p>
+                <p className="text-sm text-gray-600">Total Liabilities + Equity</p>
+                <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalLiabilities + totalEquity)}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Total Assets</p>
-                <p className="text-2xl font-bold" style={{ color: "var(--color-primary)" }}>
-                  {formatCurrency(totalAssets)}
-                </p>
+                <p className="text-sm text-gray-600">Total Assets</p>
+                <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalAssets)}</p>
               </div>
             </div>
             <div className="text-center mt-3">
               {Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01 ? (
-                <span className="inline-block px-4 py-1 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-200 rounded-full text-sm font-medium">
-                  ✅ Balanced
-                </span>
+                <span className="inline-block px-4 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">Balanced</span>
               ) : (
-                <span className="inline-block px-4 py-1 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-full text-sm font-medium">
-                  ⚠️ Difference: {formatCurrency(totalAssets - (totalLiabilities + totalEquity))}
+                <span className="inline-block px-4 py-1 bg-red-100 text-red-700 rounded-full text-sm font-medium">
+                  Difference: {formatCurrency(totalAssets - (totalLiabilities + totalEquity))}
                 </span>
               )}
             </div>

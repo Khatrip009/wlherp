@@ -6,9 +6,10 @@ import toast from 'react-hot-toast';
 import { X, Plus, Trash2 } from 'lucide-react';
 
 export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialData = null }) {
-  const { branch, selectedFinancialYear } = useOrg();
-  const branchId = branch?.id;
-  const financialYearId = selectedFinancialYear?.id;
+  const { org, branch, selectedFinancialYear } = useOrg();
+  const branchId = branch?.id ? Number(branch.id) : null;
+  const financialYearId = selectedFinancialYear?.id ? Number(selectedFinancialYear.id) : null;
+  const organizationId = org?.id;
 
   const [form, setForm] = useState({
     course_id: '',
@@ -16,7 +17,7 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
   });
 
   const [components, setComponents] = useState([
-    { component_name: '', amount: '', tax_rate_id: '' },
+    { component_name: '', amount: '', tax_rate_id: '', is_taxable: true, tax_inclusive: true },
   ]);
   const [loading, setLoading] = useState(false);
   const [courses, setCourses] = useState([]);
@@ -33,48 +34,53 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
         component_name: c.component_name || '',
         amount: c.amount || '',
         tax_rate_id: c.tax_rate_id || '',
+        is_taxable: c.is_taxable !== undefined ? c.is_taxable : true,
+        tax_inclusive: c.tax_inclusive !== undefined ? c.tax_inclusive : true,
       }));
-      setComponents(comps.length ? comps : [{ component_name: '', amount: '', tax_rate_id: '' }]);
+      setComponents(comps.length ? comps : [{ component_name: '', amount: '', tax_rate_id: '', is_taxable: true, tax_inclusive: true }]);
     } else {
       setForm({ course_id: '', installment_allowed: false });
-      setComponents([{ component_name: '', amount: '', tax_rate_id: '' }]);
+      setComponents([{ component_name: '', amount: '', tax_rate_id: '', is_taxable: true, tax_inclusive: true }]);
     }
   }, [initialData]);
 
-  // Fetch dropdown data when modal opens and branch/FY are ready
   useEffect(() => {
-    if (!isOpen || !branchId || !financialYearId) return;
+    if (!isOpen || !branchId || !financialYearId || !organizationId) return;
     fetchData();
-  }, [isOpen, branchId, financialYearId]);
+  }, [isOpen, branchId, financialYearId, organizationId]);
 
   const fetchData = async () => {
-    // Conditionally scope courses & tax rates to current branch & FY
-    let coursesQuery = supabase
-      .from('courses')
-      .select('id, course_name')
-      .eq('status', true);
-    if (branchId) coursesQuery = coursesQuery.eq('branch_id', branchId);
-    if (financialYearId) coursesQuery = coursesQuery.eq('financial_year_id', financialYearId);
+    try {
+      // Courses – now scoped by organization and filtered out soft-deleted
+      let coursesQuery = supabase
+        .from('courses')
+        .select('id, course_name')
+        .eq('status', true)
+        .eq('organization_id', organizationId)
+        .is('deleted_at', null);          // ✅ exclude soft-deleted
 
-    let taxQuery = supabase
-      .from('tax_rates')
-      .select('id, name, rate')
-      .eq('is_active', true);
-    if (branchId) taxQuery = taxQuery.eq('branch_id', branchId);
-    if (financialYearId) taxQuery = taxQuery.eq('financial_year_id', financialYearId);
+      if (financialYearId) coursesQuery = coursesQuery.eq('financial_year_id', financialYearId);
 
-    const [coursesRes, taxRes] = await Promise.all([coursesQuery, taxQuery]);
-    setCourses(coursesRes.data || []);
-    setTaxRates(taxRes.data || []);
+      // Tax rates – also scoped by organization (if the table supports it)
+      let taxQuery = supabase
+        .from('tax_rates')
+        .select('id, name, rate')
+        .eq('is_active', true)
+        .eq('organization_id', organizationId);
+
+      if (financialYearId) taxQuery = taxQuery.eq('financial_year_id', financialYearId);
+
+      const [coursesRes, taxRes] = await Promise.all([coursesQuery, taxQuery]);
+      setCourses(coursesRes.data || []);
+      setTaxRates(taxRes.data || []);
+    } catch (err) {
+      toast.error('Failed to load dropdown data');
+      console.error(err);
+    }
   };
 
-  const handleCourseChange = (e) => {
-    setForm({ ...form, course_id: e.target.value });
-  };
-
-  const handleInstallmentChange = (e) => {
-    setForm({ ...form, installment_allowed: e.target.checked });
-  };
+  const handleCourseChange = (e) => setForm({ ...form, course_id: e.target.value });
+  const handleInstallmentChange = (e) => setForm({ ...form, installment_allowed: e.target.checked });
 
   const handleComponentChange = (index, field, value) => {
     const updated = [...components];
@@ -83,7 +89,10 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
   };
 
   const addComponent = () => {
-    setComponents([...components, { component_name: '', amount: '', tax_rate_id: '' }]);
+    setComponents([
+      ...components,
+      { component_name: '', amount: '', tax_rate_id: '', is_taxable: true, tax_inclusive: true },
+    ]);
   };
 
   const removeComponent = (index) => {
@@ -96,6 +105,11 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!branchId || !financialYearId) {
+      toast.error('Branch and Financial Year must be selected');
+      return;
+    }
     if (!form.course_id) {
       toast.error('Please select a course');
       return;
@@ -113,38 +127,68 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
 
     setLoading(true);
     try {
+      const courseId = Number(form.course_id);
       const totalFee = components.reduce((sum, c) => sum + parseFloat(c.amount), 0);
 
       const feeStructurePayload = {
-        course_id: form.course_id,
+        course_id: courseId,
         fee_amount: totalFee,
         installment_allowed: form.installment_allowed,
         tax_rate_id: null,
-        tax_inclusive: false,
         branch_id: branchId,
         financial_year_id: financialYearId,
       };
 
       let feeStructureId;
+
       if (initialData?.id) {
-        const { data: updated, error: updateError } = await supabase
+        // UPDATE MODE – check if already assigned to students
+        const { data: existingComponents } = await supabase
+          .from('fee_structure_components')
+          .select('id')
+          .eq('fee_structure_id', initialData.id)
+          .eq('branch_id', branchId)
+          .eq('financial_year_id', financialYearId);
+
+        if (existingComponents && existingComponents.length > 0) {
+          const componentIds = existingComponents.map(c => c.id);
+          const { data: linkedFees, error: linkError } = await supabase
+            .from('student_fee_components')
+            .select('id')
+            .in('fee_structure_component_id', componentIds)
+            .limit(1);
+
+          if (linkError) throw linkError;
+
+          if (linkedFees && linkedFees.length > 0) {
+            toast.error(
+              'Cannot edit this fee structure because it is already assigned to students. Please create a new one instead.'
+            );
+            setLoading(false);
+            return;
+          }
+        }
+
+        // Update the fee_structure record
+        const { error: updateError } = await supabase
           .from('fee_structures')
           .update(feeStructurePayload)
           .eq('id', initialData.id)
-          .select()
-          .single();
+          .eq('branch_id', branchId)
+          .eq('financial_year_id', financialYearId);
         if (updateError) throw updateError;
         feeStructureId = initialData.id;
 
-        // Delete old components – scoped to prevent cross-branch tampering
-        let deleteQuery = supabase
+        // Delete old components (safe now)
+        const { error: deleteError } = await supabase
           .from('fee_structure_components')
           .delete()
-          .eq('fee_structure_id', initialData.id);
-        if (branchId) deleteQuery = deleteQuery.eq('branch_id', branchId);
-        if (financialYearId) deleteQuery = deleteQuery.eq('financial_year_id', financialYearId);
-        await deleteQuery;
+          .eq('fee_structure_id', initialData.id)
+          .eq('branch_id', branchId)
+          .eq('financial_year_id', financialYearId);
+        if (deleteError) throw deleteError;
       } else {
+        // CREATE MODE
         const { data: inserted, error: insertError } = await supabase
           .from('fee_structures')
           .insert([feeStructurePayload])
@@ -154,16 +198,19 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
         feeStructureId = inserted.id;
       }
 
-      // Insert new components with branch and FY
+      // Insert new components
       const componentInserts = components.map((comp, idx) => ({
         fee_structure_id: feeStructureId,
         component_name: comp.component_name.trim(),
         amount: parseFloat(comp.amount),
-        tax_rate_id: comp.tax_rate_id || null,
+        tax_rate_id: comp.tax_rate_id ? Number(comp.tax_rate_id) : null,
+        is_taxable: comp.is_taxable !== undefined ? comp.is_taxable : true,
+        tax_inclusive: comp.tax_inclusive !== undefined ? comp.tax_inclusive : true,
         sort_order: idx,
         branch_id: branchId,
         financial_year_id: financialYearId,
       }));
+
       const { error: compError } = await supabase
         .from('fee_structure_components')
         .insert(componentInserts);
@@ -173,7 +220,8 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
       onSuccess?.();
       onClose();
     } catch (err) {
-      toast.error(err.message);
+      console.error('Supabase error:', err);
+      toast.error(err.message || 'An error occurred while saving');
     } finally {
       setLoading(false);
     }
@@ -181,9 +229,11 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
 
   if (!isOpen) return null;
 
+  const totalAmount = components.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-xl w-full max-w-4xl shadow-xl max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-secondary-light px-6 py-4 flex items-center justify-between rounded-t-xl">
           <h2 className="text-xl font-righteous text-primary-dark">
             {initialData?.id ? 'Edit Fee Structure' : 'New Fee Structure'}
@@ -228,7 +278,7 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
             <label className="block text-sm font-montserrat text-secondary-dark mb-2">Fee Components</label>
             <div className="space-y-3">
               {components.map((comp, idx) => (
-                <div key={idx} className="grid grid-cols-5 gap-2 items-center border p-2 rounded">
+                <div key={idx} className="grid grid-cols-1 sm:grid-cols-6 gap-2 items-center border p-3 rounded">
                   <input
                     type="text"
                     placeholder="Name"
@@ -257,6 +307,15 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
                       </option>
                     ))}
                   </select>
+                  <div className="col-span-1 flex items-center gap-1">
+                    <label className="text-xs whitespace-nowrap">Incl.</label>
+                    <input
+                      type="checkbox"
+                      checked={comp.tax_inclusive !== false}
+                      onChange={(e) => handleComponentChange(idx, 'tax_inclusive', e.target.checked)}
+                      className="rounded accent-primary h-4 w-4"
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={() => removeComponent(idx)}
@@ -277,13 +336,15 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
           </div>
 
           <div className="border-t pt-3 text-right">
-            <span className="text-sm font-medium text-secondary-dark">Total Fee: </span>
-            <span className="text-lg font-bold text-primary">
-              ₹{' '}
-              {components
-                .reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0)
-                .toLocaleString('en-IN')}
+            <span className="text-sm font-medium text-secondary-dark">
+              Total Fee:
             </span>
+            <span className="text-lg font-bold text-primary ml-2">
+              ₹ {totalAmount.toLocaleString('en-IN')}
+            </span>
+            <div className="text-xs text-gray-500 mt-1">
+              * Tax handling per component (Inclusive/Exclusive)
+            </div>
           </div>
 
           <div className="flex flex-col sm:flex-row-reverse gap-3 pt-2">

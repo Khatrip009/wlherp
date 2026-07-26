@@ -1,5 +1,7 @@
+// src/utils/invoicePdf.js
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { supabase } from "../api/supabase";
 
 // ─── Rupee symbol helper ──────────────────────────────────
 function createRupeeSymbolImage() {
@@ -20,14 +22,14 @@ function getRupeeImage() {
   return rupeeImage;
 }
 
-function drawCurrency(doc, amount, x, y, fontSize = 10, align = 'left', color = '#333') {
+function drawCurrency(doc, amount, x, y, fontSize = 10, align = 'left', color = '#000') {
   const img = getRupeeImage();
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(fontSize);
   doc.setTextColor(color);
   const amountText = amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const textWidth = doc.getTextWidth(amountText);
-  const imgSize = fontSize * 0.4; // dynamic size
+  const imgSize = fontSize * 0.4;
   if (align === 'left') {
     doc.addImage(img, 'PNG', x, y - fontSize * 0.35, imgSize, imgSize);
     doc.text(amountText, x + imgSize + 1, y);
@@ -78,30 +80,67 @@ async function loadImageAsBase64(url) {
 
 // ─── Main PDF generator ──────────────────────────────────
 export async function generateInvoicePDF(invoice, org, type = 'sales', options = {}) {
-  console.log('Generating invoice PDF with:', invoice);
+  let { receiptNumber = null, theme = {} } = options;
 
-  // ── Theme (supports underscore keys from your context) ──
-  const theme = options.theme || {};
-  const primaryColor = theme.primary_color || '#0D47A1';
-  const secondaryColor = theme.secondary_color || '#1565C0'; // not used but kept
+  const accentColor = '#000000';
   const headingFont = theme.font_heading || 'helvetica';
   const bodyFont = theme.font_body || 'helvetica';
 
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-  const pageWidth = doc.internal.pageSize.getWidth();   // 210 mm
-  const pageHeight = doc.internal.pageSize.getHeight(); // 297 mm
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 14;
+  const availableWidth = pageWidth - 2 * margin;
 
-  // ── Load company dark logo ──
+  // ── Load company logo ──
   let logoBase64 = null;
   if (org?.logo_dark_url) {
     logoBase64 = await loadImageAsBase64(org.logo_dark_url);
   }
 
+  // ── Fetch real student fee data ─────────────────────────
+  let totalCourseFee = 0;
+  let totalPaidOverall = 0;
+  let overallBalance = 0;
+
+  if (invoice.student_fee_id) {
+    const { data: studentFee } = await supabase
+      .from("student_fees")
+      .select("final_fee")
+      .eq("id", invoice.student_fee_id)
+      .single();
+
+    if (studentFee) {
+      totalCourseFee = Number(studentFee.final_fee);
+    }
+
+    const { data: payments } = await supabase
+      .from("fee_payments")
+      .select("amount")
+      .eq("student_fee_id", invoice.student_fee_id);
+
+    totalPaidOverall = (payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
+    overallBalance = Math.max(totalCourseFee - totalPaidOverall, 0);
+  } else {
+    totalCourseFee = Number(invoice.grand_total) || 0;
+    totalPaidOverall = Number(invoice.paid_amount) || 0;
+    overallBalance = Number(invoice.balance_due) || (totalCourseFee - totalPaidOverall);
+  }
+
+  // ── Auto‑fetch receipt number if not provided but invoice has receipt_id ──
+  if (!receiptNumber && invoice.receipt_id) {
+    const { data: receipt } = await supabase
+      .from("receipts")
+      .select("receipt_no")
+      .eq("id", invoice.receipt_id)
+      .single();
+    if (receipt) {
+      receiptNumber = receipt.receipt_no;
+    }
+  }
+
   // ── Header ──
   let y = 12;
-
-  // Logo (left) and company details (right)
   const logoWidth = 40;
   const logoHeight = 16;
   if (logoBase64) {
@@ -114,16 +153,15 @@ export async function generateInvoicePDF(invoice, org, type = 'sales', options =
   const email = org?.email || "";
   const website = org?.website || "";
 
-  // Company details on the right (next to logo)
   const textX = margin + (logoBase64 ? logoWidth + 6 : 0);
   const textY = y + 2;
   doc.setFont(headingFont, 'bold');
   doc.setFontSize(14);
-  doc.setTextColor(primaryColor);
+  doc.setTextColor(accentColor);
   doc.text(companyName, textX, textY);
   doc.setFont(bodyFont, 'normal');
   doc.setFontSize(8);
-  doc.setTextColor('#333');
+  doc.setTextColor('#000');
   let detailY = textY + 5;
   if (address) {
     const addrLines = doc.splitTextToSize(address, pageWidth - textX - margin - 10);
@@ -146,24 +184,21 @@ export async function generateInvoicePDF(invoice, org, type = 'sales', options =
     doc.text(`Web: ${website}`, textX, detailY);
   }
 
-  // Move y below the header (max of logo height and text height)
   const headerHeight = Math.max(logoHeight + 6, detailY - textY + 8);
   y += headerHeight + 4;
 
-  // ── Separator line ──
-  doc.setDrawColor(primaryColor);
+  doc.setDrawColor('#000');
   doc.line(margin, y, pageWidth - margin, y);
   y += 6;
 
-  // ── Title ──
   const title = type === 'sales' ? 'TAX INVOICE' : 'PURCHASE INVOICE';
   doc.setFont(headingFont, 'bold');
   doc.setFontSize(22);
-  doc.setTextColor(primaryColor);
+  doc.setTextColor(accentColor);
   doc.text(title, pageWidth / 2, y, { align: 'center' });
   y += 12;
 
-  // ── Two‑column party & invoice details ──
+  // ── Two‑column details ──
   const isSales = type === 'sales';
   const partyName = isSales
     ? `${invoice.students?.first_name || ''} ${invoice.students?.last_name || ''}`.trim() || 'N/A'
@@ -171,19 +206,17 @@ export async function generateInvoicePDF(invoice, org, type = 'sales', options =
   const partyGstin = isSales ? invoice.students?.gstin : invoice.vendors?.gstin;
   const partyAddress = isSales ? invoice.students?.billing_address : invoice.vendors?.address;
   const placeOfSupply = invoice.place_of_supply || '';
-  const paymentTerms = invoice.payment_terms || 'Standard';
   const invNo = invoice.invoice_number || 'N/A';
   const invDate = invoice.invoice_date || '';
   const dueDate = invoice.due_date || '';
   const status = invoice.status || 'Draft';
 
-  // Left column
   doc.setFont(headingFont, 'bold');
   doc.setFontSize(11);
-  doc.setTextColor(primaryColor);
+  doc.setTextColor(accentColor);
   doc.text(isSales ? 'Billed To:' : 'Vendor:', margin, y);
   doc.setFont(bodyFont, 'normal');
-  doc.setTextColor('#333');
+  doc.setTextColor('#000');
   let leftY = y + 6;
   doc.setFontSize(10);
   doc.text(partyName, margin, leftY);
@@ -209,14 +242,12 @@ export async function generateInvoicePDF(invoice, org, type = 'sales', options =
     doc.text(`Place of Supply: ${placeOfSupply}`, margin, leftY);
     leftY += 6;
   }
-  doc.text(`Payment Terms: ${paymentTerms}`, margin, leftY);
   const leftBottom = leftY + 4;
 
-  // Right column
   let rightY = y;
   doc.setFont(headingFont, 'bold');
   doc.setFontSize(11);
-  doc.setTextColor(primaryColor);
+  doc.setTextColor(accentColor);
   doc.text('Invoice Details', pageWidth - margin, rightY, { align: 'right' });
   rightY += 6;
   doc.setFont(bodyFont, 'normal');
@@ -231,6 +262,10 @@ export async function generateInvoicePDF(invoice, org, type = 'sales', options =
     doc.text(`Due Date: ${dueDate}`, pageWidth - margin, rightY, { align: 'right' });
     rightY += 6;
   }
+  if (receiptNumber) {
+    doc.text(`Receipt(s): ${receiptNumber}`, pageWidth - margin, rightY, { align: 'right' });
+    rightY += 6;
+  }
   const rightBottom = rightY;
 
   y = Math.max(leftBottom, rightBottom) + 6;
@@ -239,7 +274,7 @@ export async function generateInvoicePDF(invoice, org, type = 'sales', options =
   const items = (type === 'sales' ? invoice.invoice_items : invoice.purchase_invoice_items) || [];
   let tableRows = [];
   if (items.length === 0) {
-    tableRows.push(["", "No items found", "", "", "", "", "", "", "", ""]);
+    tableRows.push(["", "No items found", "", "", "", "", "", "", "", "", ""]);
   } else {
     tableRows = items.map((item, idx) => {
       let desc;
@@ -258,7 +293,17 @@ export async function generateInvoicePDF(invoice, org, type = 'sales', options =
       const sgst = Number(item.sgst_amount || 0);
       const igst = Number(item.igst_amount || 0);
       const total = Number(item.total_amount || 0);
-      return [idx + 1, desc, hsn, qty, unitPrice, taxable, cgst, sgst, igst, total];
+
+      let taxRate = 0;
+      if (item.tax_rates?.rate !== undefined) {
+        taxRate = item.tax_rates.rate;
+      } else if (taxable > 0) {
+        const totalTax = cgst + sgst + igst;
+        taxRate = (totalTax / taxable) * 100;
+      }
+      const taxRateDisplay = taxRate > 0 ? taxRate.toFixed(1) + '%' : '—';
+
+      return [idx + 1, desc, hsn, taxRateDisplay, qty, unitPrice, taxable, cgst, sgst, igst, total];
     });
   }
 
@@ -270,95 +315,166 @@ export async function generateInvoicePDF(invoice, org, type = 'sales', options =
     total: items.reduce((sum, item) => sum + Number(item.total_amount || 0), 0),
   };
   const roundOff = Number(invoice.round_off || 0);
-  const grandTotal = totals.total + roundOff;
+  const fullGrandTotal = totals.total + roundOff;
 
-  // ── Table with theme-aware header color ──
   autoTable(doc, {
     startY: y,
-    head: [['#', 'Description', 'HSN/SAC', 'Qty', 'Unit Price', 'Taxable', 'CGST', 'SGST', 'IGST', 'Total']],
+    head: [['#', 'Description', 'HSN/SAC', 'GST %', 'Qty', 'Unit Price', 'Taxable', 'CGST', 'SGST', 'IGST', 'Total']],
     body: tableRows,
-    theme: 'grid',
-    styles: { fontSize: 8, cellPadding: 2, font: bodyFont },
-    headStyles: { fillColor: primaryColor, textColor: '#FFFFFF', fontSize: 8, fontStyle: 'bold', font: headingFont },
+    theme: 'plain',
+    styles: {
+      fontSize: 8,
+      cellPadding: 2,
+      font: bodyFont,
+      textColor: [0, 0, 0],
+      fillColor: [255, 255, 255],
+      lineColor: [0, 0, 0],
+      lineWidth: 0.2,
+    },
+    headStyles: {
+      textColor: [0, 0, 0],
+      fontStyle: 'bold',
+      fontSize: 8,
+      font: headingFont,
+      fillColor: [255, 255, 255],
+      lineWidth: 0.2,
+      lineColor: [0, 0, 0],
+    },
     columnStyles: {
-      0: { cellWidth: 10, halign: 'center' },
-      1: { cellWidth: 38, halign: 'left' },
-      2: { cellWidth: 18, halign: 'center' },
-      3: { cellWidth: 10, halign: 'center' },
-      4: { cellWidth: 20, halign: 'right' },
-      5: { cellWidth: 18, halign: 'right' },
-      6: { cellWidth: 18, halign: 'right' },
-      7: { cellWidth: 18, halign: 'right' },
-      8: { cellWidth: 18, halign: 'right' },
-      9: { cellWidth: 18, halign: 'right' },
+      0:  { cellWidth: 8,  halign: 'center' },
+      1:  { cellWidth: 34, halign: 'left' },
+      2:  { cellWidth: 16, halign: 'center' },
+      3:  { cellWidth: 12, halign: 'center' },
+      4:  { cellWidth: 10, halign: 'center' },
+      5:  { cellWidth: 18, halign: 'right' },
+      6:  { cellWidth: 16, halign: 'right' },
+      7:  { cellWidth: 16, halign: 'right' },
+      8:  { cellWidth: 16, halign: 'right' },
+      9:  { cellWidth: 16, halign: 'right' },
+      10: { cellWidth: 20, halign: 'right' },
     },
     margin: { left: margin, right: margin },
     willDrawCell: (data) => {
-      if ([4,5,6,7,8,9].includes(data.column.index) && typeof data.cell.raw === 'number') {
+      const numCols = [5,6,7,8,9,10];
+      if (numCols.includes(data.column.index) && typeof data.cell.raw === 'number') {
         data.cell.text = [];
       }
     },
     didDrawCell: (data) => {
-      if ([4,5,6,7,8,9].includes(data.column.index) && typeof data.cell.raw === 'number') {
+      const numCols = [5,6,7,8,9,10];
+      if (numCols.includes(data.column.index) && typeof data.cell.raw === 'number') {
         const x = data.cell.x + 1.5;
         const yPos = data.cell.y + data.cell.height / 2 + 1.5;
-        drawCurrency(doc, data.cell.raw, x, yPos, 8, 'left', '#333');
+        drawCurrency(doc, data.cell.raw, x, yPos, 8, 'left', '#000');
       }
     },
   });
 
-  y = doc.lastAutoTable.finalY + 6;
+  let currentY = doc.lastAutoTable.finalY + 6;
 
-  // ── Totals ──
-  const colX = pageWidth - margin - 65;
-  const rightEdge = pageWidth - margin - 6;
+  // ── Tax Summary Box (includes amount in words) ──
+  const summaryStartY = currentY;
+  const summaryX = margin;
+  const summaryWidth = availableWidth;
+
+  // Calculate lines:
+  // Taxable, CGST, SGST, IGST, (optional Round Off), Total Amount, amount in words (2 lines: label + value)
+  const wordLines = doc.splitTextToSize(
+    `Amount in words: ${numberToWords(overallBalance > 0 ? overallBalance : fullGrandTotal)} Only`,
+    summaryWidth - 8
+  );
+  let linesCount = 5; // Taxable, CGST, SGST, IGST, Total
+  if (roundOff !== 0) linesCount++; // Round Off
+  const summaryHeight = linesCount * 6 + 6 + (wordLines.length * 5); // extra height for amount in words
+
+  doc.setDrawColor('#000');
+  doc.setFillColor(255, 255, 255);
+  doc.rect(summaryX, summaryStartY, summaryWidth, summaryHeight, 'FD');
+
+  let sY = summaryStartY + 4;
   doc.setFont(bodyFont, 'normal');
   doc.setFontSize(10);
-  doc.setTextColor('#333');
-  doc.text('Taxable Amount:', colX, y);
-  drawCurrency(doc, totals.taxable, rightEdge, y, 10, 'right', '#333');
-  y += 6;
-  doc.text('CGST:', colX, y);
-  drawCurrency(doc, totals.cgst, rightEdge, y, 10, 'right', '#333');
-  y += 6;
-  doc.text('SGST:', colX, y);
-  drawCurrency(doc, totals.sgst, rightEdge, y, 10, 'right', '#333');
-  y += 6;
-  doc.text('IGST:', colX, y);
-  drawCurrency(doc, totals.igst, rightEdge, y, 10, 'right', '#333');
-  y += 6;
+  doc.setTextColor('#000');
+
+  doc.text('Taxable Amount:', summaryX + 4, sY);
+  drawCurrency(doc, totals.taxable, summaryX + summaryWidth - 4, sY, 10, 'right', '#000');
+  sY += 6;
+
+  doc.text('CGST:', summaryX + 4, sY);
+  drawCurrency(doc, totals.cgst, summaryX + summaryWidth - 4, sY, 10, 'right', '#000');
+  sY += 6;
+
+  doc.text('SGST:', summaryX + 4, sY);
+  drawCurrency(doc, totals.sgst, summaryX + summaryWidth - 4, sY, 10, 'right', '#000');
+  sY += 6;
+
+  doc.text('IGST:', summaryX + 4, sY);
+  drawCurrency(doc, totals.igst, summaryX + summaryWidth - 4, sY, 10, 'right', '#000');
+  sY += 6;
+
   if (roundOff !== 0) {
-    doc.text('Round Off:', colX, y);
-    drawCurrency(doc, roundOff, rightEdge, y, 10, 'right', '#333');
-    y += 6;
-  }
-  doc.setFont(headingFont, 'bold');
-  doc.setTextColor(primaryColor);
-  doc.setFontSize(14);
-  doc.text('Grand Total:', colX, y);
-  drawCurrency(doc, grandTotal, rightEdge, y, 14, 'right', primaryColor);
-  y += 10;
-
-  // ── Reverse Charge Note ──
-  if (invoice.reverse_charge) {
-    doc.setFontSize(9);
-    doc.setTextColor('#CC0000');
-    doc.text('** Reverse Charge Applicable – Tax payable by recipient **', margin, y);
-    y += 7;
+    doc.text('Round Off:', summaryX + 4, sY);
+    drawCurrency(doc, roundOff, summaryX + summaryWidth - 4, sY, 10, 'right', '#000');
+    sY += 6;
   }
 
-  // ── Amount in Words ──
+  // Total Amount (bold)
+  doc.setFont(bodyFont, 'bold');
+  doc.setFontSize(11);
+  doc.text('Total Amount:', summaryX + 4, sY);
+  drawCurrency(doc, fullGrandTotal, summaryX + summaryWidth - 4, sY, 11, 'right', '#000');
+  sY += 8;
+
+  // ── Amount in words (inside the box, right after total) ──
+  doc.setFont(bodyFont, 'italic');
+  doc.setFontSize(8);
+  doc.setTextColor('#000');
+  // Print the split lines
+  for (const line of wordLines) {
+    doc.text(line, summaryX + 4, sY);
+    sY += 5;
+  }
+
+  // Update Y to after the box
+  currentY = summaryStartY + summaryHeight + 6;
+
+  // ── Course Fee Summary ──
+  doc.setFont(bodyFont, 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor('#000');
+  doc.text('Course Fee Summary', summaryX, currentY);
+  currentY += 6;
+
   doc.setFont(bodyFont, 'normal');
   doc.setFontSize(10);
-  doc.setTextColor('#333');
-  const words = numberToWords(grandTotal);
-  doc.text(`Amount in words: ${words}`, margin, y);
-  y += 12;
+  const alignRight = summaryX + summaryWidth - 4;
+
+  doc.text('Total Course Fee:', summaryX + 4, currentY);
+  drawCurrency(doc, totalCourseFee, alignRight, currentY, 10, 'right', '#000');
+  currentY += 7;
+
+  doc.text('Total Paid:', summaryX + 4, currentY);
+  drawCurrency(doc, totalPaidOverall, alignRight, currentY, 10, 'right', '#000');
+  currentY += 7;
+
+  doc.setFont(bodyFont, 'bold');
+  doc.text('Balance Due:', summaryX + 4, currentY);
+  drawCurrency(doc, overallBalance, alignRight, currentY, 10, 'right', '#000');
+  currentY += 10;
+
+  // ── Reverse Charge ──
+  if (invoice.reverse_charge) {
+    doc.setFont(bodyFont, 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor('#000');
+    doc.text('** Reverse Charge Applicable – Tax payable by recipient **', margin, currentY);
+    currentY += 7;
+  }
 
   // ── Terms & Conditions ──
-  doc.setDrawColor('#cccccc');
-  doc.line(margin, y, pageWidth - margin, y);
-  y += 6;
+  doc.setDrawColor('#000');
+  doc.line(margin, currentY, pageWidth - margin, currentY);
+  currentY += 6;
   const terms = [
     '1. Payment is due within 15 days from invoice date.',
     '2. Late payment will attract interest @18% p.a.',
@@ -367,11 +483,35 @@ export async function generateInvoicePDF(invoice, org, type = 'sales', options =
     '5. Any dispute shall be subject to local jurisdiction.',
   ];
   doc.setFontSize(7.5);
-  doc.setTextColor('#555');
+  doc.setTextColor('#000');
   terms.forEach((line) => {
-    doc.text(line, margin, y);
-    y += 4.5;
+    doc.text(line, margin, currentY);
+    currentY += 4.5;
   });
+
+  // Tax note
+  currentY += 2;
+  doc.setFontSize(7);
+  doc.setTextColor('#000');
+  const taxNote = '* Tax is calculated per item based on applicable rates. Prices may be inclusive or exclusive of tax as per item configuration.';
+  doc.text(taxNote, margin, currentY);
+  currentY += 6;
+
+  // Payment Terms
+  const paymentTerms = invoice.payment_terms || 'Standard';
+  doc.setFont(bodyFont, 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor('#000');
+  doc.text(`Payment Terms: ${paymentTerms}`, margin, currentY);
+  currentY += 6;
+
+  // Authorized Signatory
+  doc.setDrawColor('#000');
+  doc.line(pageWidth - margin - 50, currentY, pageWidth - margin, currentY);
+  currentY += 4;
+  doc.setFontSize(9);
+  doc.setTextColor('#000');
+  doc.text('Authorized Signatory', pageWidth - margin - 20, currentY, { align: 'center' });
 
   return doc;
 }

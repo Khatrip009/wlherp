@@ -7,6 +7,7 @@ import { supabase } from "../api/supabase";
 import { generateReceiptPdf } from "../utils/receiptPdf";
 import BackButton from "../components/BackButton";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // 👈 added
 import { sendEmail, sendTemplateEmail } from "../services/emailService";
 
 export default function Receipts({ noLayout = false }) {
@@ -23,6 +24,7 @@ export default function Receipts({ noLayout = false }) {
   const [sendingEmailId, setSendingEmailId] = useState(null);
 
   const { branch, selectedFinancialYear, org } = useOrg();
+  const { theme } = useTheme(); // 👈 get theme
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -320,7 +322,7 @@ export default function Receipts({ noLayout = false }) {
 
   async function handleDownloadPdf(receipt) {
     try {
-      await generateReceiptPdf(receipt);
+      await generateReceiptPdf(receipt, { theme }); // 👈 pass theme
     } catch (err) {
       console.error("PDF generation failed", err);
       const printWindow = window.open("", "_blank");

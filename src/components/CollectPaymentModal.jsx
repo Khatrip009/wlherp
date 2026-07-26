@@ -13,75 +13,63 @@ import {
   Descriptions,
   Divider,
   Result,
+  Table,
+  Typography,
 } from "antd";
 import { FileTextOutlined, FilePdfOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { collectPayment } from "../services/feeService";
+import {
+  collectPaymentWithAllocation,
+  getStudentFeeComponents,
+} from "../services/feeService";
 import { createInvoice, getInvoices } from "../services/invoiceService";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";
 import { generateReceiptPdf } from "../utils/receiptPdf";
 import { generateInvoicePDF } from "../utils/invoicePdf";
 import { sendFeeReceiptEmail } from "../services/emailService";
+
+const { Text } = Typography;
 
 export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
   const { profile } = useAuth();
   const { org, branch, selectedFinancialYear } = useOrg();
+  const { theme } = useTheme();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
 
   const [installments, setInstallments] = useState([]);
   const [loadingInstallments, setLoadingInstallments] = useState(true);
-  const [taxInfo, setTaxInfo] = useState(null);
   const [creatingInvoice, setCreatingInvoice] = useState(false);
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
-  const [createNewInvoice, setCreateNewInvoice] = useState(false);
 
-  // Success state
+  const [components, setComponents] = useState([]);
+  const [loadingComponents, setLoadingComponents] = useState(true);
+  const [componentAllocations, setComponentAllocations] = useState({});
+
   const [step, setStep] = useState("form");
   const [receiptData, setReceiptData] = useState(null);
   const [invoiceId, setInvoiceId] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState(0);
   const [studentName, setStudentName] = useState("");
 
-  // ── Fetch existing invoices for this student ──
-  const { data: existingInvoices = [], isLoading: loadingInvoices } = useQuery({
+  // ── Fetch existing invoices for this student (just for info, not used for reuse)
+  const { data: existingInvoices = [] } = useQuery({
     queryKey: ["student-invoices", fee.student_id, branchId, financialYearId],
     queryFn: () => getInvoices({ student_id: fee.student_id }, branchId, financialYearId),
     enabled: !!fee.student_id && !!branchId && !!financialYearId,
     staleTime: 2 * 60 * 1000,
   });
 
-  // Auto-select an invoice (prefer one linked to this fee)
-  useEffect(() => {
-    if (existingInvoices.length === 0) {
-      setSelectedInvoiceId(null);
-      setCreateNewInvoice(true);
-      return;
-    }
-    // Check if any invoice is linked to this fee
-    const linked = existingInvoices.find(inv => inv.student_fee_id === fee.id);
-    if (linked) {
-      setSelectedInvoiceId(linked.id);
-      setCreateNewInvoice(false);
-    } else if (existingInvoices.length === 1) {
-      setSelectedInvoiceId(existingInvoices[0].id);
-      setCreateNewInvoice(false);
-    } else {
-      setSelectedInvoiceId(null);
-      setCreateNewInvoice(true);
-    }
-  }, [existingInvoices, fee.id]);
-
-  // ── Fetch installments & tax info ──
+  // ── Fetch installments ──
   useEffect(() => {
     if (!branchId || !financialYearId) return;
-    async function loadData() {
+    async function loadInstallments() {
       const { data: instData } = await supabase
         .from("fee_installments")
         .select("*")
@@ -91,70 +79,101 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
         .order("installment_number");
       setInstallments(instData || []);
       setLoadingInstallments(false);
-
-      if (fee.fee_structures?.tax_rate_id) {
-        const taxRateId = fee.fee_structures.tax_rate_id;
-        const taxInclusive = fee.fee_structures.tax_inclusive !== undefined
-          ? fee.fee_structures.tax_inclusive
-          : true;
-        const taxRate = fee.fee_structures.tax_rates;
-
-        if (taxRate) {
-          setTaxInfo({
-            rate: Number(taxRate.rate),
-            name: taxRate.name,
-            taxInclusive,
-          });
-        } else {
-          const { data: taxRateData } = await supabase
-            .from("tax_rates")
-            .select("rate, name")
-            .eq("id", taxRateId)
-            .eq("branch_id", branchId)
-            .eq("financial_year_id", financialYearId)
-            .single();
-          if (taxRateData) {
-            setTaxInfo({
-              rate: Number(taxRateData.rate),
-              name: taxRateData.name,
-              taxInclusive,
-            });
-          }
-        }
-      }
     }
-    loadData();
+    loadInstallments();
   }, [fee, branchId, financialYearId]);
 
-  // Auto‑fill amount when installment is selected
-  const watchedInstallment = Form.useWatch("installment_id", form);
+  // ── Fetch student fee components ──
   useEffect(() => {
-    if (watchedInstallment) {
-      const inst = installments.find((i) => i.id === Number(watchedInstallment));
-      if (inst) form.setFieldValue("amount", inst.amount);
+    if (!branchId || !financialYearId || !fee.id) return;
+    async function loadComponents() {
+      setLoadingComponents(true);
+      try {
+        const data = await getStudentFeeComponents(fee.id, branchId, financialYearId);
+        setComponents(data);
+        const allocs = {};
+        data.forEach(comp => {
+          const pending = Math.max(Number(comp.due_amount) - Number(comp.paid_amount), 0);
+          allocs[comp.id] = pending > 0 ? pending : 0;
+        });
+        setComponentAllocations(allocs);
+      } catch (err) {
+        console.error("Failed to load fee components:", err);
+        message.error("Could not load fee breakdown");
+      } finally {
+        setLoadingComponents(false);
+      }
     }
-  }, [watchedInstallment, installments, form]);
+    loadComponents();
+  }, [fee, branchId, financialYearId]);
 
-  // Tax breakdown
-  const watchedAmount = Form.useWatch("amount", form);
-  const taxBreakdown = () => {
-    const amt = Number(watchedAmount) || 0;
-    if (!taxInfo || taxInfo.rate === 0 || amt <= 0) return null;
-    const rate = taxInfo.rate / 100;
-    let base, tax;
-    if (taxInfo.taxInclusive) {
-      base = amt / (1 + rate);
-      tax = amt - base;
-    } else {
-      base = amt;
-      tax = amt * rate;
-    }
+  // ── Compute totals (base, tax, total) ──
+  const computeTotals = () => {
+    let totalBase = 0;
+    let totalTax = 0;
+    let totalPayable = 0;
+    const breakdown = [];
+
+    components.forEach(comp => {
+      const entered = Number(componentAllocations[comp.id] || 0);
+      if (entered <= 0) return;
+
+      const taxRate = comp.fee_structure_components?.tax_rates?.rate || 0;
+      const rate = taxRate / 100;
+      const taxInclusive = comp.fee_structure_components?.tax_inclusive !== undefined
+        ? comp.fee_structure_components.tax_inclusive
+        : false;
+
+      let base, tax, total;
+      if (taxInclusive) {
+        total = entered;
+        if (rate > 0) {
+          base = entered / (1 + rate);
+          tax = entered - base;
+        } else {
+          base = entered;
+          tax = 0;
+        }
+      } else {
+        base = entered;
+        tax = entered * rate;
+        total = base + tax;
+      }
+
+      base = Math.round(base * 100) / 100;
+      tax = Math.round(tax * 100) / 100;
+      total = Math.round(total * 100) / 100;
+
+      totalBase += base;
+      totalTax += tax;
+      totalPayable += total;
+
+      breakdown.push({
+        componentId: comp.id,
+        componentName: comp.fee_structure_components?.component_name || "Component",
+        entered,
+        base,
+        tax,
+        total,
+        rate: taxRate,
+        taxInclusive,
+        taxRateId: comp.fee_structure_components?.tax_rate_id || null,
+      });
+    });
+
     return {
-      base: base.toFixed(2),
-      tax: tax.toFixed(2),
-      total: amt.toFixed(2),
+      totalBase: Math.round(totalBase * 100) / 100,
+      totalTax: Math.round(totalTax * 100) / 100,
+      totalPayable: Math.round(totalPayable * 100) / 100,
+      breakdown,
     };
   };
+
+  const totals = computeTotals();
+
+  useEffect(() => {
+    form.setFieldValue("amount", totals.totalPayable);
+  }, [totals.totalPayable, form]);
 
   // ── Print handlers ──
   const handlePrintReceipt = async () => {
@@ -165,17 +184,13 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
     try {
       const { data: fullReceipt, error } = await supabase
         .from("receipts")
-        .select(`
-          *,
-          students (*),
-          fee_payments (*)
-        `)
+        .select(`*, students (*), fee_payments (*)`)
         .eq("id", receiptData.id)
         .eq("branch_id", branchId)
         .eq("financial_year_id", financialYearId)
         .single();
       if (error) throw error;
-      await generateReceiptPdf(fullReceipt);
+      await generateReceiptPdf(fullReceipt, { theme });
       message.success("Receipt PDF downloaded");
     } catch (err) {
       console.error(err);
@@ -184,61 +199,71 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
   };
 
   const handlePrintInvoice = async () => {
-    if (!invoiceId) {
-      message.error("Invoice ID not available");
-      return;
-    }
-    try {
-      const { data: invoice, error } = await supabase
-        .from("invoices")
-        .select("*, invoice_items(*)")
-        .eq("id", invoiceId)
-        .eq("branch_id", branchId)
-        .eq("financial_year_id", financialYearId)
-        .single();
-      if (error) throw error;
-      const doc = await generateInvoicePDF(invoice, org, 'sales');
-      const pdfBlob = doc.output('blob');
-      const url = URL.createObjectURL(pdfBlob);
-      window.open(url, '_blank');
-      message.success("Invoice PDF opened in new tab");
-    } catch (err) {
-      console.error(err);
-      message.error("Failed to generate invoice PDF");
-    }
-  };
+  if (!invoiceId) {
+    message.error("Invoice ID not available");
+    return;
+  }
+  try {
+    const { data: invoice, error } = await supabase
+      .from("invoices")
+      .select("*, invoice_items(*), students(*), receipt_id")   // ← added receipt_id
+      .eq("id", invoiceId)
+      .eq("branch_id", branchId)
+      .eq("financial_year_id", financialYearId)
+      .single();
+    if (error) throw error;
 
-  // ── Create invoice if needed ──
-  const createInvoiceForFee = async () => {
-    const components = fee.fee_structures?.fee_structure_components || [];
-    let items = components.map(comp => ({
+    // Pass receipt number to the PDF (optional – the PDF can also auto‑fetch it)
+    const doc = await generateInvoicePDF(invoice, org, 'sales', {
+      theme,
+      receiptNumber: receiptData?.receipt_no,   // already available from state
+    });
+    const pdfBlob = doc.output('blob');
+    const url = URL.createObjectURL(pdfBlob);
+    window.open(url, '_blank');
+    message.success("Invoice PDF opened in new tab");
+  } catch (err) {
+    console.error(err);
+    message.error("Failed to generate invoice PDF");
+  }
+};
+
+  // ─── Create invoice from allocated amounts ──────────────────────────
+  const createInvoiceFromAllocations = async (breakdown, totalPayable, receiptId = null) => {
+    // Build invoice items from breakdown
+    const items = breakdown.map(b => ({
       item_type: "fee_component",
-      item_id: comp.id,
-      description: comp.component_name,
+      description: b.componentName,
       quantity: 1,
-      unit_price: comp.amount,
-      tax_rate_id: comp.tax_rate_id || fee.fee_structures?.tax_rate_id,
+      unit_price: b.base,           // base amount (exclusive)
+      tax_rate_id: b.taxRateId,
+      tax_inclusive: false,         // tax is added on top
     }));
-    if (!items.length) {
+
+    if (items.length === 0) {
       items.push({
         item_type: "fee_payment",
         description: `Fee Payment - ${fee.fee_structures?.courses?.course_name || "N/A"}`,
         quantity: 1,
-        unit_price: fee.final_fee,
-        tax_rate_id: fee.fee_structures?.tax_rate_id,
+        unit_price: totalPayable,
+        tax_rate_id: null,
+        tax_inclusive: false,
       });
     }
+
     const payload = {
       student_id: fee.student_id,
       invoice_date: new Date().toISOString().split("T")[0],
       due_date: null,
       payment_terms: "Immediate",
-      gst_applicable: taxInfo && taxInfo.rate > 0,
+      gst_applicable: false,
       place_of_supply: fee.students?.state_code || "",
       reverse_charge: false,
       items,
       student_fee_id: fee.id,
       fee_installment_id: null,
+      receipt_id: receiptId,
+      status: "Final", // always final
     };
     const result = await createInvoice(payload, ctx);
     return result.id;
@@ -246,58 +271,52 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
 
   // ── Submit payment ──
   const onFinish = async (values) => {
-    const paymentAmountVal = Number(values.amount);
-    if (!paymentAmountVal || paymentAmountVal <= 0) {
-      message.error("Enter a valid amount");
+    const allocations = totals.breakdown
+      .filter(b => b.entered > 0)
+      .map(b => ({
+        studentFeeComponentId: b.componentId,
+        amount: b.total,
+        baseAmount: b.base,
+        taxAmount: b.tax,
+        taxRateId: b.taxRateId,
+      }));
+
+    if (allocations.length === 0) {
+      message.error("Please allocate at least one component");
       return;
     }
 
-    let baseAmount = paymentAmountVal;
-    let taxAmount = 0;
-    if (taxInfo && taxInfo.rate > 0) {
-      const rate = taxInfo.rate / 100;
-      if (taxInfo.taxInclusive) {
-        baseAmount = paymentAmountVal / (1 + rate);
-        taxAmount = paymentAmountVal - baseAmount;
-      } else {
-        taxAmount = paymentAmountVal * rate;
-      }
-      baseAmount = Math.round(baseAmount * 100) / 100;
-      taxAmount = Math.round(taxAmount * 100) / 100;
+    const payable = totals.totalPayable;
+    if (payable <= 0) {
+      message.error("Invalid payment amount");
+      return;
     }
 
-    const paymentPayload = {
-      student_fee_id: fee.id,
-      payment_date: values.payment_date
-        ? values.payment_date.format("YYYY-MM-DD")
-        : dayjs().format("YYYY-MM-DD"),
-      amount: paymentAmountVal,
-      base_amount: baseAmount,
-      tax_amount: taxAmount,
-      payment_mode: values.payment_mode,
-      transaction_no: values.transaction_no,
-      remarks: values.remarks,
-      installment_id: values.installment_id || null,
-    };
-
     try {
-  // Determine invoice ID
-let finalInvoiceId = selectedInvoiceId;
-if (createNewInvoice || !finalInvoiceId) {
-  setCreatingInvoice(true);
-  finalInvoiceId = await createInvoiceForFee();   // automatically reuses existing invoice
-  setCreatingInvoice(false);
-}
-      // ── Collect payment with invoice ID ──
-      const payment = await collectPayment(
-        paymentPayload,
-        fee.student_id,
-        profile?.id,
-        finalInvoiceId,
-        ctx
-      );
+      // ── 1. Always create a new invoice from allocations ──
+      setCreatingInvoice(true);
+      const finalInvoiceId = await createInvoiceFromAllocations(totals.breakdown, payable);
+      setCreatingInvoice(false);
 
-      // ── Fetch receipt ──
+      // ── 2. Collect payment (this updates invoice paid_amount/balance) ──
+      const payment = await collectPaymentWithAllocation({
+        studentFeeId: fee.id,
+        paymentDate: values.payment_date ? values.payment_date.format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"),
+        paymentMode: values.payment_mode,
+        transactionNo: values.transaction_no,
+        remarks: values.remarks,
+        installmentId: values.installment_id || null,
+        allocations: allocations.map(a => ({
+          studentFeeComponentId: a.studentFeeComponentId,
+          amount: a.amount,
+          baseAmount: a.baseAmount,
+          taxAmount: a.taxAmount,
+        })),
+        generatedBy: profile?.id,
+        invoiceId: finalInvoiceId,
+      }, ctx);
+
+      // ── 3. Fetch receipt ──
       const { data: receipt, error: receiptError } = await supabase
         .from("receipts")
         .select("*")
@@ -305,14 +324,24 @@ if (createNewInvoice || !finalInvoiceId) {
         .eq("branch_id", branchId)
         .eq("financial_year_id", financialYearId)
         .single();
-      if (!receiptError) setReceiptData(receipt);
+      if (receiptError) {
+        console.warn("Receipt not found for payment", payment.id);
+      } else {
+        setReceiptData(receipt);
+        // Link receipt to invoice
+        if (finalInvoiceId && receipt) {
+          await supabase
+            .from("invoices")
+            .update({ receipt_id: receipt.id })
+            .eq("id", finalInvoiceId);
+        }
+      }
 
       setInvoiceId(finalInvoiceId);
-      setPaymentAmount(paymentAmountVal);
+      setPaymentAmount(payment.amount);
       setStudentName(`${fee.students?.first_name} ${fee.students?.last_name}`);
       setStep("success");
 
-      // ── Send receipt email (non-blocking) ──
       if (org && payment.id) {
         sendFeeReceiptEmail(payment.id, org).catch((emailErr) =>
           console.error("Failed to send receipt email", emailErr)
@@ -323,13 +352,35 @@ if (createNewInvoice || !finalInvoiceId) {
       queryClient.invalidateQueries({ queryKey: ["student-invoices"] });
       onSuccess?.();
     } catch (err) {
-  setCreatingInvoice(false);
-  console.error(err);
-  message.error(err.message || "Payment failed");
-}
+      setCreatingInvoice(false);
+      console.error(err);
+      message.error(err.message || "Payment failed");
+    }
   };
 
-  // ── Reset and close ──
+  // ── Handlers for allocation changes ──
+  const handleAllocationChange = (componentId, value) => {
+    const comp = components.find(c => c.id === componentId);
+    if (!comp) return;
+    const pending = Math.max(Number(comp.due_amount) - Number(comp.paid_amount), 0);
+    let num = Number(value);
+    if (isNaN(num) || num < 0) num = 0;
+    if (num > pending) num = pending;
+    setComponentAllocations(prev => ({
+      ...prev,
+      [componentId]: num,
+    }));
+  };
+
+  const handlePayAll = () => {
+    const allocs = {};
+    components.forEach(comp => {
+      const pending = Math.max(Number(comp.due_amount) - Number(comp.paid_amount), 0);
+      allocs[comp.id] = pending;
+    });
+    setComponentAllocations(allocs);
+  };
+
   const handleClose = () => {
     setStep("form");
     onClose();
@@ -347,7 +398,7 @@ if (createNewInvoice || !finalInvoiceId) {
       onCancel={handleClose}
       footer={null}
       destroyOnHidden
-      width={step === "form" ? 560 : 480}
+      width={step === "form" ? 680 : 480}
     >
       {step === "form" ? (
         <>
@@ -366,47 +417,136 @@ if (createNewInvoice || !finalInvoiceId) {
             <Descriptions.Item label="Balance">
               ₹{Number(fee.pending).toLocaleString("en-IN")}
             </Descriptions.Item>
-            {taxInfo && (
-              <Descriptions.Item label="Tax">
-                {taxInfo.name} ({taxInfo.rate}%) – {taxInfo.taxInclusive ? "Inclusive" : "Exclusive"}
-              </Descriptions.Item>
-            )}
           </Descriptions>
 
           <Divider />
 
-          {/* ── Invoice Selector ── */}
-          {!loadingInvoices && existingInvoices.length > 0 && (
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-1">Apply to Invoice</label>
-              <Select
-                placeholder="Select an existing invoice or create new"
-                value={selectedInvoiceId}
-                onChange={(val) => {
-                  if (val === "create_new") {
-                    setSelectedInvoiceId(null);
-                    setCreateNewInvoice(true);
-                  } else {
-                    setSelectedInvoiceId(val);
-                    setCreateNewInvoice(false);
-                  }
-                }}
-                style={{ width: "100%" }}
-                options={[
-                  ...existingInvoices.map(inv => ({
-                    label: `${inv.invoice_number} (₹${Number(inv.grand_total).toLocaleString()}) – ${inv.status}`,
-                    value: inv.id,
-                  })),
-                  { label: "+ Create new invoice", value: "create_new" },
+          {/* ── Fee Components Allocation ── */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <Text strong>Allocate Payment to Components</Text>
+              <Button size="small" onClick={handlePayAll}>Pay All</Button>
+            </div>
+            {loadingComponents ? (
+              <Text type="secondary">Loading components...</Text>
+            ) : components.length === 0 ? (
+              <Text type="secondary">No components found for this fee.</Text>
+            ) : (
+              <Table
+                dataSource={components}
+                rowKey="id"
+                pagination={false}
+                size="small"
+                columns={[
+                  {
+                    title: "Component",
+                    dataIndex: ["fee_structure_components", "component_name"],
+                    key: "name",
+                  },
+                  {
+                    title: "Due",
+                    dataIndex: "due_amount",
+                    render: val => `₹${Number(val).toFixed(2)}`,
+                    align: "right",
+                  },
+                  {
+                    title: "Paid",
+                    dataIndex: "paid_amount",
+                    render: val => `₹${Number(val).toFixed(2)}`,
+                    align: "right",
+                  },
+                  {
+                    title: "Pending",
+                    render: (_, comp) => {
+                      const pending = Math.max(Number(comp.due_amount) - Number(comp.paid_amount), 0);
+                      return <Text strong>₹{pending.toFixed(2)}</Text>;
+                    },
+                    align: "right",
+                  },
+                  {
+                    title: "Pay Now",
+                    render: (_, comp) => {
+                      const pending = Math.max(Number(comp.due_amount) - Number(comp.paid_amount), 0);
+                      return (
+                        <InputNumber
+                          min={0}
+                          max={pending}
+                          value={componentAllocations[comp.id] || 0}
+                          onChange={(val) => handleAllocationChange(comp.id, val)}
+                          style={{ width: 100 }}
+                          formatter={value => `₹${value}`}
+                          parser={value => value.replace(/₹\s?|(,*)/g, '')}
+                        />
+                      );
+                    },
+                  },
                 ]}
               />
+            )}
+          </div>
+
+          {/* ── Tax Breakdown ── */}
+          {totals.breakdown.length > 0 && (
+            <div style={{ background: "#fafafa", borderRadius: 6, padding: 12, marginBottom: 16 }}>
+              <Text strong>Tax Breakdown</Text>
+              <Table
+                dataSource={totals.breakdown}
+                rowKey="componentName"
+                pagination={false}
+                size="small"
+                columns={[
+                  { title: "Component", dataIndex: "componentName" },
+                  {
+                    title: "Entered",
+                    dataIndex: "entered",
+                    render: val => `₹${val.toFixed(2)}`,
+                    align: "right",
+                  },
+                  {
+                    title: "Base",
+                    dataIndex: "base",
+                    render: val => `₹${val.toFixed(2)}`,
+                    align: "right",
+                  },
+                  {
+                    title: "Tax",
+                    dataIndex: "tax",
+                    render: val => `₹${val.toFixed(2)}`,
+                    align: "right",
+                  },
+                  {
+                    title: "Total",
+                    dataIndex: "total",
+                    render: val => `₹${val.toFixed(2)}`,
+                    align: "right",
+                  },
+                  {
+                    title: "Rate",
+                    render: (_, row) => row.rate > 0 ? `${row.rate}%` : "0%",
+                    align: "right",
+                  },
+                  {
+                    title: "Type",
+                    render: (_, row) => row.taxInclusive ? "Inclusive" : "Exclusive",
+                    align: "center",
+                  },
+                ]}
+              />
+              <div style={{ marginTop: 8, textAlign: "right" }}>
+                <Text strong>Total Payable: </Text>
+                <Text strong>₹{totals.totalPayable.toFixed(2)}</Text>
+                <br />
+                <Text type="secondary">Base: ₹{totals.totalBase.toFixed(2)}</Text>
+                <Text type="secondary" style={{ marginLeft: 12 }}>Tax: ₹{totals.totalTax.toFixed(2)}</Text>
+              </div>
             </div>
           )}
-          {!loadingInvoices && existingInvoices.length === 0 && (
-            <div className="mb-4 text-sm text-secondary">
-              No existing invoices – a new invoice will be created automatically.
-            </div>
-          )}
+
+          {/* ── Invoice Info (read‑only) ── */}
+          <div className="mb-4 p-3 bg-blue-50 rounded border border-blue-200">
+            <Text strong>Invoice: </Text>
+            <Text>A new invoice will be created for this payment based on the allocated amounts.</Text>
+          </div>
 
           <Form
             form={form}
@@ -414,7 +554,7 @@ if (createNewInvoice || !finalInvoiceId) {
             onFinish={onFinish}
             initialValues={{
               payment_date: dayjs(),
-              amount: fee.pending,
+              amount: totals.totalPayable || 0,
               payment_mode: "Cash",
             }}
           >
@@ -441,31 +581,15 @@ if (createNewInvoice || !finalInvoiceId) {
 
             <Form.Item
               name="amount"
-              label="Amount"
-              rules={[{ required: true, message: "Please enter amount" }]}
+              label="Total Payment Amount (Auto-calculated)"
             >
               <InputNumber
-                min={0}
-                max={fee.pending}
                 style={{ width: "100%" }}
-                placeholder={`Max: ₹${fee.pending}`}
+                value={totals.totalPayable}
+                disabled
+                formatter={value => `₹${value}`}
               />
             </Form.Item>
-
-            {taxBreakdown() && (
-              <div
-                style={{
-                  background: "#fafafa",
-                  borderRadius: 6,
-                  padding: 12,
-                  marginBottom: 16,
-                }}
-              >
-                <div>Base: ₹{taxBreakdown().base}</div>
-                <div>Tax ({taxInfo.rate}%): ₹{taxBreakdown().tax}</div>
-                <div style={{ fontWeight: 600 }}>Total: ₹{taxBreakdown().total}</div>
-              </div>
-            )}
 
             <Form.Item name="payment_mode" label="Payment Mode">
               <Select>

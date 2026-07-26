@@ -1,3 +1,4 @@
+// src/pages/Employees.jsx
 import React, { useState, useRef } from "react";
 import {
   useInfiniteQuery,
@@ -36,6 +37,7 @@ import {
 import { generateTeacherResumePdf } from "../utils/teacherResumePdf";
 import { generateIdCard } from "../utils/idCardPdf";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";   // ✅ added
 
 export default function Employees() {
   const queryClient = useQueryClient();
@@ -51,32 +53,35 @@ export default function Employees() {
   const [editing, setEditing] = useState(null);
   const fileInputRef = useRef(null);
 
-  // ── Get org, branch, FY, and theme from context ──
-  const { branch, selectedFinancialYear, org, theme } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg();   // ✅ removed theme
+  const { theme } = useTheme();                              // ✅ get theme correctly
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
 
-  // Dropdown data for filters (organisation‑wide)
+  // Dropdown data – pass organizationId where required
   const { data: mediums = [] } = useQuery({
     queryKey: ["mediums"],
     queryFn: getMediumOptions,
     staleTime: 10 * 60 * 1000,
   });
   const { data: courses = [] } = useQuery({
-    queryKey: ["courses"],
-    queryFn: getCourseOptions,
+    queryKey: ["courses", org?.id],
+    queryFn: () => getCourseOptions(org?.id),   // ✅ pass org id if needed
     staleTime: 10 * 60 * 1000,
+    enabled: !!org?.id,
   });
   const { data: courseLevels = [] } = useQuery({
-    queryKey: ["courseLevels"],
-    queryFn: getCourseLevelOptions,
+    queryKey: ["courseLevels", org?.id],
+    queryFn: () => getCourseLevelOptions(org?.id),   // ✅ adjust if service requires
     staleTime: 10 * 60 * 1000,
+    enabled: !!org?.id,
   });
   const { data: subjects = [] } = useQuery({
-    queryKey: ["subjects"],
-    queryFn: getSubjectOptions,
+    queryKey: ["subjects", org?.id],
+    queryFn: () => getSubjectOptions(org?.id),   // ✅ adjust accordingly
     staleTime: 10 * 60 * 1000,
+    enabled: !!org?.id,
   });
 
   const filters = {
