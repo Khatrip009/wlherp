@@ -583,20 +583,8 @@ export async function collectPaymentWithAllocation({
     await updateInvoiceAfterPayment(invoiceId, payment.amount, context);
   }
 
-  // 9. Insert income record
-  await supabase.from("income").insert([
-    {
-      income_date: payment.payment_date,
-      category: "Student Fees",
-      amount: payment.amount,
-      base_amount: payment.base_amount,
-      tax_amount: payment.tax_amount,
-      payment_mode: payment.payment_mode,
-      description: `Payment for Student Fee ID ${studentFeeId} — Receipt ${receiptNo}`,
-      branch_id: branchId,
-      financial_year_id: financialYearId,
-    },
-  ]);
+  // ❌ Removed: manual income insertion (step 9). The DB trigger auto_post_fee_payment now handles the journal entry.
+  // Previously the code inserted into 'income' here, but that would duplicate income.
 
   // 10. Send receipt email (non‑blocking)
   try {
@@ -854,7 +842,6 @@ export async function generateInvoiceFromStudentFee(studentFeeId, installmentId 
     items: invoiceItems,
     student_fee_id: studentFeeId,
     fee_installment_id: installmentId || null,
-    // receipt_id: null, // removed unused variable
     branch_id: branchId,
     financial_year_id: financialYearId,
   };

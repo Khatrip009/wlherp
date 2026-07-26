@@ -10,6 +10,9 @@ import { useAuth } from '../context/AuthContext';
 import { useOrg } from '../context/OrganizationContext';
 import { useTheme } from '../context/ThemeContext';
 import { generateReportPdf } from '../utils/generateReportPdf';
+import { generateReceiptPdf } from '../utils/receiptPdf';
+import { generateAdmissionPdf } from '../utils/admissionPdf';
+import { printAdmissionForm } from '../services/admissionPrintService';   // <-- new import
 import { supabase } from '../api/supabase';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -52,6 +55,7 @@ const FIELD_LABELS = {
   due_date_from: 'Due Date From',
   due_date_to: 'Due Date To',
   account_id: 'Account',
+  receipt_id: 'Receipt',
 };
 
 function getLabel(field) {
@@ -133,7 +137,6 @@ function FilterDropdown({ field, filters, onChange, branchId, financialYearId })
 /*  Report Page Component                                             */
 /* ------------------------------------------------------------------ */
 export default function ReportPage({ reportId }) {
-  // ─── ALL hooks are called unconditionally here ────────
   const { profile } = useAuth();
   const { org, branch, selectedFinancialYear } = useOrg();
   const { theme } = useTheme();
@@ -153,9 +156,29 @@ export default function ReportPage({ reportId }) {
   const adminRoles = ['admin', 'super_admin', 'organization_admin', 'branch_admin'];
   const hasReportAccess = Boolean(profile && adminRoles.includes(profile.role));
 
+  // Determine if this is a document‑type report
+  const isDocumentReport = config?.reportType === 'document';
+  const DocumentComponent = isDocumentReport ? config.documentComponent : null;
+
+  // ---- Data fetching ----
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['report', reportId, filters, branchId, financialYearId],
-    queryFn: () => fetchReportData(reportId, filters, branchId, financialYearId),
+    queryFn: async () => {
+      if (isDocumentReport) {
+        if (config.recordQuery) {
+          const result = await config.recordQuery(filters, branchId, financialYearId);
+          if (result?.data !== undefined) {
+            const raw = result.data;
+            return raw.map(row => config.recordTransform ? config.recordTransform(row) : row);
+          }
+          return (Array.isArray(result) ? result : result?.data || []).map(row =>
+            config.recordTransform ? config.recordTransform(row) : row
+          );
+        }
+        return fetchReportData(reportId, filters, branchId, financialYearId);
+      }
+      return fetchReportData(reportId, filters, branchId, financialYearId);
+    },
     keepPreviousData: true,
     staleTime: 30_000,
     enabled: hasReportAccess && Boolean(config) && Boolean(branchId) && Boolean(financialYearId),
@@ -163,19 +186,20 @@ export default function ReportPage({ reportId }) {
 
   const rows = useMemo(() => {
     if (!config) return [];
+    if (isDocumentReport) return data || [];
     if (!data) return [];
     if (Array.isArray(data)) return data;
     if (data.lines) return data.lines;
     return [];
-  }, [config, data]);
+  }, [config, data, isDocumentReport]);
 
   const hasChart = useMemo(
-    () => Boolean(config?.chartConfig && rows.length > 0),
-    [config, rows]
+    () => !isDocumentReport && Boolean(config?.chartConfig && rows.length > 0),
+    [config, rows, isDocumentReport]
   );
 
   const aggregateRowObj = useMemo(() => {
-    if (!config?.aggregateRow || !rows.length) return null;
+    if (isDocumentReport || !config?.aggregateRow || !rows.length) return null;
     const obj = {};
     config.columns.forEach((col, idx) => {
       if (col.aggregate) {
@@ -187,14 +211,15 @@ export default function ReportPage({ reportId }) {
       }
     });
     return obj;
-  }, [config, rows]);
+  }, [config, rows, isDocumentReport]);
 
   const dataForPdf = useMemo(() => {
+    if (isDocumentReport) return rows;
     if (!aggregateRowObj) return rows;
     return [...rows, aggregateRowObj];
-  }, [rows, aggregateRowObj]);
+  }, [rows, aggregateRowObj, isDocumentReport]);
 
-  // ─── Now guards can safely return ──────────
+  // ---- Guard clauses ----
   if (!hasReportAccess) {
     return <Navigate to="/" replace />;
   }
@@ -215,11 +240,47 @@ export default function ReportPage({ reportId }) {
     );
   }
 
-  // ─── Handlers (no hooks) ─────────────────────
+  // ---- Handlers ----
   const handleFilterChange = (field, value) => setFilters(prev => ({ ...prev, [field]: value }));
   const resetFilters = () => setFilters(initialFilters);
 
   const handleDownloadPdf = async () => {
+    if (reportId === 'fee_receipt' && rows.length > 0) {
+      // fee_receipt handling as before (same as previous version)
+      const receiptRow = rows[0];
+      const receiptId = receiptRow?.id || filters.receipt_id || receiptRow?.payment_id;
+      if (receiptId) {
+        const { data: fullReceipt } = await supabase
+          .from('receipts')
+          .select('*, students(*), fee_payments(*)')
+          .eq('id', receiptId)
+          .single();
+        if (fullReceipt) {
+          const doc = await generateReceiptPdf(fullReceipt, { org });
+          doc.save(`Receipt_${fullReceipt.receipt_no}.pdf`);
+          return;
+        }
+      }
+      const doc = await generateReceiptPdf(receiptRow, { org });
+      doc.save(`Receipt_${receiptRow.receipt_no || 'unknown'}.pdf`);
+      return;
+    }
+
+    if (reportId === 'admission_form' && rows.length > 0) {
+      const studentId = rows[0]?.id || filters.student_id;
+      if (studentId) {
+        try {
+          await generateAdmissionPdf(studentId);
+          return;
+        } catch (err) {
+          console.error(err);
+          alert('Failed to generate admission PDF: ' + err.message);
+        }
+      }
+      return;
+    }
+
+    // Generic table report PDF
     if (!rows.length) return;
     try {
       const doc = await generateReportPdf(config, dataForPdf, filters, org, theme);
@@ -230,13 +291,30 @@ export default function ReportPage({ reportId }) {
     }
   };
 
+  const handlePrint = () => {
+    // Specifically for admission form – open browser print window
+    if (reportId === 'admission_form' && rows.length > 0) {
+      const studentId = rows[0]?.id || filters.student_id;
+      if (studentId) {
+        printAdmissionForm(studentId);
+        return;
+      }
+    }
+
+    // For other document types, we can use the generic PDF as print preview
+    // or you can add dedicated print services for each.
+    // For now, fallback to PDF download (or you can skip)
+    handleDownloadPdf();
+  };
+
   const handlePrintPreview = async () => {
+    // For document reports we already have a dedicated Print button,
+    // so this only applies to table reports.
     if (!rows.length) return;
     try {
       const doc = await generateReportPdf(config, dataForPdf, filters, org, theme);
       const blob = doc.output('blob');
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
+      window.open(URL.createObjectURL(blob), '_blank');
     } catch (err) {
       console.error(err);
       alert('Failed to generate PDF: ' + err.message);
@@ -248,7 +326,7 @@ export default function ReportPage({ reportId }) {
     exportToExcel(config.title, config.columns, rows);
   };
 
-  // ─── UI (same as before) ─────────────────────
+  // ---- UI ----
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
       <Link to="/reports" className="inline-flex items-center gap-2 text-secondary hover:text-primary-dark mb-2 font-montserrat text-sm">
@@ -261,36 +339,56 @@ export default function ReportPage({ reportId }) {
           {config.description && <p className="text-secondary-dark mt-1">{config.description}</p>}
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={handlePrintPreview} disabled={!rows.length} className="...">
-            <Printer size={16} /> Print Preview
-          </button>
-          <button onClick={handleDownloadPdf} disabled={!rows.length} className="...">
-            <FileDown size={16} /> PDF
-          </button>
-          <button onClick={handleExportExcel} disabled={!rows.length} className="...">
-            <FileDown size={16} /> Excel
-          </button>
+          {!isDocumentReport && (
+            <>
+              <button onClick={handlePrintPreview} disabled={!rows.length} className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50">
+                <Printer size={16} /> Print Preview
+              </button>
+              <button onClick={handleDownloadPdf} disabled={!rows.length} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50">
+                <FileDown size={16} /> PDF
+              </button>
+              <button onClick={handleExportExcel} disabled={!rows.length} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50">
+                <FileDown size={16} /> Excel
+              </button>
+            </>
+          )}
+          {isDocumentReport && (
+            <>
+              {reportId === 'admission_form' && (
+                <button onClick={handlePrint} disabled={!rows.length} className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50">
+                  <Printer size={16} /> Print
+                </button>
+              )}
+              <button onClick={handleDownloadPdf} disabled={!rows.length} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50">
+                <FileDown size={16} /> Download PDF
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-        <div className="flex flex-wrap items-end gap-4">
-          {config.fields.map(field => (
-            <div key={field} className="flex flex-col min-w-[160px]">
-              <label className="text-sm font-medium text-secondary-dark mb-1 capitalize">{getLabel(field)}</label>
-              {isDateField(field) ? (
-                <input type="date" value={filters[field] || ''} onChange={e => handleFilterChange(field, e.target.value)} className="..." />
-              ) : DROPDOWN_TABLES[field] ? (
-                <FilterDropdown field={field} filters={filters} onChange={handleFilterChange} branchId={branchId} financialYearId={financialYearId} />
-              ) : (
-                <input type="text" placeholder={getLabel(field)} value={filters[field] || ''} onChange={e => handleFilterChange(field, e.target.value)} className="..." />
-              )}
-            </div>
-          ))}
-          <button onClick={resetFilters} className="..."><RotateCcw size={14} /> Reset</button>
+      {/* Filter Bar – only for non‑document reports */}
+      {!isDocumentReport && (
+        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+          <div className="flex flex-wrap items-end gap-4">
+            {config.fields.map(field => (
+              <div key={field} className="flex flex-col min-w-[160px]">
+                <label className="text-sm font-medium text-secondary-dark mb-1 capitalize">{getLabel(field)}</label>
+                {isDateField(field) ? (
+                  <input type="date" value={filters[field] || ''} onChange={e => handleFilterChange(field, e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 bg-white" />
+                ) : DROPDOWN_TABLES[field] ? (
+                  <FilterDropdown field={field} filters={filters} onChange={handleFilterChange} branchId={branchId} financialYearId={financialYearId} />
+                ) : (
+                  <input type="text" placeholder={getLabel(field)} value={filters[field] || ''} onChange={e => handleFilterChange(field, e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 bg-white" />
+                )}
+              </div>
+            ))}
+            <button onClick={resetFilters} className="flex items-center gap-2 text-sm text-gray-600 hover:text-primary-dark border border-gray-300 px-3 py-2 rounded-lg bg-white">
+              <RotateCcw size={14} /> Reset
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Loading / Error / Empty */}
       {isLoading && <div className="text-center py-20 text-secondary">Loading report data…</div>}
@@ -299,8 +397,19 @@ export default function ReportPage({ reportId }) {
         <div className="text-center py-20 text-secondary">No records found for the selected filters.</div>
       )}
 
-      {/* Chart */}
-      {hasChart && (
+      {/* Document Report Rendering */}
+      {isDocumentReport && rows.length > 0 && DocumentComponent && (
+        <div className="space-y-6">
+          {rows.map((record, idx) => (
+            <div key={idx} className="bg-white rounded-xl border shadow-sm p-4">
+              <DocumentComponent data={record} org={org} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Chart (for non‑document) */}
+      {!isDocumentReport && hasChart && (
         <div className="bg-white p-4 rounded-xl border shadow-sm">
           <div className="flex items-center gap-2 mb-3 text-primary font-medium"><BarChart3 size={18} /> Chart</div>
           <ResponsiveContainer width="100%" height={300}>
@@ -316,8 +425,8 @@ export default function ReportPage({ reportId }) {
         </div>
       )}
 
-      {/* Data Table */}
-      {rows.length > 0 && (
+      {/* Data Table (for non‑document) */}
+      {!isDocumentReport && rows.length > 0 && (
         <div className="overflow-x-auto rounded-xl border shadow-sm bg-white">
           <table className="w-full text-sm">
             <thead className="bg-primary-bg text-primary-dark">
@@ -349,7 +458,7 @@ export default function ReportPage({ reportId }) {
         </div>
       )}
 
-      {rows.length > 0 && (
+      {!isDocumentReport && rows.length > 0 && (
         <p className="text-sm text-secondary-dark text-right">{rows.length} record{rows.length !== 1 && 's'}</p>
       )}
     </div>

@@ -81,6 +81,7 @@ async function loadImageAsBase64(url) {
 // ─── Main PDF generator ──────────────────────────────────
 export async function generateInvoicePDF(invoice, org, type = 'sales', options = {}) {
   let { receiptNumber = null, theme = {} } = options;
+  
 
   const accentColor = '#000000';
   const headingFont = theme.font_heading || 'helvetica';

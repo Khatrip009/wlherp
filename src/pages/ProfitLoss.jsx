@@ -2,8 +2,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
+import { generateProfitLossPdf } from "../utils/profitLossPdf"; // ✅ only one import
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -22,51 +21,6 @@ const GROUP_CONFIG = {
 
 const COLORS = ["#0D47A1", "#FF1070", "#00C49F", "#FFBB28", "#0088FE", "#FF8042"];
 
-/* ─── PDF helpers ──────────────────────────────────────────── */
-async function loadImageAsBase64(url) {
-  if (!url) return null;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const blob = await res.blob();
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  } catch { return null; }
-}
-
-function createRupeeSymbolImage() {
-  const canvas = document.createElement("canvas");
-  canvas.width = 30; canvas.height = 30;
-  const ctx = canvas.getContext("2d");
-  ctx.font = "bold 24px sans-serif"; ctx.fillStyle = "#000";
-  ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText("₹", 15, 15);
-  return canvas.toDataURL("image/png");
-}
-let rupeeImage = null;
-function getRupeeImage() { if (!rupeeImage) rupeeImage = createRupeeSymbolImage(); return rupeeImage; }
-
-function drawCurrency(doc, amount, x, y, fontSize = 10, align = "left", color = "#000") {
-  const img = getRupeeImage();
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(fontSize);
-  doc.setTextColor(color);
-  const amountText = amount.toLocaleString("en-IN");
-  if (align === "left") {
-    doc.addImage(img, "PNG", x, y - fontSize * 0.35, 4, 4);
-    doc.text(amountText, x + 5, y);
-  } else {
-    const textWidth = doc.getTextWidth(amountText);
-    doc.addImage(img, "PNG", x - textWidth - 5, y - fontSize * 0.35, 4, 4);
-    doc.text(amountText, x - textWidth, y);
-  }
-}
-
-/* ─── Main component ──────────────────────────────────────── */
 export default function ProfitLoss() {
   const today = new Date().toISOString().split("T")[0];
   const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
@@ -78,11 +32,10 @@ export default function ProfitLoss() {
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  /* ─── Data fetching (SINGLE QUERY, reliable) ──────────── */
+  /* ─── Data fetching ──────────── */
   const { data: accounts = [], isLoading } = useQuery({
     queryKey: ["profit-loss", startDate, endDate, branchId, financialYearId, org?.id],
     queryFn: async () => {
-      // 1. Fetch all accounts for this org / branch / FY
       let acctQuery = supabase
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type, parent_id")
@@ -96,7 +49,6 @@ export default function ProfitLoss() {
       if (acctErr) throw acctErr;
       if (!accts?.length) return [];
 
-      // 2. Fetch ALL journal lines for the period in ONE query
       let lineQuery = supabase
         .from("journal_entry_lines")
         .select("account_id, debit, credit, journal_entries!inner(entry_date)")
@@ -110,7 +62,6 @@ export default function ProfitLoss() {
       const { data: lines, error: lineErr } = await lineQuery;
       if (lineErr) throw lineErr;
 
-      // 3. Aggregate per account
       const totals = {};
       for (const l of lines || []) {
         const aid = l.account_id;
@@ -119,7 +70,6 @@ export default function ProfitLoss() {
         totals[aid].credit += Number(l.credit) || 0;
       }
 
-      // 4. Merge with accounts and calculate balance
       const results = [];
       for (const a of accts) {
         const t = totals[a.id];
@@ -134,14 +84,12 @@ export default function ProfitLoss() {
           results.push({ ...a, balance });
         }
       }
-
-      console.log("✅ P&L accounts with balances:", results);
       return results;
     },
     enabled: !!(startDate && endDate && org?.id),
   });
 
-  /* ─── Grouping ────────────────────────────────────────── */
+  /* ─── Grouping ────────────────── */
   const groups = useMemo(() => {
     const result = {};
     for (const [name] of Object.entries(GROUP_CONFIG)) {
@@ -188,197 +136,35 @@ export default function ProfitLoss() {
     .reduce((s, [_, g]) => s + g.total, 0);
   const netProfit = totalIncome - totalExpenses;
 
-  /* ─── PDF Export (fully working) ───────────────────────── */
-// ─── PDF Export (overlap & formatting fixed) ──────────────────
-const handlePrintPDF = async () => {
-  if (Object.keys(groups).length === 0) return;
+  /* ─── PDF Export ──────────────── */
+  const handlePrintPDF = async () => {
+    if (!org?.id) {
+      console.error("Organization not loaded");
+      return;
+    }
 
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 12;
-  let y = margin;
+    const summary = {
+      totalIncome,
+      totalExpense: totalExpenses,
+      profit: netProfit,
+    };
+    const periodLabel = `${startDate} to ${endDate}`;
 
-  // Logo
-  let logoBase64 = null;
-  if (org?.logo_dark_url) {
-    logoBase64 = await loadImageAsBase64(org.logo_dark_url);
-  }
+    try {
+      await generateProfitLossPdf({
+        groups,
+        summary,
+        startDate,
+        endDate,
+        periodLabel,
+        orgId: org.id,
+      });
+    } catch (error) {
+      console.error("Failed to generate PDF:", error);
+    }
+  };
 
-  // Header
-  const logoWidth = 30, logoHeight = 12;
-  if (logoBase64) {
-    doc.addImage(logoBase64, "PNG", margin, y, logoWidth, logoHeight);
-  }
-  const textX = margin + (logoBase64 ? logoWidth + 4 : 0);
-  const textY = y + 1;
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.setTextColor("#000000");
-  doc.text(org?.company_name || "Academy", textX, textY);
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-  doc.setTextColor("#000000");
-  let detailY = textY + 4.5;
-  if (org?.address) {
-    const addrLines = doc.splitTextToSize(org.address, pageWidth - textX - margin - 10);
-    doc.text(addrLines, textX, detailY);
-    detailY += addrLines.length * 3.5 + 1;
-  }
-  if (org?.gstin) { doc.text(`GSTIN: ${org.gstin}`, textX, detailY); detailY += 4; }
-  if (org?.phone) { doc.text(`Phone: ${org.phone}`, textX, detailY); detailY += 4; }
-  if (org?.email) { doc.text(`Email: ${org.email}`, textX, detailY); detailY += 4; }
-
-  const headerHeight = Math.max(logoHeight + 4, detailY - textY + 4);
-  y += headerHeight + 2;
-  doc.setDrawColor("#000000");
-  doc.line(margin, y, pageWidth - margin, y);
-  y += 6;
-
-  // Title
-  doc.setFontSize(16);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor("#000000");
-  doc.text("Profit & Loss Statement", pageWidth / 2, y, { align: "center" });
-  y += 8;
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  doc.text(`Period: ${startDate} – ${endDate}`, pageWidth / 2, y, { align: "center" });
-  y += 10;
-
-  // ─── Helper: round and format numbers ───────────────────
-  const formatAmount = (val) => Math.round((val || 0) * 100) / 100;
-
-  // ─── Income Section ──────────────────────────────────────
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
-  doc.text("Income", margin, y);
-  y += 8;
-
-  const incomeGroups = Object.entries(groups).filter(([name]) => name.toLowerCase().includes("income"));
-  for (const [name, group] of incomeGroups) {
-    if (group.items.length === 0) continue;
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.text(name, margin, y);
-    y += 5;
-
-    const rows = group.items.map((item) => [item.account_name, formatAmount(item.balance)]);
-    autoTable(doc, {
-      startY: y,
-      head: [["Account", "Amount"]],
-      body: rows,
-      theme: "plain",
-      styles: { fontSize: 9, textColor: [0,0,0], fillColor: [255,255,255], lineColor: [0,0,0], lineWidth: 0.2 },
-      headStyles: { fillColor: [255,255,255], textColor: [0,0,0], fontStyle: "bold", lineWidth: 0.2, lineColor: [0,0,0] },
-      columnStyles: {
-        0: { cellWidth: 120, halign: "left" },
-        1: { cellWidth: 50, halign: "right" },   // ✅ wider column
-      },
-      margin: { left: margin, right: margin },
-      willDrawCell: (data) => {
-        if (data.column.index === 1 && typeof data.cell.raw === "number") {
-          data.cell.text = [];   // clear default text to avoid overlap
-        }
-      },
-      didDrawCell: (data) => {
-        if (data.column.index === 1 && typeof data.cell.raw === "number") {
-          const x = data.cell.x + data.cell.width - 2;
-          const yPos = data.cell.y + data.cell.height / 2 + 1.5;
-          drawCurrency(doc, data.cell.raw, x, yPos, 9, "right", "#000");
-        }
-      },
-    });
-    y = doc.lastAutoTable.finalY + 4;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    drawCurrency(doc, formatAmount(group.total), margin + 170, y, 9, "right", "#000");
-    doc.text(`Total ${name}`, margin, y);
-    y += 8;
-  }
-
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("Total Income", margin, y);
-  drawCurrency(doc, formatAmount(totalIncome), margin + 170, y, 11, "right", "#000");
-  y += 10;
-
-  // ─── Expense Section ────────────────────────────────────
-  doc.setFontSize(12);
-  doc.text("Expenses", margin, y);
-  y += 8;
-
-  const expenseGroups = Object.entries(groups).filter(([name]) => name.toLowerCase().includes("expense"));
-  for (const [name, group] of expenseGroups) {
-    if (group.items.length === 0) continue;
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.text(name, margin, y);
-    y += 5;
-
-    const rows = group.items.map((item) => [item.account_name, formatAmount(item.balance)]);
-    autoTable(doc, {
-      startY: y,
-      head: [["Account", "Amount"]],
-      body: rows,
-      theme: "plain",
-      styles: { fontSize: 9, textColor: [0,0,0], fillColor: [255,255,255], lineColor: [0,0,0], lineWidth: 0.2 },
-      headStyles: { fillColor: [255,255,255], textColor: [0,0,0], fontStyle: "bold", lineWidth: 0.2, lineColor: [0,0,0] },
-      columnStyles: {
-        0: { cellWidth: 120, halign: "left" },
-        1: { cellWidth: 50, halign: "right" },
-      },
-      margin: { left: margin, right: margin },
-      willDrawCell: (data) => {
-        if (data.column.index === 1 && typeof data.cell.raw === "number") {
-          data.cell.text = [];
-        }
-      },
-      didDrawCell: (data) => {
-        if (data.column.index === 1 && typeof data.cell.raw === "number") {
-          const x = data.cell.x + data.cell.width - 2;
-          const yPos = data.cell.y + data.cell.height / 2 + 1.5;
-          drawCurrency(doc, data.cell.raw, x, yPos, 9, "right", "#000");
-        }
-      },
-    });
-    y = doc.lastAutoTable.finalY + 4;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    drawCurrency(doc, formatAmount(group.total), margin + 170, y, 9, "right", "#000");
-    doc.text(`Total ${name}`, margin, y);
-    y += 8;
-  }
-
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("Total Expenses", margin, y);
-  drawCurrency(doc, formatAmount(totalExpenses), margin + 170, y, 11, "right", "#000");
-  y += 10;
-
-  // ─── Net Profit / Loss ──────────────────────────────────
-  doc.setFontSize(13);
-  const netLabel = netProfit >= 0 ? "Net Profit" : "Net Loss";
-  doc.text(netLabel, margin, y);
-  drawCurrency(doc, formatAmount(Math.abs(netProfit)), margin + 170, y, 13, "right", "#000");
-  y += 15;
-
-  // Footer
-  const footerY = pageHeight - margin - 5;
-  doc.setFontSize(7);
-  doc.setTextColor("#000000");
-  doc.setFont("helvetica", "italic");
-  doc.text(`Generated on ${new Date().toLocaleString()}`, margin, footerY);
-  doc.text(`© ${org?.company_name || "Academy"}`, pageWidth / 2, footerY, { align: "center" });
-
-  doc.save(`Profit_Loss_${startDate}_${endDate}.pdf`);
-};
-
-  /* ─── Charts & UI ──────────────────────────────────────── */
+  /* ─── Charts & UI ─────────────── */
   const incomeVsExpenseData = [
     { name: "Income", value: totalIncome },
     { name: "Expenses", value: totalExpenses },

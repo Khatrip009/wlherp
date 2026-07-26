@@ -41,7 +41,9 @@ export async function getChartOfAccounts(orgId, branchId, financialYearId) {
   return data || [];
 }
 
-// ── Journal Entry creation (unchanged) ──
+// ── Journal Entry creation (MANUAL ONLY – use only for adjustments, not automated transactions) ──
+// ❗ Do NOT call this after a fee_payment, expense, income, salary or inventory transaction.
+//    The database triggers already create the journal entry automatically.
 export async function createJournalEntry(entry, context) {
   const { date, reference, description, lines } = entry;
   const { branchId, financialYearId } = context;
@@ -80,7 +82,7 @@ export async function createJournalEntry(entry, context) {
   return journal;
 }
 
-// ── Account Ledger (NO mandatory financial_year_id filter) ──
+// ── Account Ledger ──
 export async function getAccountLedger(accountId, startDate, endDate, orgId, branchId) {
   let branchIds = [];
   if (orgId) {
@@ -106,14 +108,13 @@ export async function getAccountLedger(accountId, startDate, endDate, orgId, bra
 
   if (startDate) query = query.gte("journal_entries.entry_date", startDate);
   if (endDate) query = query.lte("journal_entries.entry_date", endDate);
-  // ❗ NO financial_year_id filter – shows all transactions regardless of FY.
 
   const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
-// ── Trial Balance (unchanged) ──
+// ── Trial Balance ──
 export async function getTrialBalance(asOfDate, branchId, financialYearId) {
   const { data, error } = await supabase
     .rpc("get_trial_balance", {

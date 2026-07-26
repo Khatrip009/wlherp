@@ -69,8 +69,8 @@ const QuickAction = ({ icon: Icon, label, onClick }) => (
     onClick={onClick}
     className="flex flex-col items-center justify-center gap-2 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 hover:border-primary dark:hover:border-primary hover:shadow-md transition-all w-full"
   >
-    <div className="p-3 rounded-full" style={{ backgroundColor: "var(--color-primary-light)" }}>
-      <Icon size={20} style={{ color: "var(--color-primary)" }} />
+    <div className="p-3 rounded-full" style={{ backgroundColor: "var(--color-primary)" }}>
+      <Icon size={20} color="#ffffff" />
     </div>
     <span className="text-xs font-medium text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>
       {label}

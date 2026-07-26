@@ -1,18 +1,49 @@
-// src/services/admissionPrintService.js
+// src/utils/admissionPdf.js
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import { supabase } from "../api/supabase";
 
-export async function printAdmissionForm(studentId, options = {}) {
-  const { format = "a4" } = options;   // 'a4' or 'a5'
+// ---------------------------------------------------------------------------
+// Helper: load an image from a URL and return a base64 data URL
+// ---------------------------------------------------------------------------
+async function loadImageAsBase64(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Failed to load image: ${url}`);
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 
-  // ---------- 1. Organization (including letterhead) ----------
+// ---------------------------------------------------------------------------
+// Main PDF generation
+// ---------------------------------------------------------------------------
+export async function generateAdmissionPdf(studentId, options = {}) {
+  const { format = "a4", theme = {}, orgId = 3 } = options;
+
+  // ── Theme colors ───────────────────────────────────────────────────
+  const primaryColor = theme.primary_color || "#0D47A1";
+  const accentColor = theme.accent_color || "#FF1070";
+  const fontHeading = theme.font_heading || "times";
+  const fontBody = theme.font_body || "helvetica";
+
+  // ---------- 1. Organisation details (no letterhead) ----------
   const { data: org } = await supabase
     .from("organization")
-    .select("company_name, letterhead_url")
-    .eq("id", 1)
+    .select("*")
+    .eq("id", orgId)
     .single();
 
-  const academyName = org?.company_name || "ShreeVidhya Academy";
-  const letterheadUrl = org?.letterhead_url || null;
+  const orgName = org?.company_name || "ShreeVidhya Academy";
+  const orgAddress = org?.address || "";
+  const orgPhone = org?.phone || "";
+  const orgEmail = org?.email || "";
+  const orgGstin = org?.gstin || "";
+  const orgWebsite = org?.website || "";
+  const logoUrl = org?.logo_dark_url || null;
 
   // ---------- 2. Student data ----------
   const { data: student } = await supabase
@@ -31,18 +62,19 @@ export async function printAdmissionForm(studentId, options = {}) {
     .eq("student_id", studentId);
   const parents = parentLinks?.map((l) => l.parents) || [];
 
-  // ---------- 4. Batches ----------
+  // ---------- 4. Enrolled batches ----------
   const { data: batches } = await supabase
     .from("student_batches")
-    .select(`batch_id, batches(course_id, courses(course_name), batch_name)`)
+    .select(`batch_id, enrollment_date, batches(course_id, courses(course_name), batch_name)`)
     .eq("student_id", studentId)
     .eq("status", "active");
 
   // ---------- 5. Fee summary ----------
   const { data: fees } = await supabase
     .from("student_fees")
-    .select("final_fee, status, fee_structures(fee_amount)")
+    .select("id, final_fee, status, fee_structures(fee_amount)")
     .eq("student_id", studentId);
+
   let totalFee = 0;
   let paidAmount = 0;
   if (fees) {
@@ -55,201 +87,299 @@ export async function printAdmissionForm(studentId, options = {}) {
       paidAmount += payments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0;
     }
   }
-  const pending = totalFee - paidAmount;
+  const pendingAmount = totalFee - paidAmount;
 
-  // ---------- 6. Margins (top/bottom keep content clear of pre‑printed elements) ----------
-  const topMargin = format === "a5" ? 38 : 48;   // mm
-  const bottomMargin = format === "a5" ? 14 : 20;
-  const sideMargin = format === "a5" ? 10 : 15;
+  // ---------- 6. Load logo ----------
+  let logoBase64 = null;
+  if (logoUrl) {
+    try {
+      logoBase64 = await loadImageAsBase64(logoUrl);
+    } catch (err) {
+      console.warn("Logo could not be loaded for PDF", err);
+    }
+  }
 
-  // ---------- 7. Build HTML ----------
-  const html = `
-    <html>
-    <head>
-      <title>Admission Form</title>
-      <style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        @page {
-          size: ${format};
-          margin: 0;
-        }
-        body {
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-          color: #333;
-          font-size: 13px;
-          margin: 0;
-          padding: 0;
-          background: transparent;
-          position: relative;
-        }
-        .letterhead-bg {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          z-index: -1;
-          background: url('${letterheadUrl}') center center / cover no-repeat;
-        }
-        .content {
-          position: relative;
-          z-index: 1;
-          padding: ${topMargin}px ${sideMargin}px ${bottomMargin}px;
-          min-height: 100vh;
-          box-sizing: border-box;
-        }
-        /* ---------- Typography ---------- */
-        .section-title {
-          font-size: 15px;
-          font-weight: 600;
-          color: #0D47A1;
-          border-bottom: 1px solid #ccc;
-          padding-bottom: 3px;
-          margin: 15px 0 8px 0;
-        }
-        .info-row {
-          display: flex;
-          margin-bottom: 5px;
-          break-inside: avoid;
-        }
-        .info-label {
-          width: 130px;
-          font-weight: 600;
-          color: #555;
-        }
-        .info-value {
-          flex: 1;
-          word-wrap: break-word;
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-top: 6px;
-          font-size: 12px;
-        }
-        th, td {
-          padding: 6px 8px;
-          border: 1px solid #ddd;
-          text-align: left;
-          vertical-align: top;
-        }
-        th {
-          background-color: #0D47A1;
-          color: white;
-          font-weight: 600;
-        }
-        tr:nth-child(even) td {
-          background-color: #F5F8FF;
-        }
-        /* Photo */
-        .student-photo {
-          width: 110px;
-          height: 110px;
-          border: 2px solid #0D47A1;
-          border-radius: 6px;
-          object-fit: cover;
-          margin-bottom: 8px;
-        }
-        .photo-section {
-          text-align: center;
-        }
-        /* Print button (hidden when printing) */
-        .no-print { display: block; }
-        @media print {
-          .no-print { display: none; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .letterhead-bg {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-          }
-        }
-      </style>
-    </head>
-    <body>
-      <div class="letterhead-bg"></div>
-      <div class="content">
-        <!-- Student Photo & Info Grid -->
-        <div style="display: flex; gap: 20px; flex-wrap: wrap;">
-          <div style="flex: 1 1 60%; min-width: 300px;">
-            <div class="section-title">Student Information</div>
-            <div class="info-row"><div class="info-label">Admission No</div><div class="info-value">${student.admission_no || '-'}</div></div>
-            <div class="info-row"><div class="info-label">Name</div><div class="info-value">${student.first_name} ${student.last_name}</div></div>
-            <div class="info-row"><div class="info-label">Gender</div><div class="info-value">${student.gender || '-'}</div></div>
-            <div class="info-row"><div class="info-label">Date of Birth</div><div class="info-value">${student.dob || '-'}</div></div>
-            <div class="info-row"><div class="info-label">Mobile</div><div class="info-value">${student.mobile}</div></div>
-            <div class="info-row"><div class="info-label">WhatsApp</div><div class="info-value">${student.whatsapp || '-'}</div></div>
-            <div class="info-row"><div class="info-label">Email</div><div class="info-value">${student.email || '-'}</div></div>
-            <div class="info-row"><div class="info-label">Address</div><div class="info-value">${[student.address, student.city, student.state, student.pincode].filter(Boolean).join(', ')}</div></div>
-            <div class="info-row"><div class="info-label">School</div><div class="info-value">${student.school_name || '-'}</div></div>
-            <div class="info-row"><div class="info-label">Board</div><div class="info-value">${student.board || '-'}</div></div>
-            <div class="info-row"><div class="info-label">Standard</div><div class="info-value">${student.standard || '-'}</div></div>
-            <div class="info-row"><div class="info-label">Joining Date</div><div class="info-value">${student.joining_date || '-'}</div></div>
-            ${mediumName ? `<div class="info-row"><div class="info-label">Medium</div><div class="info-value">${mediumName}</div></div>` : ''}
-            <div class="info-row"><div class="info-label">Status</div><div class="info-value">${student.status}</div></div>
-          </div>
+  // Load student photo
+  let photoBase64 = null;
+  if (student.photo_url) {
+    try {
+      photoBase64 = await loadImageAsBase64(student.photo_url);
+    } catch (err) {
+      console.warn("Student photo could not be loaded for PDF", err);
+    }
+  }
 
-          <div class="photo-section">
-            ${student.photo_url ? `<img src="${student.photo_url}" alt="Student Photo" class="student-photo" />` : ''}
-          </div>
-        </div>
+  // ---------- 7. Page setup ----------
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 16;
 
-        <!-- Parents -->
-        ${parents.length > 0 ? `
-        <div class="section-title">Parent / Guardian Details</div>
-        ${parents.map(p => `
-          <div style="display:flex; flex-wrap:wrap; gap:20px; margin-bottom:10px; border:1px solid #ddd; padding:10px; border-radius:6px;">
-            <div style="flex:1 1 45%;">
-              <div class="info-row"><div class="info-label">Father Name</div><div class="info-value">${p.father_name || '-'}</div></div>
-              <div class="info-row"><div class="info-label">Mother Name</div><div class="info-value">${p.mother_name || '-'}</div></div>
-              <div class="info-row"><div class="info-label">Mobile</div><div class="info-value">${p.mobile || '-'}</div></div>
-            </div>
-            <div style="flex:1 1 45%;">
-              <div class="info-row"><div class="info-label">WhatsApp</div><div class="info-value">${p.whatsapp || '-'}</div></div>
-              <div class="info-row"><div class="info-label">Email</div><div class="info-value">${p.email || '-'}</div></div>
-              <div class="info-row"><div class="info-label">Occupation</div><div class="info-value">${p.occupation || '-'}</div></div>
-              <div class="info-row"><div class="info-label">Address</div><div class="info-value">${p.address || '-'}</div></div>
-            </div>
-          </div>
-        `).join('')}
-        ` : ''}
+  let y = margin;
 
-        <!-- Batches -->
-        ${batches?.length ? `
-        <div class="section-title">Enrolled Batches</div>
-        <table>
-          <tr><th>Batch Name</th><th>Course</th></tr>
-          ${batches.map(b => `<tr><td>${b.batches?.batch_name}</td><td>${b.batches?.courses?.course_name || '-'}</td></tr>`).join('')}
-        </table>
-        ` : ''}
+  // ---------- 8. Draw header (same style as invoice) ----------
+  const logoWidth = 36;
+  const logoHeight = 14;
 
-        <!-- Fee Summary -->
-        <div class="section-title">Fee Summary</div>
-        <table>
-          <tr><th>Total Fee</th><td>Rs. ${totalFee.toLocaleString()}</td></tr>
-          <tr><th>Paid</th><td>Rs. ${paidAmount.toLocaleString()}</td></tr>
-          <tr><th>Pending</th><td>Rs. ${pending.toLocaleString()}</td></tr>
-          <tr><th>Status</th><td>${pending <= 0 ? 'Paid' : 'Pending'}</td></tr>
-        </table>
-      </div>
+  if (logoBase64) {
+    doc.addImage(logoBase64, "PNG", margin, y, logoWidth, logoHeight);
+  }
 
-      <div class="no-print" style="text-align:center; padding:20px;">
-        <button onclick="window.print()" style="padding:10px 20px; background:#0D47A1; color:#fff; border:none; border-radius:4px; cursor:pointer;">Print Form</button>
-      </div>
-      <script>
-        // Auto‑trigger print after a short delay to ensure images load
-        window.onload = function() {
-          setTimeout(() => { window.print(); }, 600);
-        };
-      </script>
-    </body>
-    </html>
-  `;
+  const textX = margin + (logoBase64 ? logoWidth + 6 : 0);
+  const textY = y + 2;
 
-  // Open print window
-  const printWindow = window.open('', '_blank', 'width=1000,height=800');
-  printWindow.document.write(html);
-  printWindow.document.close();
+  doc.setFont(fontHeading, "bold");
+  doc.setFontSize(16);
+  doc.setTextColor(primaryColor);
+  doc.text(orgName, textX, textY);
+
+  doc.setFont(fontBody, "normal");
+  doc.setFontSize(8);
+  doc.setTextColor("#000");
+  let detailY = textY + 5;
+
+  if (orgAddress) {
+    const addrLines = doc.splitTextToSize(orgAddress, pageWidth - textX - margin - 10);
+    doc.text(addrLines, textX, detailY);
+    detailY += addrLines.length * 4 + 1;
+  }
+  if (orgGstin) {
+    doc.text(`GSTIN: ${orgGstin}`, textX, detailY);
+    detailY += 4.5;
+  }
+  if (orgPhone) {
+    doc.text(`Phone: ${orgPhone}`, textX, detailY);
+    detailY += 4.5;
+  }
+  if (orgEmail) {
+    doc.text(`Email: ${orgEmail}`, textX, detailY);
+    detailY += 4.5;
+  }
+  if (orgWebsite) {
+    doc.text(`Web: ${orgWebsite}`, textX, detailY);
+    detailY += 4.5;
+  }
+
+  const headerHeight = Math.max(logoHeight + 6, detailY - textY + 8);
+  y += headerHeight + 4;
+
+  // Separator line
+  doc.setDrawColor(primaryColor);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 8;
+
+  // ---------- 9. Form Title ----------
+  doc.setFont(fontHeading, "bold");
+  doc.setFontSize(20);
+  doc.setTextColor(primaryColor);
+  doc.text("ADMISSION FORM", pageWidth / 2, y, { align: "center" });
+  y += 10;
+
+  doc.setDrawColor(primaryColor);
+  doc.setLineWidth(0.6);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 8;
+
+  // --- Student Photo (top right) ---
+  if (photoBase64) {
+    doc.addImage(photoBase64, "PNG", pageWidth - margin - 25, y, 25, 25);
+    doc.rect(pageWidth - margin - 25, y, 25, 25);
+  }
+
+  // --- Student Information Table ---
+  const infoRows = [
+    ["Admission No", student.admission_no?.toUpperCase() || "-"],
+    ["Name", `${student.first_name?.toUpperCase()} ${student.last_name?.toUpperCase()}`],
+    ["Gender", student.gender?.toUpperCase() || "-"],
+    ["Date of Birth", student.dob || "-"],
+    ["Mobile", student.mobile],
+    ["WhatsApp", student.whatsapp || "-"],
+    ["Email", student.email || "-"],
+    ["Address", `${student.address?.toUpperCase() || ""}, ${student.city?.toUpperCase() || ""}, ${student.state?.toUpperCase() || ""} ${student.pincode || ""}`],
+    ["School", student.school_name?.toUpperCase() || "-"],
+    ["Board", student.board?.toUpperCase() || "-"],
+    ["Standard", student.standard?.toUpperCase() || "-"],
+    ["Joining Date", student.joining_date || "-"],
+    ["Status", student.status?.toUpperCase() || "-"],
+  ];
+  if (mediumName) infoRows.push(["Medium", mediumName.toUpperCase()]);
+
+  const photoWidth = photoBase64 ? 30 : 0;
+
+  autoTable(doc, {
+    startY: y,
+    body: infoRows.map(([label, value]) => [
+      { content: label, styles: { fontStyle: "bold", fillColor: "#E3F2FD", textColor: primaryColor } },
+      value,
+    ]),
+    theme: "plain",
+    styles: { fontSize: 9, cellPadding: 2, font: fontBody },
+    columnStyles: { 0: { cellWidth: 38 }, 1: { cellWidth: "auto" } },
+    margin: { left: margin, right: margin + photoWidth },
+  });
+  y = doc.lastAutoTable.finalY + 10;
+
+  // --- Parent Details ---
+  if (parents.length > 0) {
+    for (const p of parents) {
+      const parentRows = [
+        ["Father Name", p.father_name?.toUpperCase() || "-"],
+        ["Mother Name", p.mother_name?.toUpperCase() || "-"],
+        ["Mobile", p.mobile || "-"],
+        ["WhatsApp", p.whatsapp || "-"],
+        ["Email", p.email || "-"],
+        ["Occupation", p.occupation?.toUpperCase() || "-"],
+        ["Address", p.address?.toUpperCase() || "-"],
+      ];
+
+      // Ensure space for parent section header + at least a few rows
+      if (y + 15 > pageHeight - margin) {
+        doc.addPage();
+        y = margin;
+      }
+
+      doc.setFont(fontHeading, "bold");
+      doc.setFontSize(14);
+      doc.setTextColor(primaryColor);
+      doc.text("PARENT / GUARDIAN DETAILS", margin, y);
+      y += 6;
+
+      autoTable(doc, {
+        startY: y,
+        body: parentRows.map(([label, value]) => [
+          { content: label, styles: { fontStyle: "bold", fillColor: "#E3F2FD", textColor: primaryColor } },
+          value,
+        ]),
+        theme: "plain",
+        styles: { fontSize: 9, cellPadding: 2, font: fontBody },
+        columnStyles: { 0: { cellWidth: 38 }, 1: { cellWidth: "auto" } },
+        margin: { left: margin, right: margin },
+        showHead: false,
+      });
+      y = doc.lastAutoTable.finalY + 10;
+    }
+  }
+
+  // --- Batches, Fees, Rules (new page if needed) ---
+  if (y > pageHeight - margin - 60) {
+    doc.addPage();
+    y = margin;
+  }
+
+  // --- Enrolled Batches ---
+  if (batches?.length) {
+    doc.setFont(fontHeading, "bold");
+    doc.setFontSize(15);
+    doc.setTextColor(primaryColor);
+    doc.text("ENROLLED BATCHES", margin, y);
+    y += 7;
+
+    const batchBody = batches.map((b) => [
+      b.batches?.batch_name?.toUpperCase() || "-",
+      b.batches?.courses?.course_name?.toUpperCase() || "-",
+      b.enrollment_date || "-",
+    ]);
+
+    autoTable(doc, {
+      startY: y,
+      head: [["BATCH NAME", "COURSE", "ENROLLMENT DATE"]],
+      body: batchBody,
+      theme: "striped",
+      styles: { fontSize: 9, cellPadding: 3, font: fontBody },
+      headStyles: { fillColor: primaryColor, textColor: "#FFFFFF", fontStyle: "bold", font: fontHeading },
+      columnStyles: { 0: { cellWidth: 50 }, 1: { cellWidth: 50 }, 2: { cellWidth: 35 } },
+      margin: { left: margin, right: margin },
+    });
+    y = doc.lastAutoTable.finalY + 10;
+  }
+
+  // --- Fee Summary ---
+  if (y + 30 > pageHeight - margin) {
+    doc.addPage();
+    y = margin;
+  }
+
+  doc.setFont(fontHeading, "bold");
+  doc.setFontSize(15);
+  doc.setTextColor(primaryColor);
+  doc.text("FEE SUMMARY", margin, y);
+  y += 7;
+
+  autoTable(doc, {
+    startY: y,
+    head: [["TOTAL FEE", "PAID", "PENDING", "STATUS"]],
+    body: [[
+      `Rs. ${totalFee.toLocaleString()}`,
+      `Rs. ${paidAmount.toLocaleString()}`,
+      `Rs. ${pendingAmount.toLocaleString()}`,
+      pendingAmount <= 0 ? "PAID" : "PENDING",
+    ]],
+    theme: "striped",
+    styles: { fontSize: 9, cellPadding: 3, font: fontBody },
+    headStyles: { fillColor: primaryColor, textColor: "#FFFFFF", fontStyle: "bold", font: fontHeading },
+    columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 40 }, 2: { cellWidth: 40 }, 3: { cellWidth: 30 } },
+    margin: { left: margin },
+  });
+  y = doc.lastAutoTable.finalY + 12;
+
+  // --- Rules & Regulations ---
+  if (y + 50 > pageHeight - margin) {
+    doc.addPage();
+    y = margin;
+  }
+
+  doc.setFont(fontHeading, "bold");
+  doc.setFontSize(15);
+  doc.setTextColor(primaryColor);
+  doc.text("RULES & REGULATIONS", margin, y);
+  y += 7;
+
+  const rules = [
+    "1. Minimum 75% attendance is mandatory to appear in exams.",
+    "2. Fees must be paid on or before the 10th of every month.",
+    "3. Mobile phones are strictly prohibited inside classrooms.",
+    "4. Students must wear the prescribed uniform and carry ID card.",
+    "5. Disciplinary action will be taken for any misconduct.",
+    "6. Parents must attend parent-teacher meetings regularly.",
+    "7. Any damage to institute property will be charged accordingly.",
+    "8. The institute reserves the right to amend these rules at any time.",
+  ];
+
+  doc.setFont(fontBody, "normal");
+  doc.setFontSize(9);
+  doc.setTextColor("#333");
+
+  rules.forEach((rule, idx) => {
+    if (y + 5 > pageHeight - margin) {
+      doc.addPage();
+      y = margin;
+    }
+    doc.text(rule, margin, y);
+    y += 5.5;
+  });
+  y += 5;
+
+  // --- Signature Section ---
+  if (y + 25 > pageHeight - margin) {
+    doc.addPage();
+    y = margin;
+  }
+
+  doc.setFont(fontHeading, "bold");
+  doc.setFontSize(15);
+  doc.setTextColor(primaryColor);
+  doc.text("SIGNATURES", margin, y);
+  y += 12;
+
+  doc.setDrawColor(primaryColor);
+  doc.line(margin, y, margin + 60, y);
+  doc.setFont(fontBody, "normal");
+  doc.setFontSize(9);
+  doc.text("AUTHORISED SIGNATORY", margin + 30, y + 5, { align: "center" });
+
+  doc.line(pageWidth - margin - 60, y, pageWidth - margin, y);
+  doc.text("PARENT / GUARDIAN", pageWidth - margin - 30, y + 5, { align: "center" });
+
+  // ---------- 10. Save ----------
+  doc.save(`Admission_${student.admission_no || studentId}.pdf`);
 }

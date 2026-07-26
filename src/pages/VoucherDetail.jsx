@@ -1,3 +1,4 @@
+// src/pages/VoucherDetail.jsx (or wherever it lives)
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -13,6 +14,7 @@ import {
 } from "../services/voucherService";
 import { getChartOfAccounts } from "../services/accountingService";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";   // ✅ added
 
 // ─── Rupee symbol helper ──────────────────────────────────
 function createRupeeSymbolImage() {
@@ -74,10 +76,15 @@ export default function VoucherDetail({ standalone = true }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { org, branch, selectedFinancialYear, theme } = useOrg();
+  const { org, branch, selectedFinancialYear } = useOrg();   // ❌ removed theme from here
+  const { theme } = useTheme();                               // ✅ theme from context
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
+
+  // Theme colours
+  const primaryColor = theme?.primary_color || "#0D47A1";
+  const accentColor = theme?.accent_color || "#FF1070";
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["chart-of-accounts", branchId, financialYearId],
@@ -218,7 +225,6 @@ export default function VoucherDetail({ standalone = true }) {
         logoBase64 = await loadImageAsBase64(org.logo_dark_url);
       }
 
-      const primaryColor = theme?.primary_color || "#0D47A1";
       const companyName = org?.company_name || "ShreeVidhya Academy";
       const address = org?.address || "";
       const gstin = org?.gstin || "";
@@ -296,7 +302,6 @@ export default function VoucherDetail({ standalone = true }) {
 
       // ── Table ──
       const lines = voucher.journal_entries?.journal_entry_lines || [];
-      // Build table rows with empty text for debit/credit – we'll draw currency via didDrawCell
       const tableRows = lines.map((line) => [
         line.account?.account_name || "—",
         line.description || "",
@@ -322,17 +327,15 @@ export default function VoucherDetail({ standalone = true }) {
         },
         margin: { left: margin, right: margin },
         didDrawCell: (data) => {
-          // For debit (col 2) and credit (col 3)
           if (data.column.index === 2 || data.column.index === 3) {
             const amount = data.cell.raw;
             if (typeof amount === 'number') {
-              const x = data.cell.x + data.cell.width - 1; // right edge
+              const x = data.cell.x + data.cell.width - 1;
               const yPos = data.cell.y + data.cell.height / 2 + 1.5;
               drawCurrency(doc, amount, x, yPos, 7, 'right', '#333');
             }
           }
         },
-        // Clear the default text for debit/credit columns so we only draw the currency
         willDrawCell: (data) => {
           if (data.column.index === 2 || data.column.index === 3) {
             data.cell.text = [];
@@ -365,7 +368,6 @@ export default function VoucherDetail({ standalone = true }) {
         { align: "center" }
       );
 
-      // ── Save ──
       doc.save(`Voucher_${voucher.voucher_no}.pdf`);
       toast.success("PDF downloaded");
     } catch (err) {
@@ -401,7 +403,7 @@ export default function VoucherDetail({ standalone = true }) {
 
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-righteous text-primary-dark">
+          <h1 className="text-3xl font-righteous" style={{ color: primaryColor }}>
             {isNew
               ? "New Voucher"
               : `${voucher?.voucher_types?.name || ""} Voucher`}
@@ -414,7 +416,8 @@ export default function VoucherDetail({ standalone = true }) {
           {!isNew && (
             <button
               onClick={handlePrint}
-              className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+              className="text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+              style={{ backgroundColor: primaryColor }}
             >
               <Printer size={16} /> PDF
             </button>
@@ -439,7 +442,8 @@ export default function VoucherDetail({ standalone = true }) {
               </button>
               <button
                 onClick={handleSave}
-                className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+                className="text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+                style={{ backgroundColor: primaryColor }}
               >
                 <Save size={16} /> Save
               </button>
@@ -592,7 +596,8 @@ export default function VoucherDetail({ standalone = true }) {
           <button
             type="button"
             onClick={addLine}
-            className="text-primary flex items-center gap-1 text-sm mb-4"
+            className="flex items-center gap-1 text-sm mb-4"
+            style={{ color: primaryColor }}
           >
             <Plus size={16} /> Add Line
           </button>
