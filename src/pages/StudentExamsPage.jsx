@@ -2,12 +2,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 import { Award, Calendar, Layers, BookOpen } from "lucide-react";
 
 export default function StudentExamsPage({ studentId: propStudentId = null, standalone = true }) {
   const { branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();                                     // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const effectiveStudentId = propStudentId;
 
@@ -54,24 +59,30 @@ export default function StudentExamsPage({ studentId: propStudentId = null, stan
   const content = (
     <div>
       {isLoading ? (
-        <div className="p-4 text-center text-secondary">Loading exams…</div>
+        <div className="p-4 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+          Loading exams…
+        </div>
       ) : exams.length === 0 ? (
-        <div className="bg-white rounded-xl p-8 shadow-sm border border-secondary-light text-center">
-          <Award size={32} className="text-secondary-light mx-auto mb-2" />
-          <p className="text-secondary">No exams found for this student.</p>
+        <div className="bg-white rounded-xl p-8 shadow-sm border border-primary-bg text-center">
+          <Award size={32} className="text-primary-dark/40 mx-auto mb-2" />
+          <p className="text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+            No exams found for this student.
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
           {exams.map((exam) => (
             <div
               key={exam.id}
-              className="bg-white rounded-xl p-4 shadow-sm border border-secondary-light"
+              className="bg-white rounded-xl p-4 shadow-sm border border-primary-bg"
             >
               <div className="flex items-center gap-2 mb-1">
                 <Award size={18} className="text-primary" />
-                <h3 className="font-bold text-primary-dark">{exam.exam_name}</h3>
+                <h3 className="font-bold text-primary" style={{ fontFamily: headingFont }}>
+                  {exam.exam_name}
+                </h3>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm text-secondary-dark">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
                 <div className="flex items-center gap-1">
                   <Layers size={16} /> {exam.batches?.batch_name}
                 </div>
@@ -82,10 +93,10 @@ export default function StudentExamsPage({ studentId: propStudentId = null, stan
                   <Calendar size={16} /> {exam.exam_date}
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-secondary-dark">
+              <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-primary-dark/80" style={{ fontFamily: bodyFont }}>
                 <span>Total Marks: {exam.total_marks || "N/A"}</span>
                 {exam.batches?.mediums?.name && (
-                  <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                  <span className="bg-accent-bg text-accent-dark px-2 py-0.5 rounded-full">
                     {exam.batches.mediums.name}
                   </span>
                 )}
@@ -100,7 +111,9 @@ export default function StudentExamsPage({ studentId: propStudentId = null, stan
   if (!standalone) return <div>{content}</div>;
   return (
     <div className="p-6">
-      <h1 className="text-3xl font-righteous text-primary-dark mb-4">My Exams</h1>
+      <h1 className="text-3xl font-bold text-primary mb-4" style={{ fontFamily: headingFont }}>
+        My Exams
+      </h1>
       {content}
     </div>
   );
