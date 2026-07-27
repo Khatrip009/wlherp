@@ -6,6 +6,7 @@ import { getInvoices, deleteInvoice, finalizeInvoice } from "../services/invoice
 import toast from "react-hot-toast";
 import BackButton from "../components/BackButton";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 import { Search, Plus, Eye, Edit3, Trash2, CheckCircle, Mail } from "lucide-react";
 import { supabase } from "../api/supabase";
 import { sendEmail } from "../services/emailService";
@@ -16,9 +17,13 @@ export default function Invoices() {
   const [statusFilter, setStatusFilter] = useState("");
 
   const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme();                                     // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   // ─── Helper: get admin emails ──────────────────────────────────────
   const getAdminEmails = async () => {
@@ -117,7 +122,7 @@ export default function Invoices() {
         to: adminEmails,
         subject: `Invoice Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-       // from: org?.email || undefined,
+        // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");
@@ -168,18 +173,25 @@ export default function Invoices() {
     <>
       <BackButton to="/accounting" label="Finance & Accounting" />
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
-        <h1 className="text-3xl font-righteous text-primary-dark">Invoices</h1>
+        <h1
+          className="text-3xl font-bold text-primary"
+          style={{ fontFamily: headingFont }}
+        >
+          Invoices
+        </h1>
         <div className="flex gap-2">
-          {/* 👇 Send Report button */}
+          {/* Send Report button */}
           <button
             onClick={sendReportEmail}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition"
+            className="bg-accent hover:bg-accent-dark text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors"
+            style={{ fontFamily: bodyFont }}
           >
             <Mail size={16} /> Send Report
           </button>
           <Link
             to="/invoices/new"
-            className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition"
+            className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors"
+            style={{ fontFamily: bodyFont }}
           >
             <Plus size={16} /> Create Invoice
           </Link>
@@ -188,19 +200,21 @@ export default function Invoices() {
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-dark/60" />
           <input
             type="text"
             placeholder="Search by invoice number or student name..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border rounded-lg text-sm"
+            className="w-full pl-10 pr-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg text-sm placeholder-primary-dark/40"
+            style={{ fontFamily: bodyFont }}
           />
         </div>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="border rounded-lg px-4 py-2.5 text-sm"
+          className="border border-primary-bg bg-white text-primary-dark rounded-lg px-4 py-2.5 text-sm"
+          style={{ fontFamily: bodyFont }}
         >
           <option value="">All Statuses</option>
           <option value="Draft">Draft</option>
@@ -211,53 +225,89 @@ export default function Invoices() {
         </select>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-primary-bg">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[700px]">
-            <thead className="bg-slate-100">
+            <thead className="bg-primary-bg">
               <tr>
-                <th className="p-3 text-left text-sm">Invoice No</th>
-                <th className="p-3 text-left text-sm">Student</th>
-                <th className="p-3 text-left text-sm">Date</th>
-                <th className="p-3 text-right text-sm">Total</th>
-                <th className="p-3 text-left text-sm">Status</th>
-                <th className="p-3 text-left text-sm">Actions</th>
+                <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                  Invoice No
+                </th>
+                <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                  Student
+                </th>
+                <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                  Date
+                </th>
+                <th className="p-3 text-right text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                  Total
+                </th>
+                <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                  Status
+                </th>
+                <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={6} className="p-6 text-center text-secondary">Loading…</td></tr>
+                <tr>
+                  <td colSpan={6} className="p-6 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+                    Loading…
+                  </td>
+                </tr>
               ) : invoices.length === 0 ? (
-                <tr><td colSpan={6} className="p-6 text-center text-secondary">No invoices found.</td></tr>
+                <tr>
+                  <td colSpan={6} className="p-6 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+                    No invoices found.
+                  </td>
+                </tr>
               ) : (
                 invoices.map((inv) => (
-                  <tr key={inv.id} className="border-t hover:bg-gray-50 transition">
-                    <td className="p-3 text-sm font-medium">{inv.invoice_number}</td>
-                    <td className="p-3 text-sm">{inv.students?.first_name} {inv.students?.last_name}</td>
-                    <td className="p-3 text-sm">{inv.invoice_date}</td>
-                    <td className="p-3 text-right text-sm font-medium">₹ {Number(inv.grand_total).toLocaleString("en-IN")}</td>
+                  <tr key={inv.id} className="border-t border-primary-bg hover:bg-primary-bg transition-colors">
+                    <td className="p-3 text-sm font-medium text-primary" style={{ fontFamily: bodyFont }}>
+                      {inv.invoice_number}
+                    </td>
+                    <td className="p-3 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                      {inv.students?.first_name} {inv.students?.last_name}
+                    </td>
+                    <td className="p-3 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                      {inv.invoice_date}
+                    </td>
+                    <td className="p-3 text-right text-sm font-medium text-primary" style={{ fontFamily: bodyFont }}>
+                      ₹ {Number(inv.grand_total).toLocaleString("en-IN")}
+                    </td>
                     <td className="p-3 text-sm">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        inv.status === "Final" ? "bg-green-100 text-green-700" :
-                        inv.status === "Draft" ? "bg-gray-100 text-gray-700" :
-                        inv.status === "Paid" ? "bg-blue-100 text-blue-700" :
-                        inv.status === "Partially Paid" ? "bg-yellow-100 text-yellow-700" :
-                        "bg-red-100 text-red-700"
+                        inv.status === "Final" ? "bg-primary-bg text-primary-dark" :
+                        inv.status === "Draft" ? "bg-primary-bg/50 text-primary-dark/70" :
+                        inv.status === "Paid" ? "bg-accent-bg text-accent-dark" :
+                        inv.status === "Partially Paid" ? "bg-accent text-white" :
+                        "bg-accent-dark text-white"
                       }`}>
                         {inv.status}
                       </span>
                     </td>
                     <td className="p-3 text-sm">
                       <div className="flex gap-2">
-                        <Link to={`/invoices/${inv.id}`} className="text-blue-600 hover:underline"><Eye size={15} /></Link>
+                        <Link to={`/invoices/${inv.id}`} className="text-primary hover:underline">
+                          <Eye size={15} />
+                        </Link>
                         {inv.status === "Draft" && (
                           <>
-                            <Link to={`/invoices/${inv.id}/edit`} className="text-yellow-600 hover:underline"><Edit3 size={15} /></Link>
-                            <button onClick={() => handleFinalize(inv.id)} className="text-green-600 hover:underline" title="Finalize"><CheckCircle size={15} /></button>
+                            <Link to={`/invoices/${inv.id}/edit`} className="text-primary hover:underline">
+                              <Edit3 size={15} />
+                            </Link>
+                            <button onClick={() => handleFinalize(inv.id)} className="text-accent hover:underline" title="Finalize">
+                              <CheckCircle size={15} />
+                            </button>
                           </>
                         )}
                         {inv.status === "Draft" && (
-                          <button onClick={() => handleDelete(inv.id)} className="text-red-600 hover:underline"><Trash2 size={15} /></button>
+                          <button onClick={() => handleDelete(inv.id)} className="text-accent-dark hover:underline">
+                            <Trash2 size={15} />
+                          </button>
                         )}
                       </div>
                     </td>

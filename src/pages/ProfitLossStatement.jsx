@@ -4,12 +4,17 @@ import { Mail } from "lucide-react";
 
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 import { sendEmail } from "../services/emailService";
 
 export default function ProfitLossStatement() {
   const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme();                                     // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   // ─── Fetch data ─────────────────────────────────────────────────────
   const { data, isLoading } = useQuery({
@@ -124,7 +129,7 @@ export default function ProfitLossStatement() {
         to: adminEmails,
         subject: `Profit & Loss Statement - ${selectedFinancialYear?.name || 'FY'}`,
         html: htmlBody,
-       // from: org?.email || undefined,
+        // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");
@@ -137,28 +142,44 @@ export default function ProfitLossStatement() {
   return (
     <>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">Profit & Loss Statement</h1>
+        <h1
+          className="text-3xl font-bold text-primary"
+          style={{ fontFamily: headingFont }}
+        >
+          Profit & Loss Statement
+        </h1>
         <button
           onClick={sendReportEmail}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          className="bg-accent hover:bg-accent-dark text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          style={{ fontFamily: bodyFont }}
         >
           <Mail size={16} /> Send Report
         </button>
       </div>
 
       {isLoading ? (
-        <p className="text-center py-8">Loading…</p>
+        <p className="text-center py-8 text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+          Loading…
+        </p>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm p-6 max-w-xl">
+        <div className="bg-white rounded-xl shadow-sm p-6 max-w-xl border border-primary-bg">
           {data && data.length > 0 ? (
             data.map(row => (
-              <div key={row.account_name} className="flex justify-between border-b py-2">
-                <span>{row.account_name}</span>
-                <span className="font-medium">₹{Number(row.balance).toLocaleString()}</span>
+              <div
+                key={row.account_name}
+                className="flex justify-between border-b border-primary-bg py-2 text-sm"
+                style={{ fontFamily: bodyFont }}
+              >
+                <span className="text-primary-dark">{row.account_name}</span>
+                <span className="font-medium text-primary">
+                  ₹{Number(row.balance).toLocaleString()}
+                </span>
               </div>
             ))
           ) : (
-            <p className="text-secondary text-center">No data available.</p>
+            <p className="text-primary-dark/60 text-center" style={{ fontFamily: bodyFont }}>
+              No data available.
+            </p>
           )}
         </div>
       )}

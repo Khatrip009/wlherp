@@ -6,6 +6,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // ✅ dynamic theme
 import { sendEmail } from "../services/emailService";
 
 /* ─── PDF helpers (identical to other reports) ─────────────── */
@@ -62,8 +63,12 @@ export default function CashBook() {
   const [selectedAccount, setSelectedAccount] = useState("all");
 
   const { org, branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   // Fetch cash/bank accounts scoped to organisation & branch
   const { data: cashBankAccounts = [] } = useQuery({
@@ -98,7 +103,7 @@ export default function CashBook() {
     return [parseInt(selectedAccount)];
   }, [selectedAccount, cashBankAccounts]);
 
-  // Opening balance (same pattern as Ledger)
+  // Opening balance
   const { data: openingBalance = 0 } = useQuery({
     queryKey: ["cash-book-opening", startDate, selectedAccount, org?.id, branchId, financialYearId],
     queryFn: async () => {
@@ -155,7 +160,6 @@ export default function CashBook() {
     enabled: !!startDate && !!endDate && cashBankAccounts.length > 0 && !!org?.id,
   });
 
-  // Voucher numbers (optional, kept for completeness)
   const journalEntryIds = useMemo(
     () => entries.map((e) => e.journal_entries?.id).filter(Boolean),
     [entries]
@@ -179,7 +183,6 @@ export default function CashBook() {
     enabled: journalEntryIds.length > 0 && !!branchId && !!financialYearId,
   });
 
-  // Build ledger with running balance
   const ledgerWithBalance = useMemo(() => {
     let running = openingBalance;
     return entries.map((entry) => {
@@ -202,7 +205,7 @@ export default function CashBook() {
   const totalReceipts = entries.reduce((s, e) => s + (parseFloat(e.debit) || 0), 0);
   const totalPayments = entries.reduce((s, e) => s + (parseFloat(e.credit) || 0), 0);
 
-  // ─── Email report (adapted to use org directly) ────────────
+  // ─── Email report ─────────────────────────────────────────
   const getAdminEmails = async () => {
     if (!org?.id) return [];
     const { data, error } = await supabase
@@ -229,14 +232,6 @@ export default function CashBook() {
         alert("No admin emails found to send the report.");
         return;
       }
-      // ... (same email body as before, just use org?.company_name)
-      // The existing email building code is fine, we'll just replace `org` references.
-      // For brevity, I'll assume the original email code is present; if not, I can provide it.
-      // We'll keep it as is since it's not broken.
-      // But to avoid duplication, I'll note that you should replace `org` with `org?.company_name` etc.
-      // We'll just call the original function – it should work now that `org` is available.
-      // However, the original email function used `getOrganization`, which is removed.
-      // We'll rewrite the email sending part inline to use the context `org`.
 
       const accountLabel = selectedAccount === "all" ? "All Cash & Bank" :
         selectedAccount === "cash" ? "Cash in Hand" :
@@ -294,10 +289,10 @@ export default function CashBook() {
         subject: `Cash/Bank Book Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
       });
-      alert("Report sent to admins.");
+      toast.success("Report sent to admins.");
     } catch (err) {
       console.error("Failed to send report:", err);
-      alert("Failed to send report. Check console for details.");
+      toast.error("Failed to send report.");
     }
   };
 
@@ -454,19 +449,31 @@ export default function CashBook() {
     <div className="space-y-6 px-4 sm:px-6 lg:px-0">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Cash / Bank Book</h1>
-          <p className="text-sm text-gray-600 mt-1">Day‑wise cash and bank transaction summary</p>
+          <h1
+            className="text-2xl sm:text-3xl font-bold text-primary"
+            style={{ fontFamily: headingFont }}
+          >
+            Cash / Bank Book
+          </h1>
+          <p
+            className="text-sm text-primary-dark mt-1"
+            style={{ fontFamily: bodyFont }}
+          >
+            Day‑wise cash and bank transaction summary
+          </p>
         </div>
         <div className="flex gap-3">
           <button
             onClick={sendReportEmail}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-dark text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: bodyFont }}
           >
             <Mail size={16} /> Send Report
           </button>
           <button
             onClick={handlePrintPDF}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: bodyFont }}
           >
             <Printer size={16} /> Print PDF
           </button>
@@ -475,16 +482,45 @@ export default function CashBook() {
 
       <div className="flex flex-wrap gap-4 items-end">
         <div>
-          <label className="text-sm font-medium text-gray-700 mr-2">From:</label>
-          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border rounded p-2 text-sm" />
+          <label
+            className="text-sm font-medium text-primary-dark mr-2"
+            style={{ fontFamily: bodyFont }}
+          >
+            From:
+          </label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={e => setStartDate(e.target.value)}
+            className="border border-primary-bg bg-white text-primary rounded p-2 text-sm"
+          />
         </div>
         <div>
-          <label className="text-sm font-medium text-gray-700 mr-2">To:</label>
-          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border rounded p-2 text-sm" />
+          <label
+            className="text-sm font-medium text-primary-dark mr-2"
+            style={{ fontFamily: bodyFont }}
+          >
+            To:
+          </label>
+          <input
+            type="date"
+            value={endDate}
+            onChange={e => setEndDate(e.target.value)}
+            className="border border-primary-bg bg-white text-primary rounded p-2 text-sm"
+          />
         </div>
         <div>
-          <label className="text-sm font-medium text-gray-700 mr-2">Account:</label>
-          <select value={selectedAccount} onChange={e => setSelectedAccount(e.target.value)} className="border rounded p-2 text-sm">
+          <label
+            className="text-sm font-medium text-primary-dark mr-2"
+            style={{ fontFamily: bodyFont }}
+          >
+            Account:
+          </label>
+          <select
+            value={selectedAccount}
+            onChange={e => setSelectedAccount(e.target.value)}
+            className="border border-primary-bg bg-white text-primary rounded p-2 text-sm"
+          >
             <option value="all">All Cash & Bank</option>
             <option value="cash">Cash in Hand Only</option>
             <option value="bank">Bank Account Only</option>
@@ -497,54 +533,104 @@ export default function CashBook() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl p-4 shadow-sm border text-center">
-          <p className="text-xs text-gray-500">Opening Balance</p>
-          <p className="text-xl font-bold text-gray-900">₹ {openingBalance.toLocaleString("en-IN")}</p>
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-primary-bg text-center">
+          <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
+            Opening Balance
+          </p>
+          <p className="text-xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+            ₹ {openingBalance.toLocaleString("en-IN")}
+          </p>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border text-center">
-          <p className="text-xs text-gray-500">Total Receipts</p>
-          <p className="text-xl font-bold text-green-700">₹ {totalReceipts.toLocaleString("en-IN")}</p>
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-primary-bg text-center">
+          <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
+            Total Receipts
+          </p>
+          <p className="text-xl font-bold text-accent" style={{ fontFamily: headingFont }}>
+            ₹ {totalReceipts.toLocaleString("en-IN")}
+          </p>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border text-center">
-          <p className="text-xs text-gray-500">Total Payments</p>
-          <p className="text-xl font-bold text-red-700">₹ {totalPayments.toLocaleString("en-IN")}</p>
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-primary-bg text-center">
+          <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
+            Total Payments
+          </p>
+          <p className="text-xl font-bold text-accent-dark" style={{ fontFamily: headingFont }}>
+            ₹ {totalPayments.toLocaleString("en-IN")}
+          </p>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border text-center">
-          <p className="text-xs text-gray-500">Closing Balance</p>
-          <p className="text-xl font-bold text-gray-900">₹ {closingBalance.toLocaleString("en-IN")}</p>
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-primary-bg text-center">
+          <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
+            Closing Balance
+          </p>
+          <p className="text-xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+            ₹ {closingBalance.toLocaleString("en-IN")}
+          </p>
         </div>
       </div>
 
       {isLoading ? (
-        <div className="text-center py-8 text-gray-500">Loading…</div>
+        <div className="text-center py-8 text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+          Loading…
+        </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-primary-bg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[800px] text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-primary-bg">
                 <tr>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Voucher No</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                  <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Receipt (₹)</th>
-                  <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Payment (₹)</th>
-                  <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Balance (₹)</th>
+                  <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Date
+                  </th>
+                  <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Voucher No
+                  </th>
+                  <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Reference
+                  </th>
+                  <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Description
+                  </th>
+                  <th className="p-3 text-right text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Receipt (₹)
+                  </th>
+                  <th className="p-3 text-right text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Payment (₹)
+                  </th>
+                  <th className="p-3 text-right text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Balance (₹)
+                  </th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-primary-bg">
                 {ledgerWithBalance.length === 0 ? (
-                  <tr><td colSpan={7} className="p-6 text-center text-gray-500">No transactions found for this period.</td></tr>
+                  <tr>
+                    <td colSpan={7} className="p-6 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+                      No transactions found for this period.
+                    </td>
+                  </tr>
                 ) : (
                   ledgerWithBalance.map((entry, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50">
-                      <td className="p-3 text-gray-900">{entry.journal_entries?.entry_date}</td>
-                      <td className="p-3 text-gray-900">{entry.voucherNo || "—"}</td>
-                      <td className="p-3 text-gray-900">{entry.journal_entries?.reference || "—"}</td>
-                      <td className="p-3 text-gray-900">{entry.description}</td>
-                      <td className="p-3 text-right text-green-700">{entry.debit > 0 ? `₹ ${Number(entry.debit).toLocaleString("en-IN")}` : "—"}</td>
-                      <td className="p-3 text-right text-red-700">{entry.credit > 0 ? `₹ ${Number(entry.credit).toLocaleString("en-IN")}` : "—"}</td>
-                      <td className="p-3 text-right font-medium text-gray-900">₹ {entry.balance.toLocaleString("en-IN")}</td>
+                    <tr key={idx} className="hover:bg-primary-bg">
+                      <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>
+                        {entry.journal_entries?.entry_date}
+                      </td>
+                      <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>
+                        {entry.voucherNo || "—"}
+                      </td>
+                      <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>
+                        {entry.journal_entries?.reference || "—"}
+                      </td>
+                      <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>
+                        {entry.description}
+                      </td>
+                      <td className="p-3 text-right text-accent" style={{ fontFamily: bodyFont }}>
+                        {entry.debit > 0 ? `₹ ${Number(entry.debit).toLocaleString("en-IN")}` : "—"}
+                      </td>
+                      <td className="p-3 text-right text-accent-dark" style={{ fontFamily: bodyFont }}>
+                        {entry.credit > 0 ? `₹ ${Number(entry.credit).toLocaleString("en-IN")}` : "—"}
+                      </td>
+                      <td className="p-3 text-right font-medium text-primary" style={{ fontFamily: bodyFont }}>
+                        ₹ {entry.balance.toLocaleString("en-IN")}
+                      </td>
                     </tr>
                   ))
                 )}

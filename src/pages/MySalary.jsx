@@ -1,6 +1,7 @@
 // src/pages/MySalary.jsx
 import { useQuery } from "@tanstack/react-query";
 import { IndianRupee, Download, Mail } from "lucide-react";
+import toast from "react-hot-toast";
 
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../api/supabase";
@@ -14,7 +15,7 @@ export default function MySalary() {
   const { user } = useAuth();
 
   const { branch, selectedFinancialYear, org } = useOrg();
-  const { theme } = useTheme();
+  const theme = useTheme(); // full theme object
 
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
@@ -101,7 +102,6 @@ export default function MySalary() {
     }
 
     try {
-      // 1. Determine recipient email (teacher's email)
       let recipientEmail = teacherDetails?.email;
       if (!recipientEmail && teacherId) {
         recipientEmail = await getTeacherEmail(teacherId);
@@ -111,14 +111,13 @@ export default function MySalary() {
         return;
       }
 
-      // 2. Build HTML table rows
       let tableRows = payments.map((p) => `
         <tr>
           <td style="padding:4px 8px;border:1px solid #ddd;">${p.payment_date}</td>
           <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(p.amount || 0).toLocaleString('en-IN')}</td>
           <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${p.tds_percentage || 0}%</td>
           <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(p.tds_amount || 0).toLocaleString('en-IN')}</td>
-          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;font-weight:bold;color:#2e7d32;">₹ ${Number(p.net_amount || p.amount || 0).toLocaleString('en-IN')}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;font-weight:bold;color:${theme.primary_color};">₹ ${Number(p.net_amount || p.amount || 0).toLocaleString('en-IN')}</td>
           <td style="padding:4px 8px;border:1px solid #ddd;">${p.payment_mode || '—'}</td>
           <td style="padding:4px 8px;border:1px solid #ddd;">${p.remarks || '—'}</td>
         </tr>
@@ -128,7 +127,7 @@ export default function MySalary() {
 
       const htmlBody = `
         <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
-          <h2 style="color:#0D47A1;">Salary Summary</h2>
+          <h2 style="color:${theme.primary_color};">Salary Summary</h2>
           <p><strong>Teacher:</strong> ${teacherName}</p>
           <p><strong>Employee Code:</strong> ${teacherDetails?.employee_code || 'N/A'}</p>
           <p><strong>Total Payments:</strong> ${payments.length}</p>
@@ -140,7 +139,7 @@ export default function MySalary() {
           </div>
           <h3>Payment History</h3>
           <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
-            <thead style="background:#e3f2fd;">
+            <thead style="background:${theme.primary_light_color || '#e3f2fd'};">
               <tr>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Date</th>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Gross</th>
@@ -163,7 +162,6 @@ export default function MySalary() {
         to: recipientEmail,
         subject: `My Salary Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-       // from: org?.email || undefined,
       });
 
       toast.success("Report sent to your email.");
@@ -173,7 +171,7 @@ export default function MySalary() {
     }
   };
 
-  // ─── PDF download handler (unchanged) ─────────────────────────────
+  // ─── PDF download handler ───────────────────────────────────────────
   const handleDownloadSlip = (payment) => {
     if (!teacherDetails) return;
     generateSalarySlipPDF(
@@ -186,21 +184,24 @@ export default function MySalary() {
     );
   };
 
-  if (isLoading) return <div className="p-8 text-center">Loading...</div>;
+  if (isLoading) return <div className="p-8 text-center text-gray-500 dark:text-gray-400">Loading...</div>;
 
   return (
-    <>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
       <BackButton to="/teacher" label="Dashboard" />
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-righteous text-primary-dark">My Salary</h1>
-          <p className="text-sm text-secondary-dark font-montserrat mt-1">Your salary payment history</p>
+          <h1 className="text-3xl font-heading text-primary-dark">
+            My Salary
+          </h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400 font-body mt-1">
+            Your salary payment history
+          </p>
         </div>
-        {/* 👇 Send Report button */}
         <button
           onClick={sendSalaryReport}
           disabled={payments.length === 0}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-montserrat flex items-center gap-2 disabled:opacity-50"
+          className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-lg text-sm font-body flex items-center gap-2 disabled:opacity-50"
         >
           <Mail size={16} /> Send Report
         </button>
@@ -208,52 +209,52 @@ export default function MySalary() {
 
       {payments.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-secondary-light">
-            <p className="text-xs text-secondary">Total Gross</p>
+          <div className="bg-white dark:bg-accent rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-gray-500 dark:text-gray-400">Total Gross</p>
             <p className="text-xl font-bold text-primary mt-1">₹{totalGross.toLocaleString("en-IN")}</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-secondary-light">
-            <p className="text-xs text-secondary">Total TDS Deducted</p>
-            <p className="text-xl font-bold text-red-600 mt-1">₹{totalTDS.toLocaleString("en-IN")}</p>
+          <div className="bg-white dark:bg-accent rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-gray-500 dark:text-gray-400">Total TDS Deducted</p>
+            <p className="text-xl font-bold text-accent-dark mt-1">₹{totalTDS.toLocaleString("en-IN")}</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-secondary-light">
-            <p className="text-xs text-secondary">Total Net Received</p>
-            <p className="text-xl font-bold text-green-600 mt-1">₹{totalNet.toLocaleString("en-IN")}</p>
+          <div className="bg-white dark:bg-accent rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-gray-500 dark:text-gray-400">Total Net Received</p>
+            <p className="text-xl font-bold text-accent mt-1">₹{totalNet.toLocaleString("en-IN")}</p>
           </div>
         </div>
       )}
 
       {payments.length === 0 ? (
-        <div className="bg-white rounded-xl p-8 shadow-sm border border-secondary-light text-center">
-          <IndianRupee size={32} className="text-secondary-light mx-auto mb-2" />
-          <p className="text-secondary">No salary payments recorded yet.</p>
+        <div className="bg-white dark:bg-accent rounded-xl p-8 shadow-sm border border-gray-200 dark:border-gray-700 text-center">
+          <IndianRupee size={32} className="text-gray-400 dark:text-gray-500 mx-auto mb-2" />
+          <p className="text-gray-600 dark:text-gray-400">No salary payments recorded yet.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-accent rounded-xl shadow-sm overflow-hidden border border-gray-200 dark:border-gray-700">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[700px]">
-              <thead className="bg-slate-100 border-b border-secondary-light">
+              <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                 <tr>
-                  <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Date</th>
-                  <th className="p-3 text-right text-sm font-montserrat text-secondary-dark">Gross</th>
-                  <th className="p-3 text-right text-sm font-montserrat text-secondary-dark">TDS %</th>
-                  <th className="p-3 text-right text-sm font-montserrat text-secondary-dark">TDS Amount</th>
-                  <th className="p-3 text-right text-sm font-montserrat text-secondary-dark">Net Paid</th>
-                  <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Mode</th>
-                  <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Remarks</th>
-                  <th className="p-3 text-center text-sm font-montserrat text-secondary-dark">Slip</th>
+                  <th className="p-3 text-left text-sm font-body text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
+                  <th className="p-3 text-right text-sm font-body text-gray-500 dark:text-gray-400 uppercase tracking-wider">Gross</th>
+                  <th className="p-3 text-right text-sm font-body text-gray-500 dark:text-gray-400 uppercase tracking-wider">TDS %</th>
+                  <th className="p-3 text-right text-sm font-body text-gray-500 dark:text-gray-400 uppercase tracking-wider">TDS Amount</th>
+                  <th className="p-3 text-right text-sm font-body text-gray-500 dark:text-gray-400 uppercase tracking-wider">Net Paid</th>
+                  <th className="p-3 text-left text-sm font-body text-gray-500 dark:text-gray-400 uppercase tracking-wider">Mode</th>
+                  <th className="p-3 text-left text-sm font-body text-gray-500 dark:text-gray-400 uppercase tracking-wider">Remarks</th>
+                  <th className="p-3 text-center text-sm font-body text-gray-500 dark:text-gray-400 uppercase tracking-wider">Slip</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {payments.map((p, idx) => (
-                  <tr key={idx} className="border-b border-secondary-light hover:bg-primary-bg transition">
-                    <td className="p-3 text-sm">{p.payment_date}</td>
-                    <td className="p-3 text-right text-sm font-medium">₹{Number(p.amount || 0).toLocaleString("en-IN")}</td>
-                    <td className="p-3 text-right text-sm">{p.tds_percentage || 0}%</td>
-                    <td className="p-3 text-right text-sm text-red-600">₹{Number(p.tds_amount || 0).toLocaleString("en-IN")}</td>
-                    <td className="p-3 text-right text-sm font-bold text-green-600">₹{Number(p.net_amount || p.amount || 0).toLocaleString("en-IN")}</td>
-                    <td className="p-3 text-sm">{p.payment_mode || "—"}</td>
-                    <td className="p-3 text-sm text-secondary">{p.remarks || "—"}</td>
+                  <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{p.payment_date}</td>
+                    <td className="p-3 text-right text-sm font-medium text-gray-800 dark:text-gray-100">₹{Number(p.amount || 0).toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-right text-sm text-gray-700 dark:text-gray-200">{p.tds_percentage || 0}%</td>
+                    <td className="p-3 text-right text-sm text-accent-dark font-medium">₹{Number(p.tds_amount || 0).toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-right text-sm font-bold text-primary">₹{Number(p.net_amount || p.amount || 0).toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{p.payment_mode || "—"}</td>
+                    <td className="p-3 text-sm text-gray-500 dark:text-gray-400">{p.remarks || "—"}</td>
                     <td className="p-3 text-center">
                       <button
                         onClick={() => handleDownloadSlip(p)}
@@ -270,6 +271,6 @@ export default function MySalary() {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

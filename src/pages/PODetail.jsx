@@ -9,9 +9,10 @@ import autoTable from "jspdf-autotable";
 import { supabase } from "../api/supabase";
 import { receivePO } from "../services/poService";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // ✅ dynamic theme
 import { sendTemplateEmail } from "../services/emailService";
 
-/* ─── PDF helpers ─────────────────────────────────────── */
+/* ─── PDF helpers (unchanged) ─────────────────────────────── */
 async function loadImageAsBase64(url) {
   if (!url) return null;
   try {
@@ -77,9 +78,13 @@ export default function PODetail() {
   const queryClient = useQueryClient();
 
   const { org, branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();                                     // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const context = { branchId, financialYearId };
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   // ─── Fetch PO ────────────────────────────────────────────
   const { data: po, isLoading } = useQuery({
@@ -160,7 +165,7 @@ export default function PODetail() {
     }
   };
 
-  // ─── PDF Export (A5 landscape, full-width table, no footer overlap) ──
+  // ─── PDF Export (unchanged) ──────────────────────────────
   const handlePrintPDF = async () => {
     if (!po) return;
 
@@ -183,19 +188,17 @@ export default function PODetail() {
     const grandTotal = subtotal + totalTax;
 
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a5" });
-    const pageWidth = doc.internal.pageSize.getWidth();   // 210
-    const pageHeight = doc.internal.pageSize.getHeight(); // 148
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 10;
-    const bottomMargin = 8;   // space reserved for footer
+    const bottomMargin = 8;
     let y = margin;
 
-    // Logo
     let logoBase64 = null;
     if (org?.logo_dark_url) {
       logoBase64 = await loadImageAsBase64(org.logo_dark_url);
     }
 
-    // Header
     const logoWidth = 25, logoHeight = 10;
     if (logoBase64) {
       doc.addImage(logoBase64, "PNG", margin, y, logoWidth, logoHeight);
@@ -227,7 +230,6 @@ export default function PODetail() {
     doc.line(margin, y, pageWidth - margin, y);
     y += 4;
 
-    // Title & PO Number
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
     doc.text("Purchase Order", pageWidth / 2, y, { align: "center" });
@@ -237,7 +239,6 @@ export default function PODetail() {
     doc.text(po.po_number, pageWidth / 2, y, { align: "center" });
     y += 8;
 
-    // Two‑column details
     const leftX = margin;
     const rightX = pageWidth / 2;
 
@@ -270,8 +271,7 @@ export default function PODetail() {
       y += 5;
     }
 
-    // Items table (full-width, column widths sum to available width)
-    const availableWidth = pageWidth - 2 * margin; // 190 mm
+    const availableWidth = pageWidth - 2 * margin;
     const tableRows = items.map((item, idx) => {
       const rate = item.tax_rates;
       const ratePercent = rate ? parseFloat(rate.rate) : 0;
@@ -299,16 +299,15 @@ export default function PODetail() {
       styles: { fontSize: 7, textColor: [0,0,0], fillColor: [255,255,255], lineColor: [0,0,0], lineWidth: 0.2 },
       headStyles: { fillColor: [255,255,255], textColor: [0,0,0], fontStyle: "bold", lineWidth: 0.2, lineColor: [0,0,0] },
       columnStyles: {
-        0: { cellWidth: 8, halign: "center" },          // #
-        1: { cellWidth: 60, halign: "left" },           // Item (was 45)
-        2: { cellWidth: 12, halign: "center" },         // Qty
-        3: { cellWidth: 22, halign: "right" },          // Unit Price
-        4: { cellWidth: 18, halign: "center" },         // Tax Rate
-        5: { cellWidth: 22, halign: "right" },          // CGST
-        6: { cellWidth: 22, halign: "right" },          // SGST
-        7: { cellWidth: 26, halign: "right" },          // Total
+        0: { cellWidth: 8, halign: "center" },
+        1: { cellWidth: 60, halign: "left" },
+        2: { cellWidth: 12, halign: "center" },
+        3: { cellWidth: 22, halign: "right" },
+        4: { cellWidth: 18, halign: "center" },
+        5: { cellWidth: 22, halign: "right" },
+        6: { cellWidth: 22, halign: "right" },
+        7: { cellWidth: 26, halign: "right" },
       },
-      // total = 8+60+12+22+18+22+22+26 = 190 mm ✅ full available width
       margin: { left: margin, right: margin },
       willDrawCell: (data) => {
         if ([3,5,6,7].includes(data.column.index) && typeof data.cell.raw === "number") {
@@ -324,7 +323,6 @@ export default function PODetail() {
 
     y = doc.lastAutoTable.finalY + 8;
 
-    // Totals
     doc.setFontSize(8);
     doc.setFont("helvetica", "bold");
     doc.text("Subtotal:", pageWidth - margin - 60, y);
@@ -344,13 +342,11 @@ export default function PODetail() {
     drawCurrency(doc, grandTotal, pageWidth - margin, y, 10, "right", "#000");
     y += 6;
 
-    // Amount in words
     doc.setFontSize(7);
     doc.setFont("helvetica", "italic");
     doc.text(`Amount in Words: ${numberToWords(Math.round(grandTotal))} Only`, margin, y);
     y += 10;
 
-    // Terms
     doc.setFontSize(6.5);
     doc.setFont("helvetica", "normal");
     doc.text("Terms & Conditions:", margin, y);
@@ -367,9 +363,7 @@ export default function PODetail() {
       y += 3.5;
     });
 
-    // Signatures
     y += 8;
-    // Ensure there is enough space for signatures + footer. If not, add a new page.
     if (y + 20 > pageHeight - bottomMargin) {
       doc.addPage();
       y = margin;
@@ -382,10 +376,7 @@ export default function PODetail() {
     doc.text("Authorized Signatory", margin, y, { align: "center" });
     doc.text("Vendor / Supplier", pageWidth - margin - 50, y, { align: "center" });
 
-    // Footer (always at the bottom of the current page)
     const footerY = pageHeight - bottomMargin;
-    // If the signatures pushed us too close, we already moved to a new page.
-    // Just draw the footer at the correct position.
     doc.setFontSize(6);
     doc.setTextColor("#000000");
     doc.setFont("helvetica", "italic");
@@ -395,8 +386,8 @@ export default function PODetail() {
     doc.save(`PO_${po.po_number}.pdf`);
   };
 
-  if (isLoading) return <div className="p-8 text-center text-gray-500">Loading PO…</div>;
-  if (!po) return <div className="p-8 text-center text-red-600">PO not found</div>;
+  if (isLoading) return <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>Loading PO…</div>;
+  if (!po) return <div className="p-8 text-center text-accent-dark" style={{ fontFamily: bodyFont }}>PO not found</div>;
 
   const items = po.purchase_order_items || [];
   const subtotal = items.reduce((s, i) => s + i.quantity_ordered * i.unit_price, 0);
@@ -420,73 +411,76 @@ export default function PODetail() {
   return (
     <>
       <div className="flex justify-between items-center mb-6 no-print">
-        <Link to="/purchase-orders" className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 text-sm">
+        <Link to="/purchase-orders" className="inline-flex items-center gap-2 text-primary-dark hover:text-primary text-sm" style={{ fontFamily: bodyFont }}>
           <ArrowLeft size={18} /> Back to POs
         </Link>
         <div className="flex gap-2">
           <button
             onClick={sendPOEmail}
             disabled={!po.vendor_email}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50"
+            className="bg-accent hover:bg-accent-dark text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50"
+            style={{ fontFamily: bodyFont }}
           >
             <Mail size={16} /> Email PO
           </button>
           {po.status !== "Received" && po.status !== "Cancelled" && (
             <button
               onClick={() => receiveMut.mutate()}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+              className="bg-primary hover:bg-accent text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+              style={{ fontFamily: bodyFont }}
             >
               <Truck size={16} /> Receive
             </button>
           )}
           <button
             onClick={handlePrintPDF}
-            className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            className="bg-primary hover:bg-accent text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            style={{ fontFamily: bodyFont }}
           >
             <Printer size={16} /> Print PDF
           </button>
         </div>
       </div>
 
-      <div id="po-print-area" className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-        <h1 className="text-2xl font-bold text-gray-900 text-center mb-2">Purchase Order</h1>
-        <p className="text-center text-sm font-medium text-gray-700 mb-6">{po.po_number}</p>
+      <div id="po-print-area" className="bg-white rounded-xl p-6 shadow-sm border border-primary-bg">
+        <h1 className="text-2xl font-bold text-primary text-center mb-2" style={{ fontFamily: headingFont }}>Purchase Order</h1>
+        <p className="text-center text-sm font-medium text-primary-dark mb-6" style={{ fontFamily: bodyFont }}>{po.po_number}</p>
 
         <div className="two-col" style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px" }}>
           <div style={{ width: "48%" }}>
-            <h2 className="font-bold text-sm text-gray-900 mb-1">Vendor Details</h2>
-            <p className="text-xs text-gray-700"><strong>{po.vendor}</strong></p>
-            {po.vendor_address && <p className="text-xs text-gray-700">{po.vendor_address}</p>}
-            {po.vendor_gstin && <p className="text-xs text-gray-700"><strong>GSTIN:</strong> {po.vendor_gstin}</p>}
+            <h2 className="font-bold text-sm text-primary mb-1" style={{ fontFamily: headingFont }}>Vendor Details</h2>
+            <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}><strong>{po.vendor}</strong></p>
+            {po.vendor_address && <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>{po.vendor_address}</p>}
+            {po.vendor_gstin && <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}><strong>GSTIN:</strong> {po.vendor_gstin}</p>}
           </div>
           <div style={{ width: "48%", textAlign: "right" }}>
-            <p className="text-xs text-gray-700"><strong>Order Date:</strong> {po.order_date}</p>
-            <p className="text-xs text-gray-700"><strong>Expected Date:</strong> {po.expected_date || "—"}</p>
-            <p className="text-xs text-gray-700">
+            <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}><strong>Order Date:</strong> {po.order_date}</p>
+            <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}><strong>Expected Date:</strong> {po.expected_date || "—"}</p>
+            <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
               <strong>Status:</strong>{" "}
               <span className={`px-2 py-0.5 rounded-full text-xs ${
-                po.status === "Received" ? "bg-green-100 text-green-700" :
-                po.status === "Partially Received" ? "bg-yellow-100 text-yellow-700" :
-                po.status === "Cancelled" ? "bg-red-100 text-red-700" :
-                "bg-blue-100 text-blue-700"
+                po.status === "Received" ? "bg-primary-bg text-primary-dark" :
+                po.status === "Partially Received" ? "bg-accent-bg text-accent-dark" :
+                po.status === "Cancelled" ? "bg-accent text-white" :
+                "bg-primary-bg/50 text-primary-dark"
               }`}>{po.status}</span>
             </p>
           </div>
         </div>
 
-        {po.notes && <p className="text-xs text-gray-700 mb-4"><strong>Notes:</strong> {po.notes}</p>}
+        {po.notes && <p className="text-xs text-primary-dark mb-4" style={{ fontFamily: bodyFont }}><strong>Notes:</strong> {po.notes}</p>}
 
-        <table className="w-full text-sm border border-gray-200">
-          <thead className="bg-gray-50">
+        <table className="w-full text-sm border border-primary-bg">
+          <thead className="bg-primary-bg">
             <tr>
-              <th className="p-2 text-left border border-gray-200 text-gray-700">#</th>
-              <th className="p-2 text-left border border-gray-200 text-gray-700">Item</th>
-              <th className="p-2 text-center border border-gray-200 text-gray-700">Qty</th>
-              <th className="p-2 text-right border border-gray-200 text-gray-700">Unit Price</th>
-              <th className="p-2 text-right border border-gray-200 text-gray-700">Tax Rate</th>
-              <th className="p-2 text-right border border-gray-200 text-gray-700">CGST</th>
-              <th className="p-2 text-right border border-gray-200 text-gray-700">SGST</th>
-              <th className="p-2 text-right border border-gray-200 text-gray-700">Total</th>
+              <th className="p-2 text-left border border-primary-bg text-primary-dark" style={{ fontFamily: bodyFont }}>#</th>
+              <th className="p-2 text-left border border-primary-bg text-primary-dark" style={{ fontFamily: bodyFont }}>Item</th>
+              <th className="p-2 text-center border border-primary-bg text-primary-dark" style={{ fontFamily: bodyFont }}>Qty</th>
+              <th className="p-2 text-right border border-primary-bg text-primary-dark" style={{ fontFamily: bodyFont }}>Unit Price</th>
+              <th className="p-2 text-right border border-primary-bg text-primary-dark" style={{ fontFamily: bodyFont }}>Tax Rate</th>
+              <th className="p-2 text-right border border-primary-bg text-primary-dark" style={{ fontFamily: bodyFont }}>CGST</th>
+              <th className="p-2 text-right border border-primary-bg text-primary-dark" style={{ fontFamily: bodyFont }}>SGST</th>
+              <th className="p-2 text-right border border-primary-bg text-primary-dark" style={{ fontFamily: bodyFont }}>Total</th>
             </tr>
           </thead>
           <tbody>
@@ -498,15 +492,15 @@ export default function PODetail() {
               const cgst = taxAmount / 2;
               const sgst = taxAmount / 2;
               return (
-                <tr key={idx} className="border-t border-gray-200">
-                  <td className="p-2 border border-gray-200 text-gray-900">{idx + 1}</td>
-                  <td className="p-2 border border-gray-200 text-gray-900">{item.inventory_items?.item_name || `Item #${item.item_id}`}</td>
-                  <td className="p-2 border border-gray-200 text-center text-gray-900">{item.quantity_ordered}</td>
-                  <td className="p-2 border border-gray-200 text-right text-gray-900">₹ {Number(item.unit_price).toLocaleString("en-IN")}</td>
-                  <td className="p-2 border border-gray-200 text-right text-gray-900">{rate ? `${rate.rate}%` : "—"}</td>
-                  <td className="p-2 border border-gray-200 text-right text-gray-900">₹ {cgst.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
-                  <td className="p-2 border border-gray-200 text-right text-gray-900">₹ {sgst.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
-                  <td className="p-2 border border-gray-200 text-right font-medium text-gray-900">₹ {(itemTotal + taxAmount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                <tr key={idx} className="border-t border-primary-bg hover:bg-primary-bg">
+                  <td className="p-2 border border-primary-bg text-primary-dark" style={{ fontFamily: bodyFont }}>{idx + 1}</td>
+                  <td className="p-2 border border-primary-bg text-primary-dark" style={{ fontFamily: bodyFont }}>{item.inventory_items?.item_name || `Item #${item.item_id}`}</td>
+                  <td className="p-2 border border-primary-bg text-center text-primary-dark" style={{ fontFamily: bodyFont }}>{item.quantity_ordered}</td>
+                  <td className="p-2 border border-primary-bg text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {Number(item.unit_price).toLocaleString("en-IN")}</td>
+                  <td className="p-2 border border-primary-bg text-right text-primary-dark" style={{ fontFamily: bodyFont }}>{rate ? `${rate.rate}%` : "—"}</td>
+                  <td className="p-2 border border-primary-bg text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {cgst.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                  <td className="p-2 border border-primary-bg text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {sgst.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                  <td className="p-2 border border-primary-bg text-right font-medium text-primary" style={{ fontFamily: bodyFont }}>₹ {(itemTotal + taxAmount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
                 </tr>
               );
             })}
@@ -518,27 +512,27 @@ export default function PODetail() {
             <table className="w-full text-sm">
               <tbody>
                 <tr>
-                  <td className="p-1 text-right text-gray-700">Subtotal:</td>
-                  <td className="p-1 text-right font-medium text-gray-900">₹ {subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                  <td className="p-1 text-right text-primary-dark" style={{ fontFamily: bodyFont }}>Subtotal:</td>
+                  <td className="p-1 text-right font-medium text-primary" style={{ fontFamily: bodyFont }}>₹ {subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
                 </tr>
                 {Object.entries(taxSummary).map(([name, data]) => (
                   <tr key={name}>
-                    <td className="p-1 text-right text-gray-700">{name}:</td>
-                    <td className="p-1 text-right text-gray-900">₹ {data.taxAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                    <td className="p-1 text-right text-primary-dark" style={{ fontFamily: bodyFont }}>{name}:</td>
+                    <td className="p-1 text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {data.taxAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
                   </tr>
                 ))}
-                <tr className="font-bold border-t border-gray-300">
-                  <td className="p-1 text-right text-gray-900">Grand Total:</td>
-                  <td className="p-1 text-right text-gray-900">₹ {grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                <tr className="font-bold border-t border-primary-bg">
+                  <td className="p-1 text-right text-primary" style={{ fontFamily: headingFont }}>Grand Total:</td>
+                  <td className="p-1 text-right text-primary" style={{ fontFamily: headingFont }}>₹ {grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
                 </tr>
               </tbody>
             </table>
-            <p className="text-xs text-right mt-2 text-gray-700"><strong>Amount in Words:</strong> {amountWords}</p>
+            <p className="text-xs text-right mt-2 text-primary-dark" style={{ fontFamily: bodyFont }}><strong>Amount in Words:</strong> {amountWords}</p>
           </div>
         </div>
 
-        <div className="terms mt-6 text-xs text-gray-600 border-t border-gray-200 pt-4">
-          <h3 className="font-bold text-gray-900 mb-1">Terms & Conditions</h3>
+        <div className="terms mt-6 text-xs text-primary-dark/80 border-t border-primary-bg pt-4">
+          <h3 className="font-bold text-primary mb-1" style={{ fontFamily: headingFont }}>Terms & Conditions</h3>
           <ol className="list-decimal list-inside space-y-1">
             <li>All prices are inclusive of taxes unless specified otherwise.</li>
             <li>Delivery must be made within the expected date.</li>
@@ -551,11 +545,11 @@ export default function PODetail() {
         <div className="signature" style={{ display: "flex", justifyContent: "space-between", marginTop: "40px" }}>
           <div style={{ width: "40%" }}>
             <div style={{ borderBottom: "1px solid #000", marginBottom: "4px" }}></div>
-            <p className="text-xs text-center text-gray-700">Authorized Signatory</p>
+            <p className="text-xs text-center text-primary-dark" style={{ fontFamily: bodyFont }}>Authorized Signatory</p>
           </div>
           <div style={{ width: "40%" }}>
             <div style={{ borderBottom: "1px solid #000", marginBottom: "4px" }}></div>
-            <p className="text-xs text-center text-gray-700">Vendor / Supplier</p>
+            <p className="text-xs text-center text-primary-dark" style={{ fontFamily: bodyFont }}>Vendor / Supplier</p>
           </div>
         </div>
       </div>

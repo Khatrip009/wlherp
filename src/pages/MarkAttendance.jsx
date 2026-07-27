@@ -21,6 +21,7 @@ import {
 } from "../services/attendanceService";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 import { sendEmail } from "../services/emailService";
 
 export default function MarkAttendance() {
@@ -28,8 +29,12 @@ export default function MarkAttendance() {
   const navigate = useNavigate();
 
   const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme();                                     // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const [students, setStudents] = useState([]);
   const [attendance, setAttendance] = useState({});
@@ -129,7 +134,6 @@ export default function MarkAttendance() {
         to: adminEmails,
         subject: `Attendance Report - ${sessionDate} (${sessionBatch})`,
         html: htmlBody,
-       // from: org?.email || undefined,
       });
 
       toast.success("Attendance report sent to admins.");
@@ -265,7 +269,7 @@ export default function MarkAttendance() {
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-secondary font-montserrat">
+      <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
         Loading attendance sheet…
       </div>
     );
@@ -277,16 +281,17 @@ export default function MarkAttendance() {
       <div className="mb-6">
         <button
           onClick={() => navigate("/attendance")}
-          className="flex items-center gap-2 text-secondary hover:text-primary-dark mb-2 font-montserrat text-sm transition"
+          className="flex items-center gap-2 text-primary-dark hover:text-primary mb-2 text-sm transition"
+          style={{ fontFamily: bodyFont }}
         >
           <ArrowLeft size={18} />
           Back to Sessions
         </button>
-        <h1 className="text-3xl font-righteous text-primary-dark">
+        <h1 className="text-3xl font-bold text-primary" style={{ fontFamily: headingFont }}>
           Mark Attendance
         </h1>
         {sessionInfo && (
-          <div className="flex flex-wrap gap-2 mt-2 text-sm text-secondary-dark font-montserrat">
+          <div className="flex flex-wrap gap-2 mt-2 text-sm" style={{ fontFamily: bodyFont }}>
             <span className="flex items-center gap-1 bg-primary-bg text-primary px-3 py-1 rounded-full">
               <Layers size={14} /> {sessionInfo.batches?.batch_name}
             </span>
@@ -308,25 +313,27 @@ export default function MarkAttendance() {
       </div>
 
       {/* Students Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-secondary-light flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-          <h2 className="text-lg font-righteous text-primary-dark flex items-center gap-2">
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-primary-bg">
+        <div className="p-4 border-b border-primary-bg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <h2 className="text-lg font-bold text-primary flex items-center gap-2" style={{ fontFamily: headingFont }}>
             <User size={18} />
             Students ({students.length})
           </h2>
           <div className="flex gap-2">
-            {/* 👇 Send Report button */}
+            {/* Send Report button */}
             <button
               onClick={sendAttendanceReport}
               disabled={sendingReport}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-montserrat transition flex items-center gap-2 disabled:opacity-50"
+              className="bg-accent hover:bg-accent-dark text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 disabled:opacity-50"
+              style={{ fontFamily: bodyFont }}
             >
               <Mail size={16} />
               {sendingReport ? "Sending..." : "Send Report"}
             </button>
             <button
               onClick={markAllPresent}
-              className="bg-green-100 text-green-700 px-4 py-2 rounded-lg text-sm font-montserrat hover:bg-green-200 transition flex items-center gap-2"
+              className="bg-primary-bg text-primary-dark px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/10 transition flex items-center gap-2"
+              style={{ fontFamily: bodyFont }}
             >
               <CheckCircle size={16} />
               Mark All Present
@@ -336,20 +343,20 @@ export default function MarkAttendance() {
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[600px]">
-            <thead className="bg-slate-50 border-b border-secondary-light">
+            <thead className="bg-primary-bg border-b border-primary-bg">
               <tr>
-                <th className="text-left p-3 text-sm font-montserrat text-secondary-dark">
+                <th className="text-left p-3 text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
                   <Hash size={14} className="inline mr-1" />
                   Admission No
                 </th>
-                <th className="text-left p-3 text-sm font-montserrat text-secondary-dark">
+                <th className="text-left p-3 text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
                   <User size={14} className="inline mr-1" />
                   Name
                 </th>
-                <th className="text-center p-3 text-sm font-montserrat text-secondary-dark w-40">
+                <th className="text-center p-3 text-sm font-medium text-primary-dark uppercase w-40" style={{ fontFamily: bodyFont }}>
                   Status
                 </th>
-                <th className="text-left p-3 text-sm font-montserrat text-secondary-dark w-48">
+                <th className="text-left p-3 text-sm font-medium text-primary-dark uppercase w-48" style={{ fontFamily: bodyFont }}>
                   Remarks
                 </th>
               </tr>
@@ -358,10 +365,12 @@ export default function MarkAttendance() {
               {students.map((student) => (
                 <tr
                   key={student.student_id}
-                  className="border-b border-secondary-light hover:bg-primary-bg transition"
+                  className="border-b border-primary-bg hover:bg-primary-bg transition"
                 >
-                  <td className="p-3 text-sm">{student.admission_no}</td>
-                  <td className="p-3 text-sm font-medium">
+                  <td className="p-3 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                    {student.admission_no}
+                  </td>
+                  <td className="p-3 text-sm font-medium text-primary" style={{ fontFamily: headingFont }}>
                     {student.first_name} {student.last_name}
                   </td>
                   <td className="p-3 text-center">
@@ -381,9 +390,9 @@ export default function MarkAttendance() {
                               "Present"
                             )
                           }
-                          className="w-4 h-4 text-green-600 accent-green-600"
+                          className="w-4 h-4 text-primary accent-primary"
                         />
-                        <span className="text-sm text-green-700 font-medium">
+                        <span className="text-sm text-primary-dark font-medium" style={{ fontFamily: bodyFont }}>
                           Present
                         </span>
                       </label>
@@ -402,9 +411,9 @@ export default function MarkAttendance() {
                               "Absent"
                             )
                           }
-                          className="w-4 h-4 text-red-600 accent-red-600"
+                          className="w-4 h-4 text-accent accent-accent"
                         />
-                        <span className="text-sm text-red-700 font-medium">
+                        <span className="text-sm text-accent-dark font-medium" style={{ fontFamily: bodyFont }}>
                           Absent
                         </span>
                       </label>
@@ -418,7 +427,8 @@ export default function MarkAttendance() {
                       onChange={(e) =>
                         handleRemarkChange(student.student_id, e.target.value)
                       }
-                      className="border border-secondary-light rounded p-2 w-full text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                      className="border border-primary-bg bg-white text-primary-dark rounded p-2 w-full text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-primary-dark/40"
+                      style={{ fontFamily: bodyFont }}
                     />
                   </td>
                 </tr>
@@ -428,17 +438,19 @@ export default function MarkAttendance() {
         </div>
 
         {/* Action Buttons */}
-        <div className="p-4 border-t border-secondary-light flex flex-col sm:flex-row justify-end gap-3">
+        <div className="p-4 border-t border-primary-bg flex flex-col sm:flex-row justify-end gap-3">
           <button
             onClick={() => navigate("/attendance")}
-            className="w-full sm:w-auto px-5 py-2.5 border border-secondary-light rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm transition"
+            className="w-full sm:w-auto px-5 py-2.5 border border-primary-bg rounded-lg text-primary-dark hover:bg-primary-bg transition text-sm"
+            style={{ fontFamily: bodyFont }}
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="w-full sm:w-auto px-6 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg font-montserrat text-sm transition disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full sm:w-auto px-6 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+            style={{ fontFamily: bodyFont }}
           >
             <Save size={18} />
             {saving ? "Saving..." : "Save Attendance"}

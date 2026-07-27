@@ -13,7 +13,7 @@ import {
   Upload,
   FileDown,
   Mail,
-} from "lucide-react"; // 👈 Added Mail
+} from "lucide-react";
 import Papa from "papaparse";
 
 import {
@@ -23,17 +23,22 @@ import {
   saveResults,
 } from "../services/examService";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";
 import { supabase } from "../api/supabase";
-import { sendTemplateEmail } from "../services/emailService"; // 👈 Import
+import { sendTemplateEmail } from "../services/emailService";
 
 export default function EnterResults() {
   const { examId } = useParams();
   const navigate = useNavigate();
 
-  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
+  const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme();
   const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
   const branchId = ctx.branchId;
   const financialYearId = ctx.financialYearId;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   useEffect(() => {
     if (!examId || examId === "undefined") {
@@ -290,7 +295,7 @@ export default function EnterResults() {
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+      <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
         Loading exam details…
       </div>
     );
@@ -302,64 +307,44 @@ export default function EnterResults() {
       <div>
         <button
           onClick={() => navigate("/results")}
-          className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-primary dark:hover:text-primary-light mb-2 text-sm transition-colors"
-          style={{ fontFamily: "var(--font-body)" }}
+          className="flex items-center gap-2 text-primary-dark hover:text-primary mb-2 text-sm transition-colors"
+          style={{ fontFamily: bodyFont }}
         >
           <ArrowLeft size={18} />
           Back to Results
         </button>
         <h1
-          className="text-2xl sm:text-3xl font-bold"
-          style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+          className="text-2xl sm:text-3xl font-bold text-primary"
+          style={{ fontFamily: headingFont }}
         >
           Enter Results
         </h1>
         {exam && (
           <div className="flex flex-wrap gap-2 mt-2 text-sm">
             <span
-              className="flex items-center gap-1 px-3 py-1 rounded-full"
-              style={{
-                backgroundColor: "var(--color-primary-light)",
-                color: "var(--color-primary)",
-              }}
+              className="flex items-center gap-1 px-3 py-1 rounded-full bg-primary-light text-primary"
             >
               <FileText size={14} /> {exam.exam_name}
             </span>
             <span
-              className="flex items-center gap-1 px-3 py-1 rounded-full"
-              style={{
-                backgroundColor: "var(--color-primary-light)",
-                color: "var(--color-primary)",
-              }}
+              className="flex items-center gap-1 px-3 py-1 rounded-full bg-primary-light text-primary"
             >
               <Layers size={14} /> {exam.batches?.batch_name}
             </span>
             {mediumName && (
               <span
-                className="flex items-center gap-1 px-3 py-1 rounded-full text-xs"
-                style={{
-                  backgroundColor: "var(--color-accent-light)",
-                  color: "var(--color-accent)",
-                }}
+                className="flex items-center gap-1 px-3 py-1 rounded-full bg-accent-light text-accent text-xs"
               >
                 {mediumName}
               </span>
             )}
             <span
-              className="flex items-center gap-1 px-3 py-1 rounded-full"
-              style={{
-                backgroundColor: "var(--color-primary-light)",
-                color: "var(--color-primary)",
-              }}
+              className="flex items-center gap-1 px-3 py-1 rounded-full bg-primary-light text-primary"
             >
               <Calendar size={14} /> {exam.exam_date}
             </span>
             <span
-              className="flex items-center gap-1 px-3 py-1 rounded-full"
-              style={{
-                backgroundColor: "var(--color-primary-light)",
-                color: "var(--color-primary)",
-              }}
+              className="flex items-center gap-1 px-3 py-1 rounded-full bg-primary-light text-primary"
             >
               Total: {exam.total_marks || "N/A"}
             </span>
@@ -371,22 +356,22 @@ export default function EnterResults() {
       <div className="flex flex-wrap items-end gap-3">
         <button
           onClick={handleExportCSV}
-          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-          style={{ fontFamily: "var(--font-body)" }}
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+          style={{ fontFamily: bodyFont }}
         >
           <Download size={18} /> Export CSV
         </button>
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-          style={{ fontFamily: "var(--font-body)" }}
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+          style={{ fontFamily: bodyFont }}
         >
           <Upload size={18} /> Import CSV
         </button>
         <button
           onClick={handleDownloadTemplate}
-          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-          style={{ fontFamily: "var(--font-body)" }}
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+          style={{ fontFamily: bodyFont }}
         >
           <FileDown size={18} /> Template
         </button>
@@ -400,21 +385,21 @@ export default function EnterResults() {
       </div>
 
       {/* Students Table */}
-      <div className="bg-white dark:bg-accent rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+      <div className="bg-white rounded-xl shadow-sm border border-primary-bg overflow-hidden">
+        <div className="p-4 border-b border-primary-bg flex justify-between items-center">
           <h2
-            className="text-lg font-semibold flex items-center gap-2"
-            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+            className="text-lg font-semibold flex items-center gap-2 text-primary"
+            style={{ fontFamily: headingFont }}
           >
             <User size={18} />
             Students ({allStudents.length})
           </h2>
-          {/* 👇 Send Results Email button */}
+          {/* Send Results Email button */}
           <button
             onClick={sendResultsEmail}
             disabled={sendingEmail || allStudents.length === 0}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent-dark text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50"
+            style={{ fontFamily: bodyFont }}
           >
             <Mail size={16} />
             {sendingEmail ? "Sending..." : "Send Results Email"}
@@ -423,40 +408,40 @@ export default function EnterResults() {
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[600px]">
-            <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+            <thead className="bg-primary-bg border-b border-primary-bg">
               <tr>
-                <th className="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="text-left p-3 text-xs font-medium text-primary-dark uppercase tracking-wider">
                   <Hash size={14} className="inline mr-1" />
                   Admission No
                 </th>
-                <th className="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="text-left p-3 text-xs font-medium text-primary-dark uppercase tracking-wider">
                   <User size={14} className="inline mr-1" />
                   Name
                 </th>
-                <th className="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="text-left p-3 text-xs font-medium text-primary-dark uppercase tracking-wider">
                   Course
                 </th>
-                <th className="text-center p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-40">
+                <th className="text-center p-3 text-xs font-medium text-primary-dark uppercase tracking-wider w-40">
                   Marks Obtained
                 </th>
-                <th className="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-48">
+                <th className="text-left p-3 text-xs font-medium text-primary-dark uppercase tracking-wider w-48">
                   Remarks
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="divide-y divide-primary-bg">
               {allStudents.map((student) => (
                 <tr
                   key={student.id}
-                  className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  className="hover:bg-primary-bg transition-colors"
                 >
-                  <td className="p-3 text-sm text-gray-700 dark:text-gray-200">
+                  <td className="p-3 text-sm text-primary-dark">
                     {student.admission_no}
                   </td>
-                  <td className="p-3 text-sm font-medium text-gray-800 dark:text-gray-100">
+                  <td className="p-3 text-sm font-medium text-primary" style={{ fontFamily: headingFont }}>
                     {student.first_name} {student.last_name}
                   </td>
-                  <td className="p-3 text-sm text-gray-700 dark:text-gray-200">
+                  <td className="p-3 text-sm text-primary-dark">
                     {courseName}
                   </td>
                   <td className="p-3 text-center">
@@ -464,7 +449,7 @@ export default function EnterResults() {
                       type="number"
                       value={marks[student.id] ?? ""}
                       onChange={(e) => handleMarksChange(student.id, e.target.value)}
-                      className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 w-24 text-center focus:ring-2 focus:ring-[var(--color-primary)] outline-none text-sm"
+                      className="border border-primary-bg bg-white text-primary-dark rounded p-2 w-24 text-center focus:ring-2 focus:ring-primary outline-none text-sm"
                       placeholder="0"
                     />
                   </td>
@@ -474,14 +459,14 @@ export default function EnterResults() {
                       placeholder="Remark..."
                       value={remarks[student.id] || ""}
                       onChange={(e) => handleRemarksChange(student.id, e.target.value)}
-                      className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 w-full focus:ring-2 focus:ring-[var(--color-primary)] outline-none text-sm"
+                      className="border border-primary-bg bg-white text-primary-dark rounded p-2 w-full focus:ring-2 focus:ring-primary outline-none text-sm"
                     />
                   </td>
                 </tr>
               ))}
               {allStudents.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-6 text-center text-gray-500 dark:text-gray-400 text-sm">
+                  <td colSpan={5} className="p-6 text-center text-primary-dark/60 text-sm">
                     No students enrolled in this batch.
                   </td>
                 </tr>
@@ -490,11 +475,11 @@ export default function EnterResults() {
           </table>
         </div>
 
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row justify-end gap-3">
+        <div className="p-4 border-t border-primary-bg flex flex-col sm:flex-row justify-end gap-3">
           <button
             onClick={() => navigate("/results")}
-            className="w-full sm:w-auto px-5 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="w-full sm:w-auto px-5 py-2.5 border border-primary-bg rounded-lg text-primary-dark hover:bg-primary-bg transition-colors text-sm"
+            style={{ fontFamily: bodyFont }}
           >
             Cancel
           </button>
@@ -502,7 +487,7 @@ export default function EnterResults() {
             onClick={handleSave}
             disabled={saving}
             className="w-full sm:w-auto px-6 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2"
-            style={{ fontFamily: "var(--font-body)" }}
+            style={{ fontFamily: bodyFont }}
           >
             <Save size={18} />
             {saving ? "Saving..." : "Save Results"}

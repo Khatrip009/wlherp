@@ -1,25 +1,55 @@
 @import "tailwindcss";
 
 @theme {
-  /* Fonts */
   --font-righteous: "Righteous", cursive;
   --font-montserrat: "Montserrat", sans-serif;
 
-  /* Primary – now points to a runtime CSS variable */
+  /* Dynamic primary colours – reads from ThemeContext, falls back to old blue */
   --color-primary: var(--theme-primary, #0D47A1);
   --color-primary-light: var(--theme-primary-light, #1565C0);
   --color-primary-dark: var(--theme-primary-dark, #0A3478);
   --color-primary-bg: var(--theme-primary-bg, #E3F2FD);
 
-  /* Accent */
+  /* Dynamic accent colours */
   --color-accent: var(--theme-accent, #FF1070);
   --color-accent-light: var(--theme-accent-light, #FF4081);
   --color-accent-dark: var(--theme-accent-dark, #C51162);
   --color-accent-bg: var(--theme-accent-bg, #FCE4EC);
 
-  /* Secondary – you can leave these static or make them variable too */
+  /* Secondary (static) */
   --color-secondary: #9A9C9B;
   --color-secondary-light: #BDBDBD;
   --color-secondary-dark: #616161;
   --color-secondary-bg: #F5F5F5;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-montserrat);
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-righteous);
+  }
+}
+
+.sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+@media print {
+  @page {
+    margin: 0;
+    size: A4;
+  }
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

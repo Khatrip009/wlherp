@@ -8,8 +8,9 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // ✅ dynamic theme
 
-/* ─── PDF helpers ──────────────────────────────────────────── */
+/* ─── PDF helpers (unchanged) ──────────────────────────────── */
 async function loadImageAsBase64(url) {
   if (!url) return null;
   try {
@@ -56,9 +57,13 @@ function drawCurrency(doc, amount, x, y, fontSize = 10, align = "left", color = 
 export default function Budgets() {
   const queryClient = useQueryClient();
   const { org, branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();
   const orgId = org?.id;
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -69,7 +74,7 @@ export default function Budgets() {
     amount: "",
   });
 
-  // ✅ Fetch budgets – scoped by branch & FY only (no org_id column in budgets table)
+  // ✅ Fetch budgets – scoped by branch & FY only
   const { data: budgets = [], isLoading } = useQuery({
     queryKey: ["budgets", branchId, financialYearId],
     queryFn: async () => {
@@ -206,7 +211,7 @@ export default function Budgets() {
     else createMut.mutate(payload);
   };
 
-  // ─── PDF Export ────────────────────────────────────────────
+  // ─── PDF Export (unchanged, uses black theme) ─────────────
   const handlePrintPDF = async () => {
     if (budgets.length === 0) return;
 
@@ -313,25 +318,38 @@ export default function Budgets() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Budgets</h1>
-          <p className="text-sm text-gray-600 mt-1">Set and manage expense budgets</p>
+          <h1
+            className="text-2xl sm:text-3xl font-bold text-primary"
+            style={{ fontFamily: headingFont }}
+          >
+            Budgets
+          </h1>
+          <p
+            className="text-sm text-primary-dark mt-1"
+            style={{ fontFamily: bodyFont }}
+          >
+            Set and manage expense budgets
+          </p>
         </div>
         <div className="flex gap-2">
           <Link
             to="/budget-vs-actual"
-            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+            style={{ fontFamily: bodyFont }}
           >
             <BarChart3 size={16} /> Budget vs Actual
           </Link>
           <button
             onClick={handlePrintPDF}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: bodyFont }}
           >
             <Printer size={16} /> Print PDF
           </button>
           <button
             onClick={openCreate}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: bodyFont }}
           >
             <Plus size={16} /> Add Budget
           </button>
@@ -339,48 +357,62 @@ export default function Budgets() {
       </div>
 
       {/* Budgets Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-primary-bg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[600px]">
-            <thead className="bg-gray-50">
+            <thead className="bg-primary-bg">
               <tr>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Account</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Period Start</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Period End</th>
-                <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Budget Amount</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
+                  Account
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
+                  Period Start
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
+                  Period End
+                </th>
+                <th className="p-3 text-right text-xs font-medium text-primary-dark uppercase tracking-wider">
+                  Budget Amount
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
+                  Actions
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-primary-bg">
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="p-6 text-center text-gray-500">Loading…</td>
+                  <td colSpan={5} className="p-6 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+                    Loading…
+                  </td>
                 </tr>
               ) : budgets.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-6 text-center text-gray-500">No budgets set. Create one to start.</td>
+                  <td colSpan={5} className="p-6 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+                    No budgets set. Create one to start.
+                  </td>
                 </tr>
               ) : (
                 budgets.map((b) => (
-                  <tr key={b.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="p-3 text-sm text-gray-900">
+                  <tr key={b.id} className="hover:bg-primary-bg transition-colors">
+                    <td className="p-3 text-sm text-primary">
                       {b.chart_of_accounts?.account_code} - {b.chart_of_accounts?.account_name}
                     </td>
-                    <td className="text-sm text-gray-900">{b.period_start}</td>
-                    <td className="text-sm text-gray-900">{b.period_end}</td>
-                    <td className="text-sm text-right font-medium text-gray-900">
+                    <td className="text-sm text-primary-dark">{b.period_start}</td>
+                    <td className="text-sm text-primary-dark">{b.period_end}</td>
+                    <td className="text-sm text-right font-medium text-primary">
                       ₹ {Number(b.amount).toLocaleString("en-IN")}
                     </td>
                     <td className="text-sm">
                       <div className="flex gap-2">
-                        <button onClick={() => openEdit(b)} className="text-blue-600 hover:underline">
+                        <button onClick={() => openEdit(b)} className="text-primary hover:underline">
                           <Edit3 size={15} />
                         </button>
                         <button
                           onClick={() => {
                             if (window.confirm("Delete?")) deleteMut.mutate(b.id);
                           }}
-                          className="text-red-600 hover:underline"
+                          className="text-accent hover:underline"
                         >
                           <Trash2 size={15} />
                         </button>
@@ -397,17 +429,19 @@ export default function Budgets() {
       {/* Add / Edit Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl border border-gray-200">
-            <h2 className="text-xl font-bold mb-4 text-gray-900">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl border border-primary-bg">
+            <h2 className="text-xl font-bold mb-4 text-primary" style={{ fontFamily: headingFont }}>
               {editing ? "Edit Budget" : "Add Budget"}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Account *</label>
+                <label className="block text-sm font-medium text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
+                  Account *
+                </label>
                 <select
                   value={form.account_id}
                   onChange={(e) => setForm({ ...form, account_id: e.target.value })}
-                  className="w-full border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm"
+                  className="w-full border border-primary-bg bg-white text-primary rounded-lg p-2.5 text-sm"
                   required
                 >
                   <option value="">Select account</option>
@@ -420,33 +454,39 @@ export default function Budgets() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Period Start *</label>
+                  <label className="block text-sm font-medium text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
+                    Period Start *
+                  </label>
                   <input
                     type="date"
                     value={form.period_start}
                     onChange={(e) => setForm({ ...form, period_start: e.target.value })}
-                    className="w-full border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm"
+                    className="w-full border border-primary-bg bg-white text-primary rounded-lg p-2.5 text-sm"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Period End *</label>
+                  <label className="block text-sm font-medium text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
+                    Period End *
+                  </label>
                   <input
                     type="date"
                     value={form.period_end}
                     onChange={(e) => setForm({ ...form, period_end: e.target.value })}
-                    className="w-full border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm"
+                    className="w-full border border-primary-bg bg-white text-primary rounded-lg p-2.5 text-sm"
                     required
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Budget Amount *</label>
+                <label className="block text-sm font-medium text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
+                  Budget Amount *
+                </label>
                 <input
                   type="number"
                   value={form.amount}
                   onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                  className="w-full border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm"
+                  className="w-full border border-primary-bg bg-white text-primary rounded-lg p-2.5 text-sm"
                   required
                 />
               </div>
@@ -454,13 +494,15 @@ export default function Budgets() {
                 <button
                   type="button"
                   onClick={() => setShowForm(false)}
-                  className="border border-gray-300 px-4 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="border border-primary-bg px-4 py-2 rounded-lg text-sm text-primary-dark hover:bg-primary-bg transition-colors"
+                  style={{ fontFamily: bodyFont }}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   className="bg-primary hover:bg-accent text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  style={{ fontFamily: bodyFont }}
                 >
                   {editing ? "Update" : "Create"}
                 </button>

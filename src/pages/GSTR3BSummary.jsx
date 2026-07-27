@@ -14,6 +14,7 @@ import {
   TrendingDown,
 } from "lucide-react";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // 👈 import theme
 
 export default function GSTR3BSummary() {
   const today = new Date();
@@ -24,6 +25,7 @@ export default function GSTR3BSummary() {
   const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+  const theme = useTheme(); // 👈 get theme colours
 
   const { data: org } = useQuery({
     queryKey: ["organization", currentOrg?.id],
@@ -187,10 +189,10 @@ export default function GSTR3BSummary() {
       <html><head><title>GSTR-3B Summary</title>
       <style>
         body { font-family: Arial, sans-serif; margin: 40px; color: #222; }
-        h1 { color: #0D47A1; }
+        h1 { color: ${theme.primary_color}; }
         table { width: 100%; border-collapse: collapse; margin: 20px 0; }
         th, td { padding: 8px 12px; border: 1px solid #ccc; text-align: right; }
-        th { background-color: #E3F2FD; text-align: left; }
+        th { background-color: ${theme.primary_light_color || '#E3F2FD'}; text-align: left; }
         .summary-card { border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 8px; }
         .text-right { text-align: right; }
         .footer { margin-top: 30px; font-size: 10px; color: #888; border-top: 1px solid #ddd; padding-top: 10px; text-align: center; }
@@ -212,8 +214,8 @@ export default function GSTR3BSummary() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1
-            className="text-2xl sm:text-3xl font-bold"
-            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+            className="text-2xl sm:text-3xl font-bold text-primary"
+            style={{ fontFamily: "var(--font-heading)" }}
           >
             GSTR‑3B Summary
           </h1>
@@ -234,7 +236,7 @@ export default function GSTR3BSummary() {
           </button>
           <button
             onClick={handleExportCSV}
-            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
             style={{ fontFamily: "var(--font-body)" }}
           >
             <Download size={16} /> Export CSV
@@ -242,7 +244,7 @@ export default function GSTR3BSummary() {
           <button
             onClick={handleRefresh}
             disabled={loadingOutward || loadingITC}
-            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm disabled:opacity-50"
             style={{ fontFamily: "var(--font-body)" }}
           >
             <Loader size={16} className={loadingOutward || loadingITC ? "animate-spin" : ""} />
@@ -252,7 +254,7 @@ export default function GSTR3BSummary() {
       </div>
 
       {/* Date Filters */}
-      <div className="flex flex-wrap gap-4 bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+      <div className="flex flex-wrap gap-4 bg-white dark:bg-accent p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
         <div>
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>
             From:
@@ -281,19 +283,19 @@ export default function GSTR3BSummary() {
       <div id="gstr3b-content">
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5 border border-gray-200 dark:border-gray-700">
+          <div className="bg-white dark:bg-accent rounded-xl shadow-sm p-5 border border-gray-200 dark:border-gray-700">
             <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
               Total Taxable Value
             </p>
-            <p className="text-2xl font-bold" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+            <p className="text-2xl font-bold text-primary" style={{ fontFamily: "var(--font-heading)" }}>
               ₹ {outwardData?.summary?.taxable?.toLocaleString("en-IN") || 0}
             </p>
           </div>
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5 border border-gray-200 dark:border-gray-700">
+          <div className="bg-white dark:bg-accent rounded-xl shadow-sm p-5 border border-gray-200 dark:border-gray-700">
             <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
               Total GST Collected
             </p>
-            <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">
+            <p className="text-2xl font-bold text-primary">
               ₹ {outwardData?.summary?.totalTax?.toLocaleString("en-IN") || 0}
             </p>
             <div className="text-xs text-gray-500 dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>
@@ -302,29 +304,29 @@ export default function GSTR3BSummary() {
               IGST: ₹ {outwardData?.summary?.igst?.toLocaleString("en-IN") || 0}
             </div>
           </div>
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5 border border-green-200 dark:border-green-800">
+          <div className="bg-white dark:bg-accent rounded-xl shadow-sm p-5 border border-gray-200 dark:border-gray-700">
             <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
               ITC Claimed
             </p>
-            <p className="text-2xl font-bold text-green-700 dark:text-green-400">
+            <p className="text-2xl font-bold text-accent">
               ₹ {itcData?.totalITC?.toLocaleString("en-IN") || 0}
             </p>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>
               From {itcData?.count || 0} expense entries
             </p>
           </div>
-          <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5 border ${netLiability > 0 ? 'border-red-200 dark:border-red-800' : 'border-green-200 dark:border-green-800'}`}>
+          <div className={`bg-white dark:bg-accent rounded-xl shadow-sm p-5 border ${netLiability > 0 ? 'border-gray-200 dark:border-gray-700' : 'border-gray-200 dark:border-gray-700'}`}>
             <p className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
               Net GST Payable
             </p>
-            <p className={`text-2xl font-bold ${netLiability > 0 ? 'text-red-700 dark:text-red-400' : 'text-green-700 dark:text-green-400'}`}>
+            <p className={`text-2xl font-bold ${netLiability > 0 ? 'text-accent-dark' : 'text-accent'}`}>
               ₹ {netLiability?.toLocaleString("en-IN") || 0}
             </p>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1" style={{ fontFamily: "var(--font-body)" }}>
               {netLiability > 0 ? (
-                <TrendingUp size={14} className="text-red-600 dark:text-red-400" />
+                <TrendingUp size={14} className="text-accent-dark" />
               ) : (
-                <TrendingDown size={14} className="text-green-600 dark:text-green-400" />
+                <TrendingDown size={14} className="text-accent" />
               )}
               {netLiability > 0 ? "Amount to pay" : "Excess ITC"}
             </p>
@@ -332,8 +334,8 @@ export default function GSTR3BSummary() {
         </div>
 
         {/* Tax Rate Breakdown */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-6">
-          <h2 className="text-lg font-semibold p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+        <div className="bg-white dark:bg-accent rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-6">
+          <h2 className="text-lg font-semibold p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-primary" style={{ fontFamily: "var(--font-heading)" }}>
             Tax Rate Breakdown (Outward Supplies)
           </h2>
           <div className="overflow-x-auto">
@@ -386,7 +388,7 @@ export default function GSTR3BSummary() {
       </div>
 
       {(loadingOutward || loadingITC) && (
-        <div className="fixed bottom-4 right-4 bg-white dark:bg-gray-800 shadow-lg rounded-lg p-4 flex items-center gap-3 border border-gray-200 dark:border-gray-700 z-50">
+        <div className="fixed bottom-4 right-4 bg-white dark:bg-accent shadow-lg rounded-lg p-4 flex items-center gap-3 border border-gray-200 dark:border-gray-700 z-50">
           <Loader className="w-5 h-5 animate-spin text-primary" />
           <span className="text-sm text-gray-600 dark:text-gray-300">Fetching latest data...</span>
         </div>

@@ -49,16 +49,13 @@ export default function FinanceHub() {
   const handleMenuClick = ({ key }) => setActiveKey(key);
 
   return (
-    // Remove fixed white background; allow Ant Design tokens to control color.
-    // Use a wrapper with tailwind classes for dark mode fallback if needed.
-    <Layout style={{ minHeight: "100vh" }} className="bg-white dark:bg-accent">
+    <Layout style={{ minHeight: "100vh" }} className="bg-primary-bg dark:bg-accent">
       <Sider
         width={220}
         className="border-r border-gray-200 dark:border-gray-700"
-        // Remove fixed background, rely on token configuration for dark/light
       >
         <div className="px-6 py-4">
-          <Title level={5} className="!mb-2" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+          <Title level={5} className="!mb-2 font-heading text-primary">
             Finance Hub
           </Title>
         </div>
@@ -74,9 +71,9 @@ export default function FinanceHub() {
         />
       </Sider>
 
-      <Content className="p-6" style={{ fontFamily: "var(--font-body)" }}>
+      <Content className="p-6 font-body">
         <div className="flex justify-between items-center mb-4">
-          <Title level={4} style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+          <Title level={4} className="font-heading text-primary">
             {currentItem?.label || "Finance"}
           </Title>
           <div className="flex gap-2">

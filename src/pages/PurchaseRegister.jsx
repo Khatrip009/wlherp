@@ -3,6 +3,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 import { sendEmail } from "../services/emailService";
 import toast from "react-hot-toast";
 
@@ -74,8 +75,12 @@ export default function PurchaseRegister() {
   const [search, setSearch] = useState("");
 
   const { org, branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();                                     // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   /* ─── Vendors dropdown ────────────────────────────────── */
   const { data: vendors = [] } = useQuery({
@@ -580,21 +585,44 @@ export default function PurchaseRegister() {
   return (
     <>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-        <h1 className="text-3xl font-righteous text-gray-900">Purchase Register</h1>
+        <h1 className="text-3xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+          Purchase Register
+        </h1>
         <div className="flex flex-wrap gap-2">
-          <button onClick={sendReportEmail} className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors">
+          <button
+            onClick={sendReportEmail}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-dark text-white rounded-lg text-sm font-medium transition-colors"
+            style={{ fontFamily: bodyFont }}
+          >
             <Mail size={16} /> Send Report
           </button>
-          <button onClick={handlePrint} className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg text-sm font-medium transition-colors">
+          <button
+            onClick={handlePrint}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg text-sm font-medium transition-colors"
+            style={{ fontFamily: bodyFont }}
+          >
             <Printer size={16} /> Print
           </button>
-          <button onClick={handleExportCSV} className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm">
+          <button
+            onClick={handleExportCSV}
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+            style={{ fontFamily: bodyFont }}
+          >
             <Download size={16} /> CSV
           </button>
-          <button onClick={handleExportPDF} className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm">
+          <button
+            onClick={handleExportPDF}
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+            style={{ fontFamily: bodyFont }}
+          >
             <FileText size={16} /> PDF
           </button>
-          <button onClick={() => refetch()} disabled={isLoading} className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm disabled:opacity-50">
+          <button
+            onClick={() => refetch()}
+            disabled={isLoading}
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm disabled:opacity-50"
+            style={{ fontFamily: bodyFont }}
+          >
             <Loader size={16} className={isLoading ? "animate-spin" : ""} />
             Refresh
           </button>
@@ -602,37 +630,60 @@ export default function PurchaseRegister() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-4 mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+      <div className="flex flex-wrap gap-4 mb-6 bg-white p-4 rounded-xl shadow-sm border border-primary-bg">
         <div>
-          <label className="text-sm font-medium text-gray-700 mr-2">From:</label>
-          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="border rounded-lg p-2 text-sm" />
+          <label className="text-sm font-medium text-primary-dark mr-2" style={{ fontFamily: bodyFont }}>From:</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="border border-primary-bg bg-white text-primary-dark rounded-lg p-2 text-sm"
+          />
         </div>
         <div>
-          <label className="text-sm font-medium text-gray-700 mr-2">To:</label>
-          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="border rounded-lg p-2 text-sm" />
+          <label className="text-sm font-medium text-primary-dark mr-2" style={{ fontFamily: bodyFont }}>To:</label>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="border border-primary-bg bg-white text-primary-dark rounded-lg p-2 text-sm"
+          />
         </div>
         <div>
-          <label className="text-sm font-medium text-gray-700 mr-2">Vendor:</label>
-          <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)} className="border rounded-lg p-2 text-sm">
+          <label className="text-sm font-medium text-primary-dark mr-2" style={{ fontFamily: bodyFont }}>Vendor:</label>
+          <select
+            value={vendorFilter}
+            onChange={(e) => setVendorFilter(e.target.value)}
+            className="border border-primary-bg bg-white text-primary-dark rounded-lg p-2 text-sm"
+          >
             <option value="">All Vendors</option>
-            {vendors.map(v => <option key={v.id} value={v.id}>{v.vendor_name}</option>)}
+            {vendors.map(v => (
+              <option key={v.id} value={v.id}>{v.vendor_name}</option>
+            ))}
           </select>
         </div>
         <div>
-          <label className="text-sm font-medium text-gray-700 mr-2">Tax Rate:</label>
-          <select value={taxRateFilter} onChange={(e) => setTaxRateFilter(e.target.value)} className="border rounded-lg p-2 text-sm">
+          <label className="text-sm font-medium text-primary-dark mr-2" style={{ fontFamily: bodyFont }}>Tax Rate:</label>
+          <select
+            value={taxRateFilter}
+            onChange={(e) => setTaxRateFilter(e.target.value)}
+            className="border border-primary-bg bg-white text-primary-dark rounded-lg p-2 text-sm"
+          >
             <option value="">All Rates</option>
-            {taxRates.map(t => <option key={t.id} value={t.id}>{t.name} ({t.rate}%)</option>)}
+            {taxRates.map(t => (
+              <option key={t.id} value={t.id}>{t.name} ({t.rate}%)</option>
+            ))}
           </select>
         </div>
         <div className="relative flex-1 min-w-[200px]">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-dark/60" />
           <input
             type="text"
             placeholder="Search by description, bill no, vendor..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm"
+            className="w-full pl-10 pr-4 py-2 border border-primary-bg bg-white text-primary-dark rounded-lg text-sm placeholder-primary-dark/40"
+            style={{ fontFamily: bodyFont }}
           />
         </div>
       </div>
@@ -642,68 +693,80 @@ export default function PurchaseRegister() {
         {/* Summary Cards */}
         {!isLoading && expenses.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-            <div className="bg-white rounded-xl shadow-sm p-4 border text-center">
-              <p className="text-xs text-gray-500">Total Taxable</p>
-              <p className="text-xl font-bold text-gray-900">₹ {summaries.totalTaxable.toLocaleString("en-IN")}</p>
+            <div className="bg-white rounded-xl shadow-sm p-4 border border-primary-bg text-center">
+              <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>Total Taxable</p>
+              <p className="text-xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+                ₹ {summaries.totalTaxable.toLocaleString("en-IN")}
+              </p>
             </div>
-            <div className="bg-white rounded-xl shadow-sm p-4 border text-center">
-              <p className="text-xs text-gray-500">Total GST</p>
-              <p className="text-xl font-bold text-gray-900">₹ {summaries.totalGST.toLocaleString("en-IN")}</p>
+            <div className="bg-white rounded-xl shadow-sm p-4 border border-primary-bg text-center">
+              <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>Total GST</p>
+              <p className="text-xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+                ₹ {summaries.totalGST.toLocaleString("en-IN")}
+              </p>
             </div>
-            <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200 text-center">
-              <p className="text-xs text-gray-500">ITC Claimed</p>
-              <p className="text-xl font-bold text-gray-900">₹ {summaries.totalITC.toLocaleString("en-IN")}</p>
+            <div className="bg-white rounded-xl shadow-sm p-4 border border-primary-bg text-center">
+              <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>ITC Claimed</p>
+              <p className="text-xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+                ₹ {summaries.totalITC.toLocaleString("en-IN")}
+              </p>
             </div>
-            <div className="bg-white rounded-xl shadow-sm p-4 border text-center">
-              <p className="text-xs text-gray-500">Total Amount</p>
-              <p className="text-xl font-bold text-gray-900">₹ {summaries.totalAmount.toLocaleString("en-IN")}</p>
+            <div className="bg-white rounded-xl shadow-sm p-4 border border-primary-bg text-center">
+              <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>Total Amount</p>
+              <p className="text-xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+                ₹ {summaries.totalAmount.toLocaleString("en-IN")}
+              </p>
             </div>
-            <div className="bg-white rounded-xl shadow-sm p-4 border text-center">
-              <p className="text-xs text-gray-500">Invoices</p>
-              <p className="text-xl font-bold text-gray-900">{summaries.invoiceCount}</p>
+            <div className="bg-white rounded-xl shadow-sm p-4 border border-primary-bg text-center">
+              <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>Invoices</p>
+              <p className="text-xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+                {summaries.invoiceCount}
+              </p>
             </div>
-            <div className="bg-white rounded-xl shadow-sm p-4 border text-center">
-              <p className="text-xs text-gray-500">Vendors</p>
-              <p className="text-xl font-bold text-gray-900">{summaries.vendorCount}</p>
+            <div className="bg-white rounded-xl shadow-sm p-4 border border-primary-bg text-center">
+              <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>Vendors</p>
+              <p className="text-xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+                {summaries.vendorCount}
+              </p>
             </div>
           </div>
         )}
 
         {/* Tax Rate Breakdown */}
         {summaries.byRate.length > 0 && (
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6 border border-gray-200">
-            <h2 className="text-lg font-semibold p-4 border-b bg-gray-50 text-gray-900">
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6 border border-primary-bg">
+            <h2 className="text-lg font-semibold p-4 border-b bg-primary-bg text-primary" style={{ fontFamily: headingFont }}>
               <IndianRupee size={18} className="inline mr-2" /> Tax Rate Breakdown
             </h2>
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-50">
+                <thead className="bg-primary-bg">
                   <tr>
-                    <th className="p-3 text-left text-sm text-gray-700">Tax Rate</th>
-                    <th className="p-3 text-right text-sm text-gray-700">Count</th>
-                    <th className="p-3 text-right text-sm text-gray-700">Taxable</th>
-                    <th className="p-3 text-right text-sm text-gray-700">GST</th>
-                    <th className="p-3 text-right text-sm text-gray-700">ITC</th>
+                    <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Tax Rate</th>
+                    <th className="p-3 text-right text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Count</th>
+                    <th className="p-3 text-right text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Taxable</th>
+                    <th className="p-3 text-right text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>GST</th>
+                    <th className="p-3 text-right text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>ITC</th>
                   </tr>
                 </thead>
                 <tbody>
                   {summaries.byRate.map((rate, idx) => (
-                    <tr key={idx} className="border-t hover:bg-gray-50">
-                      <td className="p-3 text-sm text-gray-900">{rate.rateName} ({rate.ratePercent}%)</td>
-                      <td className="p-3 text-sm text-right text-gray-900">{rate.count}</td>
-                      <td className="p-3 text-sm text-right text-gray-900">₹ {rate.taxable.toLocaleString("en-IN")}</td>
-                      <td className="p-3 text-sm text-right text-gray-900">₹ {rate.gst.toLocaleString("en-IN")}</td>
-                      <td className="p-3 text-sm text-right text-gray-900">₹ {rate.itc.toLocaleString("en-IN")}</td>
+                    <tr key={idx} className="border-t border-primary-bg hover:bg-primary-bg">
+                      <td className="p-3 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>{rate.rateName} ({rate.ratePercent}%)</td>
+                      <td className="p-3 text-sm text-right text-primary-dark" style={{ fontFamily: bodyFont }}>{rate.count}</td>
+                      <td className="p-3 text-sm text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {rate.taxable.toLocaleString("en-IN")}</td>
+                      <td className="p-3 text-sm text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {rate.gst.toLocaleString("en-IN")}</td>
+                      <td className="p-3 text-sm text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {rate.itc.toLocaleString("en-IN")}</td>
                     </tr>
                   ))}
                 </tbody>
-                <tfoot className="bg-gray-50 border-t font-medium">
+                <tfoot className="bg-primary-bg border-t font-medium">
                   <tr>
-                    <td className="p-3 text-gray-900">Total</td>
-                    <td className="p-3 text-right text-gray-900">{expenses.length}</td>
-                    <td className="p-3 text-right text-gray-900">₹ {summaries.totalTaxable.toLocaleString("en-IN")}</td>
-                    <td className="p-3 text-right text-gray-900">₹ {summaries.totalGST.toLocaleString("en-IN")}</td>
-                    <td className="p-3 text-right text-gray-900">₹ {summaries.totalITC.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>Total</td>
+                    <td className="p-3 text-right text-primary-dark" style={{ fontFamily: bodyFont }}>{expenses.length}</td>
+                    <td className="p-3 text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {summaries.totalTaxable.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {summaries.totalGST.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {summaries.totalITC.toLocaleString("en-IN")}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -713,42 +776,42 @@ export default function PurchaseRegister() {
 
         {/* Vendor Breakdown */}
         {summaries.byVendor.length > 0 && (
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6 border border-gray-200">
-            <h2 className="text-lg font-semibold p-4 border-b bg-gray-50 text-gray-900">
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6 border border-primary-bg">
+            <h2 className="text-lg font-semibold p-4 border-b bg-primary-bg text-primary" style={{ fontFamily: headingFont }}>
               <Building size={18} className="inline mr-2" /> Vendor Summary
             </h2>
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-50">
+                <thead className="bg-primary-bg">
                   <tr>
-                    <th className="p-3 text-left text-sm text-gray-700">Vendor</th>
-                    <th className="p-3 text-left text-sm text-gray-700">GSTIN</th>
-                    <th className="p-3 text-right text-sm text-gray-700">Count</th>
-                    <th className="p-3 text-right text-sm text-gray-700">Taxable</th>
-                    <th className="p-3 text-right text-sm text-gray-700">GST</th>
-                    <th className="p-3 text-right text-sm text-gray-700">ITC</th>
+                    <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Vendor</th>
+                    <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>GSTIN</th>
+                    <th className="p-3 text-right text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Count</th>
+                    <th className="p-3 text-right text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Taxable</th>
+                    <th className="p-3 text-right text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>GST</th>
+                    <th className="p-3 text-right text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>ITC</th>
                   </tr>
                 </thead>
                 <tbody>
                   {summaries.byVendor.map((vendor, idx) => (
-                    <tr key={idx} className="border-t hover:bg-gray-50">
-                      <td className="p-3 text-sm text-gray-900">{vendor.vendor_name}</td>
-                      <td className="p-3 text-sm text-gray-900">{vendor.gstin || "—"}</td>
-                      <td className="p-3 text-sm text-right text-gray-900">{vendor.count}</td>
-                      <td className="p-3 text-sm text-right text-gray-900">₹ {vendor.taxable.toLocaleString("en-IN")}</td>
-                      <td className="p-3 text-sm text-right text-gray-900">₹ {vendor.gst.toLocaleString("en-IN")}</td>
-                      <td className="p-3 text-sm text-right text-gray-900">₹ {vendor.itc.toLocaleString("en-IN")}</td>
+                    <tr key={idx} className="border-t border-primary-bg hover:bg-primary-bg">
+                      <td className="p-3 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>{vendor.vendor_name}</td>
+                      <td className="p-3 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>{vendor.gstin || "—"}</td>
+                      <td className="p-3 text-sm text-right text-primary-dark" style={{ fontFamily: bodyFont }}>{vendor.count}</td>
+                      <td className="p-3 text-sm text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {vendor.taxable.toLocaleString("en-IN")}</td>
+                      <td className="p-3 text-sm text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {vendor.gst.toLocaleString("en-IN")}</td>
+                      <td className="p-3 text-sm text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {vendor.itc.toLocaleString("en-IN")}</td>
                     </tr>
                   ))}
                 </tbody>
-                <tfoot className="bg-gray-50 border-t font-medium">
+                <tfoot className="bg-primary-bg border-t font-medium">
                   <tr>
-                    <td className="p-3 text-gray-900">Total</td>
+                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>Total</td>
                     <td className="p-3"></td>
-                    <td className="p-3 text-right text-gray-900">{expenses.length}</td>
-                    <td className="p-3 text-right text-gray-900">₹ {summaries.totalTaxable.toLocaleString("en-IN")}</td>
-                    <td className="p-3 text-right text-gray-900">₹ {summaries.totalGST.toLocaleString("en-IN")}</td>
-                    <td className="p-3 text-right text-gray-900">₹ {summaries.totalITC.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-right text-primary-dark" style={{ fontFamily: bodyFont }}>{expenses.length}</td>
+                    <td className="p-3 text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {summaries.totalTaxable.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {summaries.totalGST.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {summaries.totalITC.toLocaleString("en-IN")}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -757,64 +820,72 @@ export default function PurchaseRegister() {
         )}
 
         {/* Detailed Table */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
-          <h2 className="text-lg font-semibold p-4 border-b bg-gray-50 text-gray-900">
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-primary-bg">
+          <h2 className="text-lg font-semibold p-4 border-b bg-primary-bg text-primary" style={{ fontFamily: headingFont }}>
             <FileText size={18} className="inline mr-2" /> Detailed Entries
           </h2>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px]">
-              <thead className="bg-gray-50">
+              <thead className="bg-primary-bg">
                 <tr>
-                  <th className="p-3 text-left text-sm text-gray-700">Date</th>
-                  <th className="p-3 text-left text-sm text-gray-700">Vendor</th>
-                  <th className="p-3 text-left text-sm text-gray-700">Invoice No</th>
-                  <th className="p-3 text-left text-sm text-gray-700">Category</th>
-                  <th className="p-3 text-left text-sm text-gray-700">Description</th>
-                  <th className="p-3 text-right text-sm text-gray-700">Taxable</th>
-                  <th className="p-3 text-right text-sm text-gray-700">GST</th>
-                  <th className="p-3 text-right text-sm text-gray-700">Total</th>
-                  <th className="p-3 text-center text-sm text-gray-700">ITC</th>
-                  <th className="p-3 text-left text-sm text-gray-700">Tax Rate</th>
+                  <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Date</th>
+                  <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Vendor</th>
+                  <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Invoice No</th>
+                  <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Category</th>
+                  <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Description</th>
+                  <th className="p-3 text-right text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Taxable</th>
+                  <th className="p-3 text-right text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>GST</th>
+                  <th className="p-3 text-right text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Total</th>
+                  <th className="p-3 text-center text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>ITC</th>
+                  <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Tax Rate</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={10} className="p-6 text-center text-gray-500">Loading…</td></tr>
+                  <tr>
+                    <td colSpan={10} className="p-6 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+                      Loading…
+                    </td>
+                  </tr>
                 ) : expenses.length === 0 ? (
-                  <tr><td colSpan={10} className="p-6 text-center text-gray-500">No expenses found</td></tr>
+                  <tr>
+                    <td colSpan={10} className="p-6 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+                      No expenses found
+                    </td>
+                  </tr>
                 ) : (
                   expenses.map((e) => (
-                    <tr key={e.id} className="border-t hover:bg-gray-50">
-                      <td className="p-3 text-sm text-gray-900">{e.expense_date}</td>
-                      <td className="p-3 text-sm text-gray-900">{e.vendors?.vendor_name || "—"}</td>
-                      <td className="p-3 text-sm text-gray-900">{e.invoice_number || "—"}</td>
-                      <td className="p-3 text-sm text-gray-900">{e.category || "—"}</td>
-                      <td className="p-3 text-sm text-gray-900">{e.description || "—"}</td>
-                      <td className="p-3 text-sm text-right text-gray-900">₹ {Number(e.amount || 0).toLocaleString("en-IN")}</td>
-                      <td className="p-3 text-sm text-right text-gray-900">₹ {Number(e.gst_amount || 0).toLocaleString("en-IN")}</td>
-                      <td className="p-3 text-sm text-right font-medium text-gray-900">
+                    <tr key={e.id} className="border-t border-primary-bg hover:bg-primary-bg">
+                      <td className="p-3 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>{e.expense_date}</td>
+                      <td className="p-3 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>{e.vendors?.vendor_name || "—"}</td>
+                      <td className="p-3 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>{e.invoice_number || "—"}</td>
+                      <td className="p-3 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>{e.category || "—"}</td>
+                      <td className="p-3 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>{e.description || "—"}</td>
+                      <td className="p-3 text-sm text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {Number(e.amount || 0).toLocaleString("en-IN")}</td>
+                      <td className="p-3 text-sm text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {Number(e.gst_amount || 0).toLocaleString("en-IN")}</td>
+                      <td className="p-3 text-sm text-right font-medium text-primary" style={{ fontFamily: bodyFont }}>
                         ₹ {(Number(e.amount || 0) + Number(e.gst_amount || 0)).toLocaleString("en-IN")}
                       </td>
                       <td className="p-3 text-sm text-center">
                         {e.itc_claimed ? (
-                          <span className="text-green-600 font-medium">✓</span>
+                          <span className="text-primary font-medium">✓</span>
                         ) : (
-                          <span className="text-gray-400">—</span>
+                          <span className="text-primary-dark/40">—</span>
                         )}
                       </td>
-                      <td className="p-3 text-sm text-gray-900">{e.tax_rates?.name || "—"}</td>
+                      <td className="p-3 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>{e.tax_rates?.name || "—"}</td>
                     </tr>
                   ))
                 )}
               </tbody>
               {expenses.length > 0 && (
-                <tfoot className="bg-gray-50 border-t font-medium">
+                <tfoot className="bg-primary-bg border-t font-medium">
                   <tr>
-                    <td colSpan={5} className="p-3 text-right text-gray-900">Total</td>
-                    <td className="p-3 text-right text-gray-900">₹ {summaries.totalTaxable.toLocaleString("en-IN")}</td>
-                    <td className="p-3 text-right text-gray-900">₹ {summaries.totalGST.toLocaleString("en-IN")}</td>
-                    <td className="p-3 text-right text-gray-900">₹ {summaries.totalAmount.toLocaleString("en-IN")}</td>
-                    <td className="p-3 text-center text-gray-900">₹ {summaries.totalITC.toLocaleString("en-IN")}</td>
+                    <td colSpan={5} className="p-3 text-right text-primary-dark" style={{ fontFamily: bodyFont }}>Total</td>
+                    <td className="p-3 text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {summaries.totalTaxable.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {summaries.totalGST.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {summaries.totalAmount.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-center text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {summaries.totalITC.toLocaleString("en-IN")}</td>
                     <td className="p-3"></td>
                   </tr>
                 </tfoot>
@@ -826,9 +897,11 @@ export default function PurchaseRegister() {
 
       {/* Loading overlay */}
       {isLoading && (
-        <div className="fixed bottom-4 right-4 bg-white shadow-lg rounded-lg p-4 flex items-center gap-3 border">
-          <Loader className="w-5 h-5 animate-spin text-gray-600" />
-          <span className="text-sm text-gray-700">Loading purchase data...</span>
+        <div className="fixed bottom-4 right-4 bg-white shadow-lg rounded-lg p-4 flex items-center gap-3 border border-primary-bg">
+          <Loader className="w-5 h-5 animate-spin text-primary-dark" />
+          <span className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+            Loading purchase data...
+          </span>
         </div>
       )}
     </>

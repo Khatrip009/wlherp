@@ -35,14 +35,19 @@ import {
 } from "../services/attendanceService";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";
 import { supabase } from "../api/supabase";
-import { sendTemplateEmail } from "../services/emailService"; // 👈 Added
+import { sendTemplateEmail } from "../services/emailService";
 
 export default function Attendance({ studentId: propStudentId = null, standalone = true }) {
   const { profile, loading: authLoading } = useAuth();
-  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
+  const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   // ── Compute role ──
   const role = (profile?.role || "").toLowerCase().replace(/\s+/g, "_");
@@ -296,10 +301,10 @@ export default function Attendance({ studentId: propStudentId = null, standalone
 
   // ── Auth loading or missing profile ──
   if (authLoading) {
-    return <div className="p-8 text-center text-gray-500 dark:text-gray-400">Loading...</div>;
+    return <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>Loading...</div>;
   }
   if (!profile) {
-    return <div className="p-8 text-center text-red-500">Please log in to view attendance.</div>;
+    return <div className="p-8 text-center text-accent-dark" style={{ fontFamily: bodyFont }}>Please log in to view attendance.</div>;
   }
 
   return (
@@ -307,10 +312,10 @@ export default function Attendance({ studentId: propStudentId = null, standalone
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+          <h1 className="text-2xl sm:text-3xl font-bold text-primary" style={{ fontFamily: headingFont }}>
             Attendance
           </h1>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>
+          <p className="text-sm text-primary-dark mt-1" style={{ fontFamily: bodyFont }}>
             Manage daily session attendance
           </p>
         </div>
@@ -321,21 +326,21 @@ export default function Attendance({ studentId: propStudentId = null, standalone
             <button
               onClick={() => setShowForm(true)}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
-              style={{ fontFamily: "var(--font-body)" }}
+              style={{ fontFamily: bodyFont }}
             >
               <CalendarCheck size={18} /> New Session
             </button>
             <button
               onClick={handleCSVExport}
-              className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-              style={{ fontFamily: "var(--font-body)" }}
+              className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+              style={{ fontFamily: bodyFont }}
             >
               <Download size={18} /> Export
             </button>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-              style={{ fontFamily: "var(--font-body)" }}
+              className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+              style={{ fontFamily: bodyFont }}
             >
               <Upload size={18} /> Import
             </button>
@@ -353,20 +358,20 @@ export default function Attendance({ studentId: propStudentId = null, standalone
       {/* Filter Bar */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-dark/60" />
           <input
             type="text"
             placeholder="Search by topic or date..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-900 dark:text-gray-100 rounded-lg pl-10 pr-4 py-2.5 text-sm"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="w-full border border-primary-bg bg-white text-primary-dark rounded-lg pl-10 pr-4 py-2.5 text-sm"
+            style={{ fontFamily: bodyFont }}
           />
         </div>
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-          style={{ fontFamily: "var(--font-body)" }}
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+          style={{ fontFamily: bodyFont }}
         >
           <Filter size={18} /> Filters {showFilters && <X size={16} />}
         </button>
@@ -374,16 +379,16 @@ export default function Attendance({ studentId: propStudentId = null, standalone
 
       {/* Filter Panels */}
       {showFilters && (
-        <div className="bg-white dark:bg-accent rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-primary-bg grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {!propStudentId && (
             <div>
-              <label className="text-xs font-medium text-gray-600 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+              <label className="text-xs font-medium text-primary-dark" style={{ fontFamily: bodyFont }}>
                 Batch
               </label>
               <select
                 value={batchFilter}
                 onChange={(e) => setBatchFilter(e.target.value)}
-                className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm mt-1"
+                className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm mt-1"
               >
                 <option value="">All Batches</option>
                 {batches.map((b) => (
@@ -393,13 +398,13 @@ export default function Attendance({ studentId: propStudentId = null, standalone
             </div>
           )}
           <div>
-            <label className="text-xs font-medium text-gray-600 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+            <label className="text-xs font-medium text-primary-dark" style={{ fontFamily: bodyFont }}>
               Medium
             </label>
             <select
               value={mediumFilter}
               onChange={(e) => setMediumFilter(e.target.value)}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm mt-1"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm mt-1"
             >
               <option value="">All Mediums</option>
               {mediums.map((m) => (
@@ -408,25 +413,25 @@ export default function Attendance({ studentId: propStudentId = null, standalone
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+            <label className="text-xs font-medium text-primary-dark" style={{ fontFamily: bodyFont }}>
               From Date
             </label>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm mt-1"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm mt-1"
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+            <label className="text-xs font-medium text-primary-dark" style={{ fontFamily: bodyFont }}>
               To Date
             </label>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm mt-1"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm mt-1"
             />
           </div>
           <div className="flex items-end">
@@ -439,7 +444,7 @@ export default function Attendance({ studentId: propStudentId = null, standalone
                 setEndDate("");
               }}
               className="text-sm text-primary hover:underline"
-              style={{ fontFamily: "var(--font-body)" }}
+              style={{ fontFamily: bodyFont }}
             >
               Clear Filters
             </button>
@@ -448,43 +453,43 @@ export default function Attendance({ studentId: propStudentId = null, standalone
       )}
 
       {/* Sessions Table */}
-      <div className="bg-white dark:bg-accent rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-primary-bg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px]">
-            <thead className="bg-gray-50 dark:bg-gray-700">
+            <thead className="bg-primary-bg">
               <tr>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
                   Date
                 </th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
                   Batch
                 </th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
                   Medium
                 </th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
                   Topic
                 </th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
                   Attendance
                 </th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="divide-y divide-primary-bg">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={6} className="p-6 text-center text-primary-dark/60">
                     Loading sessions…
                   </td>
                 </tr>
               ) : sessions.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={6} className="p-6 text-center text-primary-dark/60">
                     <div className="flex flex-col items-center gap-2">
-                      <CalendarCheck size={32} className="text-gray-400 dark:text-gray-500" />
+                      <CalendarCheck size={32} className="text-primary-dark/40" />
                       <span>No sessions found</span>
                       <span className="text-xs">
                         {search || batchFilter || mediumFilter || startDate || endDate
@@ -498,31 +503,31 @@ export default function Attendance({ studentId: propStudentId = null, standalone
                 sessions.map((session) => (
                   <tr
                     key={session.id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    className="hover:bg-primary-bg transition-colors"
                   >
-                    <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
+                    <td className="p-3 text-sm text-primary-dark">
                       {session.attendance_date}
                     </td>
-                    <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
+                    <td className="p-3 text-sm text-primary-dark">
                       {session.batch_name}
                     </td>
                     <td className="p-3 text-sm">
                       {session.medium_name ? (
-                        <span className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200 px-2 py-0.5 rounded-full text-xs">
+                        <span className="bg-primary-bg text-primary-dark px-2 py-0.5 rounded-full text-xs">
                           {session.medium_name}
                         </span>
                       ) : (
                         "-"
                       )}
                     </td>
-                    <td className="p-3 text-sm text-gray-700 dark:text-gray-300">
+                    <td className="p-3 text-sm text-primary-dark">
                       {session.topic_covered || "-"}
                     </td>
                     <td className="p-3 text-sm">
-                      <span className="text-green-600 dark:text-green-400 font-medium">
+                      <span className="text-accent font-medium">
                         {session.present_count}
                       </span>
-                      <span className="text-gray-500 dark:text-gray-400">
+                      <span className="text-primary-dark/60">
                         {" "}/ {session.total_count}
                       </span>
                     </td>
@@ -530,7 +535,7 @@ export default function Attendance({ studentId: propStudentId = null, standalone
                       <div className="flex gap-2">
                         <button
                           onClick={() => navigate(`/attendance/mark/${session.id}`)}
-                          className="text-blue-600 dark:text-blue-400 hover:underline"
+                          className="text-primary hover:underline"
                         >
                           Mark
                         </button>
@@ -538,13 +543,13 @@ export default function Attendance({ studentId: propStudentId = null, standalone
                           <>
                             <button
                               onClick={() => setEditing(session)}
-                              className="text-yellow-600 dark:text-yellow-400 hover:underline"
+                              className="text-accent hover:underline"
                             >
                               <Edit3 size={15} />
                             </button>
                             <button
                               onClick={() => handleDelete(session.id)}
-                              className="text-red-600 dark:text-red-400 hover:underline"
+                              className="text-accent-dark hover:underline"
                             >
                               <Trash2 size={15} />
                             </button>
@@ -567,7 +572,7 @@ export default function Attendance({ studentId: propStudentId = null, standalone
             onClick={() => fetchNextPage()}
             disabled={isFetchingNextPage}
             className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-60"
-            style={{ fontFamily: "var(--font-body)" }}
+            style={{ fontFamily: bodyFont }}
           >
             {isFetchingNextPage ? "Loading more…" : "Load More"}
           </button>

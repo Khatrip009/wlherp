@@ -8,7 +8,9 @@ import { supabase } from "../api/supabase";
 import { getCourseOptions } from "../services/batchService";
 import { getActiveBatches } from "../services/batchService";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";
 import { sendEmail } from "../services/emailService";
+import toast from "react-hot-toast";
 
 const AGE_BUCKETS = [
   { label: "0‑30 days", min: 0, max: 30 },
@@ -17,7 +19,7 @@ const AGE_BUCKETS = [
   { label: "90+ days", min: 91, max: Infinity },
 ];
 
-/* ─── PDF helpers ──────────────────────────────────────────── */
+/* ─── PDF helpers (unchanged) ──────────────────────────────── */
 async function loadImageAsBase64(url) {
   if (!url) return null;
   try {
@@ -63,8 +65,12 @@ function drawCurrency(doc, amount, x, y, fontSize = 10, align = "left", color = 
 
 export default function AgedReceivables() {
   const { org, branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const [courseFilter, setCourseFilter] = useState("");
   const [batchFilter, setBatchFilter] = useState("");
@@ -94,7 +100,7 @@ export default function AgedReceivables() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Main receivables query (unchanged)
+  // Main receivables query (unchanged logic – placeholder)
   const { data: receivables = [], isLoading } = useQuery({
     queryKey: ["aged-receivables", courseFilter, batchFilter, mediumFilter, branchId, financialYearId],
     queryFn: async () => {
@@ -353,19 +359,25 @@ export default function AgedReceivables() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Aged Receivables</h1>
-          <p className="text-sm text-gray-600 mt-1">Outstanding student fee balances by ageing bucket</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+            Aged Receivables
+          </h1>
+          <p className="text-sm text-primary-dark mt-1" style={{ fontFamily: bodyFont }}>
+            Outstanding student fee balances by ageing bucket
+          </p>
         </div>
         <div className="flex gap-3">
           <button
             onClick={sendReportEmail}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-dark text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: bodyFont }}
           >
             <Mail size={16} /> Send Report
           </button>
           <button
             onClick={handlePrintPDF}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: bodyFont }}
           >
             <Printer size={16} /> Print PDF
           </button>
@@ -376,7 +388,8 @@ export default function AgedReceivables() {
       <div>
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+          style={{ fontFamily: bodyFont }}
         >
           <Filter size={16} /> Filters
         </button>
@@ -388,7 +401,8 @@ export default function AgedReceivables() {
           <select
             value={courseFilter}
             onChange={(e) => setCourseFilter(e.target.value)}
-            className="border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm"
+            className="border border-primary-bg bg-white text-primary-dark rounded-lg p-2.5 text-sm"
+            style={{ fontFamily: bodyFont }}
           >
             <option value="">All Courses</option>
             {courses.map((c) => (
@@ -398,7 +412,8 @@ export default function AgedReceivables() {
           <select
             value={batchFilter}
             onChange={(e) => setBatchFilter(e.target.value)}
-            className="border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm"
+            className="border border-primary-bg bg-white text-primary-dark rounded-lg p-2.5 text-sm"
+            style={{ fontFamily: bodyFont }}
           >
             <option value="">All Batches</option>
             {batches.map((b) => (
@@ -408,7 +423,8 @@ export default function AgedReceivables() {
           <select
             value={mediumFilter}
             onChange={(e) => setMediumFilter(e.target.value)}
-            className="border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm"
+            className="border border-primary-bg bg-white text-primary-dark rounded-lg p-2.5 text-sm"
+            style={{ fontFamily: bodyFont }}
           >
             <option value="">All Mediums</option>
             {mediums.map((m) => (
@@ -423,61 +439,63 @@ export default function AgedReceivables() {
         {AGE_BUCKETS.map((b) => (
           <div
             key={b.label}
-            className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 text-center"
+            className="bg-white rounded-xl p-4 shadow-sm border border-primary-bg text-center"
           >
-            <p className="text-xs text-gray-500">{b.label}</p>
-            <p className="text-lg font-bold text-gray-900">
+            <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>{b.label}</p>
+            <p className="text-lg font-bold text-primary" style={{ fontFamily: headingFont }}>
               ₹ {(bucketTotals[b.label]?.amount || 0).toLocaleString('en-IN')}
             </p>
-            <p className="text-xs text-gray-500">{bucketTotals[b.label]?.count || 0} students</p>
+            <p className="text-xs text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+              {bucketTotals[b.label]?.count || 0} students
+            </p>
           </div>
         ))}
       </div>
 
       {/* Main table */}
       {isLoading ? (
-        <div className="text-center py-8 text-gray-500">Loading…</div>
+        <div className="text-center py-8 text-primary-dark" style={{ fontFamily: bodyFont }}>Loading…</div>
       ) : receivables.length === 0 ? (
-        <div className="bg-white rounded-xl p-10 text-center text-gray-500 border border-gray-200">
+        <div className="bg-white rounded-xl p-10 text-center text-primary-dark border border-primary-bg" style={{ fontFamily: bodyFont }}>
           <p>No outstanding fees found.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-primary-bg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[800px] text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-primary-bg">
                 <tr>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Admission No</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Student</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Course</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Batch</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Medium</th>
-                  <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Balance</th>
-                  <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Age (Days)</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Bucket</th>
+                  <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Admission No</th>
+                  <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Student</th>
+                  <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Course</th>
+                  <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Batch</th>
+                  <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Medium</th>
+                  <th className="p-3 text-right text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Balance</th>
+                  <th className="p-3 text-right text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Age (Days)</th>
+                  <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Bucket</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-primary-bg">
                 {receivables.map((r, idx) => (
-                  <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                    <td className="p-3 text-gray-700">{r.admission_no}</td>
+                  <tr key={idx} className="hover:bg-primary-bg transition-colors">
+                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>{r.admission_no}</td>
                     <td className="p-3">
-                      <div className="font-medium text-gray-900">{r.student_name}</div>
-                      <div className="text-xs text-gray-500">{r.mobile}</div>
+                      <div className="font-medium text-primary" style={{ fontFamily: headingFont }}>{r.student_name}</div>
+                      <div className="text-xs text-primary-dark/60" style={{ fontFamily: bodyFont }}>{r.mobile}</div>
                     </td>
-                    <td className="p-3 text-gray-700">{r.course}</td>
-                    <td className="p-3 text-gray-700">{r.batch || "—"}</td>
-                    <td className="p-3 text-gray-700">{r.medium || "—"}</td>
-                    <td className="p-3 text-right font-medium text-gray-900">₹ {r.balance.toLocaleString('en-IN')}</td>
-                    <td className="p-3 text-right text-gray-700">{r.ageDays}</td>
-                    <td className="p-3 text-gray-700">{r.bucket}</td>
+                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>{r.course}</td>
+                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>{r.batch || "—"}</td>
+                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>{r.medium || "—"}</td>
+                    <td className="p-3 text-right font-medium text-primary" style={{ fontFamily: bodyFont }}>₹ {r.balance.toLocaleString('en-IN')}</td>
+                    <td className="p-3 text-right text-primary-dark" style={{ fontFamily: bodyFont }}>{r.ageDays}</td>
+                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>{r.bucket}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr className="bg-gray-100 font-bold">
-                  <td colSpan={5} className="p-3 text-right text-gray-900">Grand Total</td>
-                  <td className="p-3 text-right text-gray-900">₹ {grandTotal.toLocaleString('en-IN')}</td>
+                <tr className="bg-primary-bg font-bold">
+                  <td colSpan={5} className="p-3 text-right text-primary" style={{ fontFamily: bodyFont }}>Grand Total</td>
+                  <td className="p-3 text-right text-primary" style={{ fontFamily: bodyFont }}>₹ {grandTotal.toLocaleString('en-IN')}</td>
                   <td colSpan={2}></td>
                 </tr>
               </tfoot>

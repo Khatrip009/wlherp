@@ -34,6 +34,7 @@ import {
   getMediumOptions,
 } from "../services/progressService";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // ✅ dynamic theme
 import { supabase } from "../api/supabase";
 import { sendEmail } from "../services/emailService";
 
@@ -41,9 +42,13 @@ export default function ProgressEvaluations() {
   const queryClient = useQueryClient();
 
   const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme(); // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   // Filters
   const [batchFilter, setBatchFilter] = useState("");
@@ -152,7 +157,7 @@ export default function ProgressEvaluations() {
         to: adminEmails,
         subject: `Progress Evaluation Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-       // from: org?.email || undefined,
+        // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");
@@ -329,34 +334,46 @@ export default function ProgressEvaluations() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
-          <h1 className="text-3xl font-righteous text-primary-dark">Progress Evaluations</h1>
-          <p className="text-sm text-secondary-dark font-montserrat mt-1">
+          <h1
+            className="text-3xl font-bold text-primary"
+            style={{ fontFamily: headingFont }}
+          >
+            Progress Evaluations
+          </h1>
+          <p
+            className="text-sm text-primary-dark mt-1"
+            style={{ fontFamily: bodyFont }}
+          >
             Track student performance over time
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {/* 👇 Send Report button */}
+          {/* Send Report button */}
           <button
             onClick={sendReportEmail}
-            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+            className="bg-accent hover:bg-accent-dark text-white px-5 py-2.5 rounded-lg transition text-sm flex items-center gap-2"
+            style={{ fontFamily: bodyFont }}
           >
             <Mail size={18} /> Send Report
           </button>
           <button
             onClick={() => setShowForm(true)}
-            className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+            className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition text-sm flex items-center gap-2"
+            style={{ fontFamily: bodyFont }}
           >
             <TrendingUp size={18} /> Add Evaluation
           </button>
           <button
             onClick={handleCSVExport}
-            className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+            className="border border-primary-bg px-4 py-2.5 rounded-lg text-primary-dark hover:bg-primary-bg text-sm flex items-center gap-2"
+            style={{ fontFamily: bodyFont }}
           >
             <Download size={18} /> Export
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+            className="border border-primary-bg px-4 py-2.5 rounded-lg text-primary-dark hover:bg-primary-bg text-sm flex items-center gap-2"
+            style={{ fontFamily: bodyFont }}
           >
             <Upload size={18} /> Import
           </button>
@@ -373,18 +390,23 @@ export default function ProgressEvaluations() {
       {/* Search & Filter Toggle */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+          <Search
+            size={18}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-dark/60"
+          />
           <input
             type="text"
             placeholder="Search by student name..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-secondary-light rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+            className="w-full border border-primary-bg bg-white text-primary-dark rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-primary-dark/40"
+            style={{ fontFamily: bodyFont }}
           />
         </div>
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+          className="border border-primary-bg px-4 py-2.5 rounded-lg text-primary-dark hover:bg-primary-bg text-sm flex items-center gap-2"
+          style={{ fontFamily: bodyFont }}
         >
           <Filter size={18} /> Filters
           {showFilters && <X size={16} />}
@@ -393,13 +415,18 @@ export default function ProgressEvaluations() {
 
       {/* Advanced Filters Panel */}
       {showFilters && (
-        <div className="bg-white rounded-xl p-4 shadow-sm mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border border-secondary-light">
+        <div className="bg-white rounded-xl p-4 shadow-sm mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border border-primary-bg">
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">Batch</label>
+            <label
+              className="text-xs text-primary-dark"
+              style={{ fontFamily: bodyFont }}
+            >
+              Batch
+            </label>
             <select
               value={batchFilter}
               onChange={(e) => setBatchFilter(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
             >
               <option value="">All Batches</option>
               {batches.map((b) => (
@@ -410,11 +437,16 @@ export default function ProgressEvaluations() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">Medium</label>
+            <label
+              className="text-xs text-primary-dark"
+              style={{ fontFamily: bodyFont }}
+            >
+              Medium
+            </label>
             <select
               value={mediumFilter}
               onChange={(e) => setMediumFilter(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
             >
               <option value="">All Mediums</option>
               {mediums.map((m) => (
@@ -425,21 +457,31 @@ export default function ProgressEvaluations() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">From Date</label>
+            <label
+              className="text-xs text-primary-dark"
+              style={{ fontFamily: bodyFont }}
+            >
+              From Date
+            </label>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
             />
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">To Date</label>
+            <label
+              className="text-xs text-primary-dark"
+              style={{ fontFamily: bodyFont }}
+            >
+              To Date
+            </label>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
             />
           </div>
           <div className="flex items-end">
@@ -452,6 +494,7 @@ export default function ProgressEvaluations() {
                 setEndDate("");
               }}
               className="text-primary text-sm hover:underline"
+              style={{ fontFamily: bodyFont }}
             >
               Clear Filters
             </button>
@@ -461,68 +504,174 @@ export default function ProgressEvaluations() {
 
       {/* Averages Summary Card */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-secondary-light flex items-center justify-between">
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-primary-bg flex items-center justify-between">
           <div>
-            <p className="text-xs font-montserrat text-secondary">Average Attendance</p>
-            <p className="text-2xl font-bold text-primary-dark mt-1">{averages.avgAttendance}</p>
+            <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
+              Average Attendance
+            </p>
+            <p className="text-2xl font-bold text-primary mt-1" style={{ fontFamily: headingFont }}>
+              {averages.avgAttendance}
+            </p>
           </div>
-          <div className="p-3 rounded-full bg-blue-50">
-            <Calendar size={22} className="text-blue-600" />
+          <div className="p-3 rounded-full bg-primary-bg">
+            <Calendar size={22} className="text-primary" />
           </div>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-secondary-light flex items-center justify-between">
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-primary-bg flex items-center justify-between">
           <div>
-            <p className="text-xs font-montserrat text-secondary">Average Score</p>
-            <p className="text-2xl font-bold text-primary-dark mt-1">{averages.avgScore}</p>
+            <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
+              Average Score
+            </p>
+            <p className="text-2xl font-bold text-primary mt-1" style={{ fontFamily: headingFont }}>
+              {averages.avgScore}
+            </p>
           </div>
-          <div className="p-3 rounded-full bg-emerald-50">
-            <TrendingUp size={22} className="text-emerald-600" />
+          <div className="p-3 rounded-full bg-primary-bg">
+            <TrendingUp size={22} className="text-primary" />
           </div>
         </div>
       </div>
 
       {/* Evaluations Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-primary-bg">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px]">
-            <thead className="bg-slate-100 border-b border-secondary-light">
+            <thead className="bg-primary-bg">
               <tr>
-                <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Student</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Batch</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Medium</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Date</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Attendance %</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Score</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Remarks</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Actions</th>
+                <th
+                  className="p-3 text-left text-sm font-medium text-primary-dark uppercase"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  Student
+                </th>
+                <th
+                  className="text-left text-sm font-medium text-primary-dark uppercase"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  Batch
+                </th>
+                <th
+                  className="text-left text-sm font-medium text-primary-dark uppercase"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  Medium
+                </th>
+                <th
+                  className="text-left text-sm font-medium text-primary-dark uppercase"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  Date
+                </th>
+                <th
+                  className="text-left text-sm font-medium text-primary-dark uppercase"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  Attendance %
+                </th>
+                <th
+                  className="text-left text-sm font-medium text-primary-dark uppercase"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  Score
+                </th>
+                <th
+                  className="text-left text-sm font-medium text-primary-dark uppercase"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  Remarks
+                </th>
+                <th
+                  className="text-left text-sm font-medium text-primary-dark uppercase"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={8} className="p-6 text-center text-secondary">Loading evaluations…</td></tr>
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="p-6 text-center text-primary-dark/60"
+                    style={{ fontFamily: bodyFont }}
+                  >
+                    Loading evaluations…
+                  </td>
+                </tr>
               ) : evaluations.length === 0 ? (
-                <tr><td colSpan={8} className="p-6 text-center text-secondary">
-                  <div className="flex flex-col items-center gap-2">
-                    <TrendingUp size={32} className="text-secondary-light" />
-                    <span>No evaluations found</span>
-                    <span className="text-xs text-secondary-light">
-                      {search || batchFilter || mediumFilter || startDate || endDate
-                        ? "Try adjusting your filters"
-                        : "Add a new evaluation to get started"}
-                    </span>
-                  </div>
-                </td></tr>
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="p-6 text-center text-primary-dark/60"
+                    style={{ fontFamily: bodyFont }}
+                  >
+                    <div className="flex flex-col items-center gap-2">
+                      <TrendingUp size={32} className="text-primary-dark/40" />
+                      <span>No evaluations found</span>
+                      <span className="text-xs text-primary-dark/60">
+                        {search || batchFilter || mediumFilter || startDate || endDate
+                          ? "Try adjusting your filters"
+                          : "Add a new evaluation to get started"}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
               ) : (
                 evaluations.map((evalItem) => (
-                  <tr key={evalItem.id} className="border-b border-secondary-light hover:bg-primary-bg transition">
-                    <td className="p-3 text-sm"><div className="font-medium">{evalItem.students?.first_name} {evalItem.students?.last_name}</div><div className="text-xs text-secondary-light">{evalItem.students?.admission_no}</div></td>
-                    <td className="text-sm">{evalItem.batches?.batch_name}</td>
-                    <td className="text-sm">{evalItem.medium_name || "—"}</td>
-                    <td className="text-sm">{evalItem.evaluation_date}</td>
-                    <td className="text-sm">{evalItem.attendance_percentage != null ? `${evalItem.attendance_percentage}%` : "-"}</td>
-                    <td className="text-sm">{evalItem.performance_score != null ? evalItem.performance_score : "-"}</td>
-                    <td className="text-sm max-w-[200px] truncate">{evalItem.teacher_remarks || "-"}</td>
-                    <td className="text-sm"><div className="flex gap-2"><button onClick={() => setEditing(evalItem)} className="text-blue-600 hover:underline" title="Edit"><Edit3 size={15} /></button><button onClick={() => handleDelete(evalItem.id)} className="text-red-600 hover:underline" title="Delete"><Trash2 size={15} /></button></div></td>
+                  <tr
+                    key={evalItem.id}
+                    className="border-b border-primary-bg hover:bg-primary-bg transition-colors"
+                  >
+                    <td className="p-3 text-sm">
+                      <div className="font-medium text-primary" style={{ fontFamily: headingFont }}>
+                        {evalItem.students?.first_name} {evalItem.students?.last_name}
+                      </div>
+                      <div className="text-xs text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+                        {evalItem.students?.admission_no}
+                      </div>
+                    </td>
+                    <td className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                      {evalItem.batches?.batch_name}
+                    </td>
+                    <td className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                      {evalItem.medium_name || "—"}
+                    </td>
+                    <td className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                      {evalItem.evaluation_date}
+                    </td>
+                    <td className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                      {evalItem.attendance_percentage != null
+                        ? `${evalItem.attendance_percentage}%`
+                        : "-"}
+                    </td>
+                    <td className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                      {evalItem.performance_score != null ? evalItem.performance_score : "-"}
+                    </td>
+                    <td
+                      className="text-sm max-w-[200px] truncate text-primary-dark"
+                      style={{ fontFamily: bodyFont }}
+                    >
+                      {evalItem.teacher_remarks || "-"}
+                    </td>
+                    <td className="text-sm">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setEditing(evalItem)}
+                          className="text-primary hover:underline"
+                          title="Edit"
+                        >
+                          <Edit3 size={15} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(evalItem.id)}
+                          className="text-accent hover:underline"
+                          title="Delete"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
@@ -537,7 +686,8 @@ export default function ProgressEvaluations() {
           <button
             onClick={() => fetchNextPage()}
             disabled={isFetchingNextPage}
-            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat text-sm transition disabled:opacity-60"
+            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-60"
+            style={{ fontFamily: bodyFont }}
           >
             {isFetchingNextPage ? "Loading more…" : "Load More"}
           </button>

@@ -19,7 +19,7 @@ import {
   ListChecks,
   BarChart2,
   Mail,
-} from "lucide-react"; // 👈 Added Mail
+} from "lucide-react";
 import toast from "react-hot-toast";
 import TeacherForm from "../components/TeacherForm";
 import { getActiveTeachers, createTeacher } from "../services/teacherService";
@@ -27,11 +27,13 @@ import { getSalaryPayments } from "../services/salaryService";
 import { getLeaves, updateLeaveStatus } from "../services/leaveService";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
-import { sendEmail } from "../services/emailService"; // 👈 Import
+import { useTheme } from "../context/ThemeContext"; // 👈 import theme
+import { sendEmail } from "../services/emailService";
 
 export default function HRHub() {
   const queryClient = useQueryClient();
-  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
+  const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme(); // 👈 get theme colours
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
@@ -163,7 +165,7 @@ export default function HRHub() {
 
       const htmlBody = `
         <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
-          <h2 style="color:#0D47A1;">HR Dashboard Report</h2>
+          <h2 style="color:${theme.primary_color};">HR Dashboard Report</h2>
           <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
           <p><strong>Date:</strong> ${new Date().toLocaleString()}</p>
           <hr />
@@ -186,10 +188,10 @@ export default function HRHub() {
             </div>
           </div>
 
-          <h3 style="color:#0D47A1;">Recent Leave Requests (${pendingLeaves.length} pending)</h3>
+          <h3 style="color:${theme.primary_color};">Recent Leave Requests (${pendingLeaves.length} pending)</h3>
           ${pendingLeaves.length > 0 ? `
             <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #ddd;">
-              <thead style="background:#e3f2fd;">
+              <thead style="background:${theme.primary_light_color || '#e3f2fd'};">
                 <tr>
                   <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Teacher</th>
                   <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Dates</th>
@@ -200,10 +202,10 @@ export default function HRHub() {
             </table>
           ` : `<p>No pending leaves.</p>`}
 
-          <h3 style="color:#0D47A1;margin-top:20px;">Recent Salary Payments</h3>
+          <h3 style="color:${theme.primary_color};margin-top:20px;">Recent Salary Payments</h3>
           ${recentPayments.length > 0 ? `
             <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #ddd;">
-              <thead style="background:#e3f2fd;">
+              <thead style="background:${theme.primary_light_color || '#e3f2fd'};">
                 <tr>
                   <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Teacher</th>
                   <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Date</th>
@@ -223,7 +225,6 @@ export default function HRHub() {
         to: adminEmails,
         subject: `HR Dashboard Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-       // from: org?.email || undefined,
       });
 
       alert("HR report sent to admins.");
@@ -239,49 +240,49 @@ export default function HRHub() {
       title: "Employees",
       icon: Users,
       link: "/teachers",
-      color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200",
+      className: "bg-primary-bg text-primary dark:bg-primary-dark dark:text-primary-light",
     },
     {
       title: "Attendance",
       icon: Clock,
       link: "/teacher-attendance",
-      color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200",
+      className: "bg-primary-bg text-primary dark:bg-primary-dark dark:text-primary-light",
     },
     {
       title: "Attendance History",
       icon: ListChecks,
       link: "/teacher-daily-attendance-report",
-      color: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-200",
+      className: "bg-primary-bg text-primary dark:bg-primary-dark dark:text-primary-light",
     },
     {
       title: "Leave Management",
       icon: Calendar,
       link: "/leave-management",
-      color: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-200",
+      className: "bg-primary-bg text-primary dark:bg-primary-dark dark:text-primary-light",
     },
     {
       title: "Salary Setup",
       icon: Settings,
       link: "/salary-setup",
-      color: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-200",
+      className: "bg-primary-bg text-primary dark:bg-primary-dark dark:text-primary-light",
     },
     {
       title: "Generate Salaries",
       icon: TrendingUp,
       link: "/generate-salaries",
-      color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-200",
+      className: "bg-primary-bg text-primary dark:bg-primary-dark dark:text-primary-light",
     },
     {
       title: "Salary Payments",
       icon: CreditCard,
       link: "/salary-payments",
-      color: "bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-200",
+      className: "bg-primary-bg text-primary dark:bg-primary-dark dark:text-primary-light",
     },
     {
       title: "Salary Report",
       icon: BarChart2,
       link: "/salary-report",
-      color: "bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-200",
+      className: "bg-primary-bg text-primary dark:bg-primary-dark dark:text-primary-light",
     },
   ];
 
@@ -302,8 +303,8 @@ export default function HRHub() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1
-            className="text-2xl sm:text-3xl font-bold"
-            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+            className="text-2xl sm:text-3xl font-bold text-primary"
+            style={{ fontFamily: "var(--font-heading)" }}
           >
             HR Management
           </h1>
@@ -317,7 +318,7 @@ export default function HRHub() {
         <div className="flex gap-2">
           <button
             onClick={sendReportEmail}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors text-sm font-medium"
             style={{ fontFamily: "var(--font-body)" }}
           >
             <Mail size={18} /> Send Report
@@ -348,8 +349,8 @@ export default function HRHub() {
                   {card.label}
                 </p>
                 <p
-                  className="text-2xl font-bold mt-1"
-                  style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+                  className="text-2xl font-bold mt-1 text-primary"
+                  style={{ fontFamily: "var(--font-heading)" }}
                 >
                   {card.value}
                 </p>
@@ -360,11 +361,11 @@ export default function HRHub() {
         ))}
       </div>
 
-      {/* Quick Actions Grid (unchanged) */}
+      {/* Quick Actions Grid */}
       <div>
         <h2
-          className="text-lg font-semibold mb-3"
-          style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+          className="text-lg font-semibold mb-3 text-primary"
+          style={{ fontFamily: "var(--font-heading)" }}
         >
           Quick Actions
         </h2>
@@ -377,7 +378,7 @@ export default function HRHub() {
             >
               <div className="flex flex-col items-center text-center">
                 <div
-                  className={`p-3 rounded-full ${action.color} mb-2 group-hover:scale-105 transition-transform`}
+                  className={`p-3 rounded-full ${action.className} mb-2 group-hover:scale-105 transition-transform`}
                 >
                   <action.icon size={20} />
                 </div>
@@ -393,14 +394,14 @@ export default function HRHub() {
         </div>
       </div>
 
-      {/* Two-column: Recent Leaves + Recent Payments (unchanged) */}
+      {/* Two-column: Recent Leaves + Recent Payments */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Leave Requests */}
         <div className="bg-white dark:bg-accent rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3
-              className="font-semibold"
-              style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+              className="font-semibold text-primary"
+              style={{ fontFamily: "var(--font-heading)" }}
             >
               Recent Leave Requests
             </h3>
@@ -446,7 +447,7 @@ export default function HRHub() {
                             status: "Approved",
                           })
                         }
-                        className="p-1.5 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-200 rounded hover:bg-green-200 dark:hover:bg-green-800 transition"
+                        className="p-1.5 bg-primary-bg dark:bg-primary-dark text-primary dark:text-primary-light rounded hover:bg-primary-light dark:hover:bg-primary transition"
                         title="Approve"
                       >
                         <Check size={16} />
@@ -460,7 +461,7 @@ export default function HRHub() {
                             adminRemarks: remark || "",
                           });
                         }}
-                        className="p-1.5 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded hover:bg-red-200 dark:hover:bg-red-800 transition"
+                        className="p-1.5 bg-accent-bg dark:bg-accent text-accent dark:text-accent-light rounded hover:bg-accent-light dark:hover:bg-accent transition"
                         title="Reject"
                       >
                         <X size={16} />
@@ -477,8 +478,8 @@ export default function HRHub() {
         <div className="bg-white dark:bg-accent rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3
-              className="font-semibold"
-              style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+              className="font-semibold text-primary"
+              style={{ fontFamily: "var(--font-heading)" }}
             >
               Recent Salary Payments
             </h3>
@@ -514,7 +515,7 @@ export default function HRHub() {
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-semibold text-green-700 dark:text-green-400">
+                      <p className="text-sm font-semibold text-primary dark:text-primary-light">
                         ₹ {Number(payment.net_amount).toLocaleString("en-IN")}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -529,7 +530,7 @@ export default function HRHub() {
         </div>
       </div>
 
-      {/* Add Employee Modal (unchanged) */}
+      {/* Add Employee Modal */}
       {showAddEmployee && (
         <TeacherForm
           onSubmit={handleTeacherSubmit}

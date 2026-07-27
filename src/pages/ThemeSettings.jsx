@@ -1,5 +1,6 @@
+// src/pages/ThemeSettings.jsx
 import { useState, useEffect } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Save, RotateCcw } from "lucide-react";
 
@@ -15,7 +16,6 @@ export default function ThemeSettings() {
   const { theme } = useTheme();
   const { org: currentOrg } = useOrg();
 
-  // ── Check if user is branch admin ──
   const isBranchAdmin = profile?.role?.toLowerCase() === "branch_admin";
 
   const [form, setForm] = useState({
@@ -31,6 +31,7 @@ export default function ThemeSettings() {
     logo_dark_url: "",
   });
 
+  // Populate form when theme data is loaded
   useEffect(() => {
     if (theme) {
       setForm({
@@ -57,8 +58,21 @@ export default function ThemeSettings() {
       if (error) throw error;
     },
     onSuccess: () => {
+      // 1. Apply the new CSS variables immediately
+      const root = document.documentElement;
+      root.style.setProperty("--theme-primary", form.primary_color);
+      root.style.setProperty("--theme-primary-light", form.primary_light_color);
+      root.style.setProperty("--theme-primary-dark", form.primary_dark_color);
+      root.style.setProperty("--theme-accent", form.accent_color);
+      root.style.setProperty("--theme-accent-light", form.accent_light_color);
+      root.style.setProperty("--theme-accent-dark", form.accent_dark_color);
+      root.style.setProperty("--font-heading", form.font_heading);
+      root.style.setProperty("--font-body", form.font_body);
+
+      // 2. Invalidate the theme query so ThemeContext refetches (exact key)
+      queryClient.invalidateQueries({ queryKey: ["theme", currentOrg?.id] });
+
       toast.success("Theme updated");
-      queryClient.invalidateQueries({ queryKey: ["theme"] });
     },
     onError: (err) => toast.error(err.message),
   });

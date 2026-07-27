@@ -13,8 +13,9 @@ import {
   deleteAccount,
 } from "../services/accountingService";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // ✅ dynamic theme
 
-/* ─── PDF helpers ──────────────────────────────────────────── */
+/* ─── PDF helpers (unchanged) ──────────────────────────────── */
 async function loadImageAsBase64(url) {
   if (!url) return null;
   try {
@@ -33,9 +34,13 @@ async function loadImageAsBase64(url) {
 export default function ChartOfAccounts() {
   const queryClient = useQueryClient();
   const { org, branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();
   const orgId = org?.id;
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -232,17 +237,24 @@ export default function ChartOfAccounts() {
   return (
     <>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-righteous text-gray-900">Chart of Accounts</h1>
+        <h1
+          className="text-3xl font-bold text-primary"
+          style={{ fontFamily: headingFont }}
+        >
+          Chart of Accounts
+        </h1>
         <div className="flex gap-2">
           <button
             onClick={handlePrintPDF}
             className="bg-primary hover:bg-accent text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm transition"
+            style={{ fontFamily: bodyFont }}
           >
             <Printer size={18} /> Print PDF
           </button>
           <button
             onClick={openCreate}
             className="bg-primary hover:bg-accent text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm transition"
+            style={{ fontFamily: bodyFont }}
           >
             <Plus size={18} /> Add Account
           </button>
@@ -250,31 +262,66 @@ export default function ChartOfAccounts() {
       </div>
 
       {isLoading ? (
-        <p className="text-center py-6">Loading…</p>
+        <p className="text-center py-6 text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+          Loading…
+        </p>
       ) : (
         Object.entries(grouped).map(([type, accts]) => (
           <div key={type} className="mb-6">
-            <h2 className="text-xl font-semibold text-gray-900 capitalize mb-3">{type}</h2>
-            <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
+            <h2
+              className="text-xl font-semibold text-primary capitalize mb-3"
+              style={{ fontFamily: headingFont }}
+            >
+              {type}
+            </h2>
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-primary-bg">
               <table className="w-full">
-                <thead className="bg-gray-50">
+                <thead className="bg-primary-bg">
                   <tr>
-                    <th className="p-3 text-left text-sm text-gray-700">Code</th>
-                    <th className="p-3 text-left text-sm text-gray-700">Name</th>
-                    <th className="p-3 text-left text-sm text-gray-700">Parent</th>
-                    <th className="p-3 text-right text-sm text-gray-700">Actions</th>
+                    <th
+                      className="p-3 text-left text-sm text-primary-dark"
+                      style={{ fontFamily: bodyFont }}
+                    >
+                      Code
+                    </th>
+                    <th
+                      className="p-3 text-left text-sm text-primary-dark"
+                      style={{ fontFamily: bodyFont }}
+                    >
+                      Name
+                    </th>
+                    <th
+                      className="p-3 text-left text-sm text-primary-dark"
+                      style={{ fontFamily: bodyFont }}
+                    >
+                      Parent
+                    </th>
+                    <th
+                      className="p-3 text-right text-sm text-primary-dark"
+                      style={{ fontFamily: bodyFont }}
+                    >
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {accts.map((a) => (
-                    <tr key={a.id} className="border-t hover:bg-gray-50 transition">
-                      <td className="p-3 text-sm font-medium text-gray-900">{a.account_code}</td>
-                      <td className="text-sm text-gray-900">{a.account_name}</td>
-                      <td className="text-sm text-gray-900">
+                    <tr
+                      key={a.id}
+                      className="border-t border-primary-bg hover:bg-primary-bg transition"
+                    >
+                      <td className="p-3 text-sm font-medium text-primary">
+                        {a.account_code}
+                      </td>
+                      <td className="text-sm text-primary-dark">{a.account_name}</td>
+                      <td className="text-sm text-primary-dark">
                         {accounts.find((p) => p.id === a.parent_id)?.account_name || "-"}
                       </td>
                       <td className="text-sm text-right">
-                        <button onClick={() => openEdit(a)} className="text-blue-600 mr-2">
+                        <button
+                          onClick={() => openEdit(a)}
+                          className="text-primary hover:underline mr-2"
+                        >
                           <Edit3 size={15} />
                         </button>
                         <button
@@ -282,7 +329,7 @@ export default function ChartOfAccounts() {
                             if (window.confirm("Delete this account?"))
                               deleteMutation.mutate(a.id);
                           }}
-                          className="text-red-600"
+                          className="text-accent hover:underline"
                         >
                           <Trash2 size={15} />
                         </button>
@@ -299,42 +346,63 @@ export default function ChartOfAccounts() {
       {/* Add / Edit Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
-            <div className="flex items-center justify-between px-6 py-4 border-b">
-              <h2 className="text-xl font-righteous text-gray-900">
+          <div className="bg-white rounded-xl w-full max-w-md shadow-xl border border-primary-bg">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-primary-bg">
+              <h2
+                className="text-xl font-bold text-primary"
+                style={{ fontFamily: headingFont }}
+              >
                 {editing ? "Edit Account" : "Add Account"}
               </h2>
-              <button onClick={() => setShowForm(false)} className="p-2 hover:bg-gray-100 rounded">
-                <X size={20} />
+              <button
+                onClick={() => setShowForm(false)}
+                className="p-2 hover:bg-primary-bg rounded transition-colors"
+              >
+                <X size={20} className="text-primary-dark" />
               </button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm mb-1 text-gray-700">Account Code *</label>
+                <label
+                  className="block text-sm mb-1 text-primary-dark"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  Account Code *
+                </label>
                 <input
                   type="text"
                   value={form.account_code}
                   onChange={(e) => setForm({ ...form, account_code: e.target.value })}
-                  className="w-full border rounded p-2.5 text-sm"
+                  className="w-full border border-primary-bg bg-white text-primary rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm mb-1 text-gray-700">Account Name *</label>
+                <label
+                  className="block text-sm mb-1 text-primary-dark"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  Account Name *
+                </label>
                 <input
                   type="text"
                   value={form.account_name}
                   onChange={(e) => setForm({ ...form, account_name: e.target.value })}
-                  className="w-full border rounded p-2.5 text-sm"
+                  className="w-full border border-primary-bg bg-white text-primary rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm mb-1 text-gray-700">Type</label>
+                <label
+                  className="block text-sm mb-1 text-primary-dark"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  Type
+                </label>
                 <select
                   value={form.account_type}
                   onChange={(e) => setForm({ ...form, account_type: e.target.value })}
-                  className="w-full border rounded p-2.5 text-sm"
+                  className="w-full border border-primary-bg bg-white text-primary rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
                 >
                   <option value="asset">Asset</option>
                   <option value="liability">Liability</option>
@@ -344,11 +412,16 @@ export default function ChartOfAccounts() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm mb-1 text-gray-700">Parent Account</label>
+                <label
+                  className="block text-sm mb-1 text-primary-dark"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  Parent Account
+                </label>
                 <select
                   value={form.parent_id}
                   onChange={(e) => setForm({ ...form, parent_id: e.target.value })}
-                  className="w-full border rounded p-2.5 text-sm"
+                  className="w-full border border-primary-bg bg-white text-primary rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
                 >
                   <option value="">None</option>
                   {accounts.map((a) => (
@@ -362,13 +435,15 @@ export default function ChartOfAccounts() {
                 <button
                   type="button"
                   onClick={() => setShowForm(false)}
-                  className="border px-4 py-2 rounded-lg text-sm text-gray-700"
+                  className="border border-primary-bg px-4 py-2 rounded-lg text-sm text-primary-dark hover:bg-primary-bg transition-colors"
+                  style={{ fontFamily: bodyFont }}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="bg-primary hover:bg-accent text-white px-4 py-2 rounded-lg text-sm"
+                  className="bg-primary hover:bg-accent text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  style={{ fontFamily: bodyFont }}
                 >
                   {editing ? "Update" : "Create"}
                 </button>

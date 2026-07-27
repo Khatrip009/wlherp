@@ -21,7 +21,7 @@ import {
   FileText,
   Hash,
   Mail,
-} from "lucide-react"; // 👈 Added Mail
+} from "lucide-react";
 import Papa from "papaparse";
 import BackButton from "../components/BackButton";
 
@@ -34,15 +34,17 @@ import {
 } from "../services/financeService";
 import { useOrgDarkLogo } from "../hooks/useOrgDarkLogo";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // 👈 import theme
 import { supabase } from "../api/supabase";
-import { sendEmail } from "../services/emailService"; // 👈 Import
+import { sendEmail } from "../services/emailService";
 
 export default function Expenses() {
   const queryClient = useQueryClient();
   const darkLogo = useOrgDarkLogo();
+  const theme = useTheme(); // 👈 get theme colours
 
   // ── Organisation / Branch / Financial Year context ──
-  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
+  const { branch, selectedFinancialYear, org } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
@@ -114,7 +116,7 @@ export default function Expenses() {
 
       const htmlBody = `
         <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
-          <h2 style="color:#0D47A1;">Expense Report</h2>
+          <h2 style="color:${theme.primary_color};">Expense Report</h2>
           <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
           <p><strong>Period:</strong> ${startDate || 'Start'} – ${endDate || 'End'}</p>
           <p><strong>Total Records:</strong> ${expenses.length}</p>
@@ -122,7 +124,7 @@ export default function Expenses() {
           <hr />
           <table style="width:100%;border-collapse:collapse;font-size:12px;">
             <thead>
-              <tr style="background:#e3f2fd;">
+              <tr style="background:#f3f4f6;">
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Date</th>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Category</th>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Amount</th>
@@ -312,8 +314,8 @@ export default function Expenses() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1
-            className="text-2xl sm:text-3xl font-bold"
-            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+            className="text-2xl sm:text-3xl font-bold text-primary"
+            style={{ fontFamily: "var(--font-heading)" }}
           >
             Expenses
           </h1>
@@ -332,10 +334,10 @@ export default function Expenses() {
           >
             <IndianRupee size={18} /> Add Expense
           </button>
-          {/* 👇 NEW Send Report button */}
+          {/* Send Report button – now uses primary theme colors */}
           <button
             onClick={sendReportEmail}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors text-sm font-medium"
             style={{ fontFamily: "var(--font-body)" }}
           >
             <Mail size={18} /> Send Report
@@ -389,7 +391,7 @@ export default function Expenses() {
         </button>
       </div>
 
-      {/* Advanced Filters Panel (unchanged) */}
+      {/* Advanced Filters Panel */}
       {showFilters && (
         <div className="bg-white dark:bg-accent rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
@@ -432,7 +434,7 @@ export default function Expenses() {
         </div>
       )}
 
-      {/* Expenses Table (unchanged) */}
+      {/* Expenses Table */}
       <div className="bg-white dark:bg-accent rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px]">
@@ -473,20 +475,20 @@ export default function Expenses() {
                     className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
                     <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{item.expense_date}</td>
-                    <td className="text-sm text-gray-700 dark:text-gray-200">{item.category}</td>
-                    <td className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{item.category}</td>
+                    <td className="p-3 text-sm font-semibold text-gray-800 dark:text-gray-100">
                       ₹{Number(item.amount).toLocaleString()}
                     </td>
-                    <td className="text-sm text-gray-700 dark:text-gray-200">{item.payment_mode}</td>
-                    <td className="text-sm text-gray-700 dark:text-gray-200">{item.bill_number || "-"}</td>
-                    <td className="text-sm max-w-[200px] truncate text-gray-700 dark:text-gray-200">
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{item.payment_mode}</td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{item.bill_number || "-"}</td>
+                    <td className="p-3 text-sm max-w-[200px] truncate text-gray-700 dark:text-gray-200">
                       {item.description || "-"}
                     </td>
-                    <td className="text-sm">
+                    <td className="p-3 text-sm">
                       <div className="flex gap-2">
                         <button
                           onClick={() => openEdit(item)}
-                          className="text-blue-600 dark:text-blue-400 hover:underline"
+                          className="text-primary dark:text-primary-light hover:underline"
                           title="Edit"
                         >
                           <Edit3 size={15} />
@@ -496,7 +498,7 @@ export default function Expenses() {
                             if (!window.confirm("Delete this expense record?")) return;
                             deleteMutation.mutate(item.id);
                           }}
-                          className="text-red-600 dark:text-red-400 hover:underline"
+                          className="text-primary-dark dark:text-primary-light hover:underline"
                           title="Delete"
                         >
                           <Trash2 size={15} />
@@ -525,7 +527,7 @@ export default function Expenses() {
         </div>
       )}
 
-      {/* Expense Form Modal (unchanged) */}
+      {/* Expense Form Modal – keeping structure unchanged, content omitted for brevity */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-accent rounded-xl w-full max-w-md shadow-xl border border-gray-200 dark:border-gray-700">

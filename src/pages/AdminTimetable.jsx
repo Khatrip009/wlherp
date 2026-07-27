@@ -5,7 +5,7 @@ import { supabase } from "../api/supabase";
 import BatchForm from "../components/BatchForm";
 import { updateBatch } from "../services/batchService";
 import { useOrg } from "../context/OrganizationContext";
-import { useTheme } from "../context/ThemeContext";   // ✅ correct import
+import { useTheme } from "../context/ThemeContext";
 import toast from "react-hot-toast";
 import { Clock, Layers } from "lucide-react";
 
@@ -19,12 +19,9 @@ export default function AdminTimetable() {
 
   // ── Organization & Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();
-  const { theme } = useTheme();   // ✅ use correct context
+  const { theme } = useTheme();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
-
-  // Fallback primary color for background tinting
-  const primaryHex = theme?.primary_color || "#0D47A1";
 
   // Fetch mediums for filter dropdown (org‑wide)
   const { data: mediums = [] } = useQuery({
@@ -108,7 +105,7 @@ export default function AdminTimetable() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center p-12 text-gray-500 dark:text-gray-400">
+      <div className="flex items-center justify-center p-12 text-primary-dark/60">
         Loading timetable…
       </div>
     );
@@ -119,29 +116,29 @@ export default function AdminTimetable() {
       {/* Header */}
       <div>
         <h1
-          className="text-2xl sm:text-3xl font-bold"
-          style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+          className="text-2xl sm:text-3xl font-bold text-primary"
+          style={{ fontFamily: "var(--font-heading)" }}
         >
           Master Timetable
         </h1>
         <p
-          className="text-sm text-gray-600 dark:text-gray-400 mt-1"
+          className="text-sm text-primary-dark/80 mt-1"
           style={{ fontFamily: "var(--font-body)" }}
         >
           Weekly class schedule – click any batch to edit its timing.
         </p>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>
+        <p className="text-xs text-primary-dark/60 mt-1" style={{ fontFamily: "var(--font-body)" }}>
           Only teacher‑subject pairs with a specific day assigned are shown.
         </p>
       </div>
 
       {/* Medium Filter */}
       <div className="flex items-center gap-3 flex-wrap">
-        <Layers size={18} className="text-gray-500 dark:text-gray-400" />
+        <Layers size={18} className="text-primary-dark/60" />
         <select
           value={selectedMediumId}
           onChange={(e) => setSelectedMediumId(e.target.value)}
-          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
+          className="border border-primary-bg bg-white text-primary-dark rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
           style={{ fontFamily: "var(--font-body)" }}
         >
           <option value="">All Mediums</option>
@@ -154,17 +151,17 @@ export default function AdminTimetable() {
       </div>
 
       {/* Timetable Grid */}
-      <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+      <div className="overflow-x-auto rounded-xl border border-primary-bg">
         <div className="min-w-[900px]">
           {/* Header: day names */}
           <div className="grid grid-cols-7 gap-1 p-2">
-            <div className="p-2 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 rounded">
+            <div className="p-2 text-sm font-semibold text-primary-dark bg-primary-bg rounded">
               Time
             </div>
             {DAYS.map((day) => (
               <div
                 key={day}
-                className="p-2 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 rounded text-center"
+                className="p-2 text-sm font-semibold text-primary-dark bg-primary-bg rounded text-center"
               >
                 {day}
               </div>
@@ -176,7 +173,7 @@ export default function AdminTimetable() {
             const hour = parseInt(hourStr);
             return (
               <div key={hourStr} className="grid grid-cols-7 gap-1 px-2 pb-2">
-                <div className="p-2 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 rounded flex items-center justify-center">
+                <div className="p-2 text-xs font-medium text-primary-dark/60 bg-primary-bg rounded flex items-center justify-center">
                   <Clock size={14} className="mr-1" />
                   {hourStr}
                 </div>
@@ -185,23 +182,19 @@ export default function AdminTimetable() {
                   return (
                     <div
                       key={`${day}-${hourStr}`}
-                      className="p-1 rounded border border-gray-200 dark:border-gray-600 min-h-[60px] bg-white dark:bg-gray-800 hover:shadow-md transition-shadow"
+                      className="p-1 rounded border border-primary-bg min-h-[60px] bg-white hover:shadow-md transition-shadow"
                     >
                       {batchesInSlot.map((batch) => (
                         <div
                           key={batch.id}
-                          className="p-2 rounded mb-1 text-xs cursor-pointer hover:ring-2 hover:ring-[var(--color-primary)] transition"
-                          style={{
-                            backgroundColor: `${primaryHex}20`, // 12.5% opacity tint
-                            color: "var(--color-primary-dark)",
-                          }}
+                          className="p-2 rounded mb-1 text-xs cursor-pointer bg-primary/20 text-primary-dark hover:ring-2 hover:ring-primary transition"
                           onClick={() => setEditingBatch(batch)}
                           title="Click to edit batch timing"
                         >
                           <div className="font-semibold" style={{ fontFamily: "var(--font-heading)" }}>
                             {batch.batch_name}
                           </div>
-                          <div className="text-gray-600 dark:text-gray-300">
+                          <div className="text-primary-dark/80">
                             {batch.courses?.course_name}
                             {batch.mediums?.name ? ` (${batch.mediums.name})` : ""}
                           </div>
@@ -212,18 +205,18 @@ export default function AdminTimetable() {
                                   key={bt.teacher_id + "-" + bt.subject_id}
                                   className="flex items-center gap-1"
                                 >
-                                  <span className="text-[var(--color-primary)] font-medium">
+                                  <span className="text-primary font-medium">
                                     {bt.teachers?.first_name} {bt.teachers?.last_name}
                                   </span>
-                                  <span className="text-gray-400">-</span>
-                                  <span className="text-gray-700 dark:text-gray-200">
+                                  <span className="text-primary-dark/40">-</span>
+                                  <span className="text-primary-dark">
                                     {bt.subjects?.subject_name}
                                   </span>
                                 </div>
                               ))}
                             </div>
                           ) : (
-                            <div className="text-xs text-gray-400 italic mt-1">
+                            <div className="text-xs text-primary-dark/40 italic mt-1">
                               No teacher assigned
                             </div>
                           )}

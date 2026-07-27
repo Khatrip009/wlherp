@@ -30,13 +30,14 @@ import {
 } from "lucide-react";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";
 
 export default function AccountingHub() {
-  const { branch, selectedFinancialYear, theme } = useOrg();
+  const { branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  const primaryColor = theme?.primary_color || "#0D47A1";
   const headingFont = theme?.font_heading || "Righteous";
   const bodyFont = theme?.font_body || "Montserrat";
 
@@ -149,146 +150,124 @@ export default function AccountingHub() {
     staleTime: 2 * 60 * 1000,
   });
 
-  // ─── Quick Actions ──────────────────────────────────────
+  // ─── Quick Actions (all colours replaced with theme primary) ─────────────────
   const quickActions = [
-    // ─── Core Accounting ──────────────────────────────────────
     {
       title: "Invoices",
       icon: FileText,
       link: "/invoices",
-      color: "bg-blue-100 text-blue-700",
     },
     {
       title: "Receipts",
       icon: Receipt,
       link: "/receipts",
-      color: "bg-green-100 text-green-700",
     },
     {
       title: "Vouchers",
       icon: Repeat,
       link: "/vouchers",
-      color: "bg-purple-100 text-purple-700",
     },
     {
       title: "Ledger",
       icon: Book,
       link: "/ledger",
-      color: "bg-indigo-100 text-indigo-700",
     },
     {
       title: "Trial Balance",
       icon: PieChart,
       link: "/trial-balance",
-      color: "bg-orange-100 text-orange-700",
     },
     {
       title: "Profit & Loss",
       icon: DollarSign,
       link: "/profit-loss",
-      color: "bg-pink-100 text-pink-700",
     },
     {
       title: "Balance Sheet",
       icon: BookOpen,
       link: "/balance-sheet",
-      color: "bg-cyan-100 text-cyan-700",
     },
     {
       title: "Cash Book",
       icon: Wallet,
       link: "/cash-book",
-      color: "bg-yellow-100 text-yellow-700",
     },
     {
       title: "Day Book",
       icon: Calendar,
       link: "/day-book",
-      color: "bg-rose-100 text-rose-700",
     },
     {
       title: "Chart of Accounts",
       icon: Settings,
       link: "/chart-of-accounts",
-      color: "bg-gray-100 text-gray-700",
     },
     {
       title: "GST Reports",
       icon: Calculator,
       link: "/gst-report",
-      color: "bg-teal-100 text-teal-700",
     },
     {
       title: "Finance Hub",
       icon: BarChart2,
       link: "/Home/FinanceHub",
-      color: "bg-amber-100 text-amber-700",
     },
-
-    // ─── Purchases & Inventory ──────────────────────────────
     {
       title: "Vendors",
       icon: Users,
       link: "/vendors",
-      color: "bg-slate-100 text-slate-700",
     },
     {
       title: "Purchase Invoices",
       icon: ShoppingCart,
       link: "/purchase-invoices",
-      color: "bg-emerald-100 text-emerald-700",
     },
     {
       title: "Purchase Orders",
       icon: Package,
       link: "/purchase-orders",
-      color: "bg-sky-100 text-sky-700",
     },
     {
       title: "Purchase Register",
       icon: ClipboardList,
       link: "/purchase-register",
-      color: "bg-violet-100 text-violet-700",
     },
     {
       title: "Inventory Items",
       icon: Boxes,
       link: "/inventory-items",
-      color: "bg-stone-100 text-stone-700",
     },
     {
       title: "Add Stock",
       icon: PlusCircle,
       link: "/add-stock",
-      color: "bg-lime-100 text-lime-700",
     },
     {
       title: "Stock Dashboard",
       icon: BarChart,
       link: "/stock-dashboard",
-      color: "bg-fuchsia-100 text-fuchsia-700",
     },
   ];
 
-  // ─── Stats Cards ────────────────────────────────────────
+  // ─── Stats Cards (theme colours) ────────────────────────────────────────
   const stats = [
     {
       label: "Income (This Month)",
       value: incomeLoading ? "..." : `₹${incomeTotal.toLocaleString("en-IN")}`,
       icon: TrendingUp,
-      color: "text-green-600",
+      color: "text-accent",
     },
     {
       label: "Expenses (This Month)",
       value: expenseLoading ? "..." : `₹${expenseTotal.toLocaleString("en-IN")}`,
       icon: TrendingDown,
-      color: "text-red-600",
+      color: "text-primary-dark",
     },
     {
       label: "Profit / Loss",
       value: expenseLoading || incomeLoading ? "..." : `₹${profit.toLocaleString("en-IN")}`,
       icon: IndianRupee,
-      color: profit >= 0 ? "text-green-600" : "text-red-600",
+      color: profit >= 0 ? "text-accent" : "text-primary-dark",
     },
     {
       label: "Pending Invoices",
@@ -304,13 +283,13 @@ export default function AccountingHub() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
         <div>
           <h1
-            className="text-3xl"
-            style={{ fontFamily: headingFont, color: primaryColor }}
+            className="text-3xl text-primary"
+            style={{ fontFamily: headingFont }}
           >
             Accounting Hub
           </h1>
           <p
-            className="text-sm text-secondary-dark mt-1"
+            className="text-sm text-primary-dark mt-1"
             style={{ fontFamily: bodyFont }}
           >
             Complete financial management – sales, purchases, inventory & reports
@@ -332,11 +311,11 @@ export default function AccountingHub() {
         {stats.map((stat, idx) => (
           <div
             key={idx}
-            className="bg-white rounded-xl shadow-sm p-5 border border-secondary-light"
+            className="bg-white rounded-xl shadow-sm p-5 border border-primary-bg"
           >
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-secondary-light" style={{ fontFamily: bodyFont }}>
+                <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
                   {stat.label}
                 </p>
                 <p
@@ -355,8 +334,8 @@ export default function AccountingHub() {
       {/* Quick Actions Grid */}
       <div className="mb-6">
         <h2
-          className="text-lg font-semibold mb-3"
-          style={{ fontFamily: headingFont, color: primaryColor }}
+          className="text-lg font-semibold text-primary mb-3"
+          style={{ fontFamily: headingFont }}
         >
           Quick Actions
         </h2>
@@ -365,16 +344,14 @@ export default function AccountingHub() {
             <Link
               key={action.title}
               to={action.link}
-              className="bg-white rounded-xl shadow-sm border border-secondary-light p-4 hover:shadow-md transition hover:border-primary group"
+              className="bg-white rounded-xl shadow-sm border border-primary-bg p-4 hover:shadow-md transition hover:border-primary group"
             >
               <div className="flex flex-col items-center text-center">
-                <div
-                  className={`p-3 rounded-full ${action.color} mb-2 group-hover:scale-105 transition`}
-                >
+                <div className="p-3 rounded-full bg-primary-bg text-primary mb-2 group-hover:scale-105 transition">
                   <action.icon size={20} />
                 </div>
                 <span
-                  className="text-sm font-medium text-secondary-dark"
+                  className="text-sm font-medium text-primary-dark"
                   style={{ fontFamily: bodyFont }}
                 >
                   {action.title}
@@ -388,11 +365,11 @@ export default function AccountingHub() {
       {/* Two-column: Recent Invoices + Recent Receipts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Invoices */}
-        <div className="bg-white rounded-xl shadow-sm border border-secondary-light overflow-hidden">
-          <div className="px-5 py-3 border-b border-secondary-light flex items-center justify-between">
+        <div className="bg-white rounded-xl shadow-sm border border-primary-bg overflow-hidden">
+          <div className="px-5 py-3 border-b border-primary-bg flex items-center justify-between">
             <h3
-              className="font-semibold"
-              style={{ fontFamily: headingFont, color: primaryColor }}
+              className="font-semibold text-primary"
+              style={{ fontFamily: headingFont }}
             >
               Recent Invoices
             </h3>
@@ -405,22 +382,22 @@ export default function AccountingHub() {
           </div>
           <div className="p-3 max-h-72 overflow-y-auto">
             {recentInvoicesLoading ? (
-              <div className="text-center py-4 text-secondary">Loading...</div>
+              <div className="text-center py-4 text-primary-dark">Loading...</div>
             ) : recentInvoices.length === 0 ? (
-              <div className="text-center py-4 text-secondary">No invoices yet.</div>
+              <div className="text-center py-4 text-primary-dark">No invoices yet.</div>
             ) : (
               <div className="space-y-3">
                 {recentInvoices.map((inv) => (
                   <div
                     key={inv.id}
-                    className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                    className="flex items-center justify-between p-2 bg-primary-bg rounded-lg"
                   >
                     <div className="flex-1">
                       <p className="text-sm font-medium">{inv.invoice_number}</p>
-                      <p className="text-xs text-secondary">
+                      <p className="text-xs text-primary-dark">
                         {inv.students?.first_name} {inv.students?.last_name}
                       </p>
-                      <p className="text-xs text-secondary">{inv.invoice_date}</p>
+                      <p className="text-xs text-primary-dark">{inv.invoice_date}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-semibold text-primary">
@@ -429,10 +406,10 @@ export default function AccountingHub() {
                       <span
                         className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                           inv.status === "Final"
-                            ? "bg-green-100 text-green-700"
+                            ? "bg-accent-bg text-accent-dark"
                             : inv.status === "Draft"
-                            ? "bg-gray-100 text-gray-700"
-                            : "bg-blue-100 text-blue-700"
+                            ? "bg-primary-bg text-primary-dark"
+                            : "bg-accent-bg text-accent"
                         }`}
                       >
                         {inv.status}
@@ -446,11 +423,11 @@ export default function AccountingHub() {
         </div>
 
         {/* Recent Receipts */}
-        <div className="bg-white rounded-xl shadow-sm border border-secondary-light overflow-hidden">
-          <div className="px-5 py-3 border-b border-secondary-light flex items-center justify-between">
+        <div className="bg-white rounded-xl shadow-sm border border-primary-bg overflow-hidden">
+          <div className="px-5 py-3 border-b border-primary-bg flex items-center justify-between">
             <h3
-              className="font-semibold"
-              style={{ fontFamily: headingFont, color: primaryColor }}
+              className="font-semibold text-primary"
+              style={{ fontFamily: headingFont }}
             >
               Recent Receipts
             </h3>
@@ -463,25 +440,25 @@ export default function AccountingHub() {
           </div>
           <div className="p-3 max-h-72 overflow-y-auto">
             {recentReceiptsLoading ? (
-              <div className="text-center py-4 text-secondary">Loading...</div>
+              <div className="text-center py-4 text-primary-dark">Loading...</div>
             ) : recentReceipts.length === 0 ? (
-              <div className="text-center py-4 text-secondary">No receipts yet.</div>
+              <div className="text-center py-4 text-primary-dark">No receipts yet.</div>
             ) : (
               <div className="space-y-3">
                 {recentReceipts.map((rec) => (
                   <div
                     key={rec.id}
-                    className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                    className="flex items-center justify-between p-2 bg-primary-bg rounded-lg"
                   >
                     <div className="flex-1">
                       <p className="text-sm font-medium">{rec.receipt_no}</p>
-                      <p className="text-xs text-secondary">
+                      <p className="text-xs text-primary-dark">
                         {rec.students?.first_name} {rec.students?.last_name}
                       </p>
-                      <p className="text-xs text-secondary">{rec.receipt_date}</p>
+                      <p className="text-xs text-primary-dark">{rec.receipt_date}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-semibold text-green-700">
+                      <p className="text-sm font-semibold text-accent-dark">
                         ₹{Number(rec.amount).toLocaleString("en-IN")}
                       </p>
                     </div>

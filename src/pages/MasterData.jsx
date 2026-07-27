@@ -67,7 +67,6 @@ const tabs = [
     label: "Courses",
     icon: <BookOutlined />,
     queryKey: "courses",
-    // queryFn uses organizationId, not branchId
     queryFn: ({ search, organizationId, financialYearId }) =>
       courseService.getCourses({ filters: { search }, organizationId, financialYearId }),
     columns: [
@@ -79,7 +78,6 @@ const tabs = [
     createService: courseService.createCourse,
     updateService: courseService.updateCourse,
     deleteService: courseService.deleteCourse,
-    // getContext returns organization-based context for courses
     getContext: ({ organizationId, financialYearId }) => ({
       organizationId,
       financialYearId,
@@ -266,7 +264,6 @@ export default function MasterData() {
   // ── Get the context for the current tab ──
   const getTabContext = () => {
     if (!currentTab) return {};
-    // For courses, use organizationId, otherwise use branchId
     return currentTab.getContext({ organizationId, branchId, financialYearId });
   };
 
@@ -354,9 +351,9 @@ export default function MasterData() {
     <div className="flex flex-col lg:flex-row gap-4 h-full">
       {/* ── Desktop sidebar ── */}
       <div className="hidden lg:block lg:w-[220px] lg:flex-shrink-0">
-        <div className="sticky top-0 bg-white border-r border-gray-200 h-full">
+        <div className="sticky top-0 bg-white dark:bg-accent border-r border-gray-200 dark:border-gray-700 h-full">
           <div style={{ padding: "16px 0" }}>
-            <Title level={5} style={{ paddingLeft: 24, marginBottom: 8 }}>
+            <Title level={5} className="text-primary font-heading" style={{ paddingLeft: 24, marginBottom: 8 }}>
               Master Data
             </Title>
           </div>
@@ -387,15 +384,15 @@ export default function MasterData() {
               </span>
             ),
           }))}
-          tabBarStyle={{ marginBottom: 12 }}
+          tabBarStyle={{ marginBottom: 12, background: 'var(--color-primary-bg)', borderBottom: '1px solid var(--color-primary-light)' }}
           size="small"
         />
       </div>
 
       {/* ── Content ── */}
-      <div className="flex-1 bg-white p-4 sm:p-6 rounded-xl shadow-sm min-h-[400px]">
+      <div className="flex-1 bg-white dark:bg-accent p-4 sm:p-6 rounded-xl shadow-sm min-h-[400px]">
         <div className="mb-4">
-          <Title level={4} className="text-lg sm:text-xl">
+          <Title level={4} className="text-lg sm:text-xl text-primary font-heading">
             {currentTab?.label}
           </Title>
         </div>

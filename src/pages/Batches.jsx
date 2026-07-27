@@ -31,13 +31,18 @@ import {
   getMediumOptions,
 } from "../services/batchService";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";
 
 export default function Batches() {
   const queryClient = useQueryClient();
   const { branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({
@@ -264,14 +269,14 @@ export default function Batches() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1
-            className="text-2xl sm:text-3xl font-bold"
-            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+            className="text-2xl sm:text-3xl font-bold text-primary"
+            style={{ fontFamily: headingFont }}
           >
             Batches
           </h1>
           <p
-            className="text-sm text-gray-600 dark:text-gray-400 mt-1"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="text-sm text-primary-dark mt-1"
+            style={{ fontFamily: bodyFont }}
           >
             Manage course batches
           </p>
@@ -280,21 +285,21 @@ export default function Batches() {
           <button
             onClick={() => setShowForm(true)}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
-            style={{ fontFamily: "var(--font-body)" }}
+            style={{ fontFamily: bodyFont }}
           >
             <Plus size={18} /> Add Batch
           </button>
           <button
             onClick={handleCSVExport}
-            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-primary text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+            style={{ fontFamily: bodyFont }}
           >
             <Download size={18} /> Export
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-primary text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+            style={{ fontFamily: bodyFont }}
           >
             <Upload size={18} /> Import
           </button>
@@ -311,20 +316,20 @@ export default function Batches() {
       {/* Search & Filter Toggle */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-dark/60" />
           <input
             type="text"
             placeholder="Search by batch name..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-primary text-gray-900 dark:text-gray-100 rounded-lg pl-10 pr-4 py-2.5 text-sm"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="w-full border border-primary-bg bg-white text-primary-dark rounded-lg pl-10 pr-4 py-2.5 text-sm"
+            style={{ fontFamily: bodyFont }}
           />
         </div>
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-primary text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-          style={{ fontFamily: "var(--font-body)" }}
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+          style={{ fontFamily: bodyFont }}
         >
           <Filter size={18} /> Filters {showFilters && <X size={16} />}
         </button>
@@ -332,15 +337,15 @@ export default function Batches() {
 
       {/* Advanced Filters */}
       {showFilters && (
-        <div className="bg-white dark:bg-primary rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-primary-bg grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <div>
-            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+            <label className="text-xs font-medium text-primary-dark mb-1 block" style={{ fontFamily: bodyFont }}>
               Course
             </label>
             <select
               value={filters.course_id}
               onChange={(e) => setFilters((prev) => ({ ...prev, course_id: e.target.value }))}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm"
             >
               <option value="">All Courses</option>
               {courses.map((c) => (
@@ -349,13 +354,13 @@ export default function Batches() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+            <label className="text-xs font-medium text-primary-dark mb-1 block" style={{ fontFamily: bodyFont }}>
               Teacher
             </label>
             <select
               value={filters.teacher_id}
               onChange={(e) => setFilters((prev) => ({ ...prev, teacher_id: e.target.value }))}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm"
             >
               <option value="">All Teachers</option>
               {teachers.map((t) => (
@@ -364,13 +369,13 @@ export default function Batches() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+            <label className="text-xs font-medium text-primary-dark mb-1 block" style={{ fontFamily: bodyFont }}>
               Medium
             </label>
             <select
               value={filters.medium_id}
               onChange={(e) => setFilters((prev) => ({ ...prev, medium_id: e.target.value }))}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm"
             >
               <option value="">All Mediums</option>
               {mediums.map((m) => (
@@ -379,13 +384,13 @@ export default function Batches() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+            <label className="text-xs font-medium text-primary-dark mb-1 block" style={{ fontFamily: bodyFont }}>
               Status
             </label>
             <select
               value={filters.status}
               onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm"
             >
               <option value="">All Statuses</option>
               <option value="active">Active</option>
@@ -399,7 +404,7 @@ export default function Batches() {
                 setFilters({ course_id: "", teacher_id: "", status: "", medium_id: "" });
               }}
               className="text-sm text-primary hover:underline"
-              style={{ fontFamily: "var(--font-body)" }}
+              style={{ fontFamily: bodyFont }}
             >
               Clear Filters
             </button>
@@ -408,31 +413,31 @@ export default function Batches() {
       )}
 
       {/* Batches Table */}
-      <div className="bg-white dark:bg-primary rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-primary-bg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px]">
-            <thead className="bg-gray-50 dark:bg-gray-700">
+            <thead className="bg-primary-bg">
               <tr>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Batch</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Course</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Medium</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Teacher</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Schedule</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Capacity</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">Batch</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">Course</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">Medium</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">Teacher</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">Schedule</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">Capacity</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">Status</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="divide-y divide-primary-bg">
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="p-6 text-center text-gray-500 dark:text-gray-400">Loading batches…</td>
+                  <td colSpan={8} className="p-6 text-center text-primary-dark/60">Loading batches…</td>
                 </tr>
               ) : batches.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-6 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={8} className="p-6 text-center text-primary-dark/60">
                     <div className="flex flex-col items-center gap-2">
-                      <Layers size={32} className="text-gray-400 dark:text-gray-500" />
+                      <Layers size={32} className="text-primary-dark/40" />
                       <span>No batches found</span>
                     </div>
                   </td>
@@ -441,35 +446,35 @@ export default function Batches() {
                 batches.map((batch) => (
                   <tr
                     key={batch.id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    className="hover:bg-primary-bg transition-colors"
                   >
-                    <td className="p-3 text-sm font-medium text-gray-800 dark:text-gray-100">
+                    <td className="p-3 text-sm font-medium text-primary">
                       {batch.batch_name}
                     </td>
-                    <td className="text-sm text-gray-700 dark:text-gray-300">
+                    <td className="text-sm text-primary-dark">
                       {batch.courses?.course_name || "-"}
                     </td>
-                    <td className="text-sm text-gray-700 dark:text-gray-300">
+                    <td className="text-sm text-primary-dark">
                       {batch.medium_name || "-"}
                     </td>
-                    <td className="text-sm text-gray-700 dark:text-gray-300">
+                    <td className="text-sm text-primary-dark">
                       {teacherMap[batch.id] || "-"}
                     </td>
-                    <td className="text-sm text-gray-700 dark:text-gray-300">
+                    <td className="text-sm text-primary-dark">
                       <div>{batch.start_time} - {batch.end_time}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                      <div className="text-xs text-primary-dark/60">
                         {batch.start_date} → {batch.end_date}
                       </div>
                     </td>
-                    <td className="text-sm text-gray-700 dark:text-gray-300">
+                    <td className="text-sm text-primary-dark">
                       {batch.capacity || "-"}
                     </td>
                     <td className="text-sm">
                       <span
                         className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                           batch.status === "active"
-                            ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200"
-                            : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+                            ? "bg-primary-bg text-primary-dark"
+                            : "bg-primary-bg/50 text-primary-dark/70"
                         }`}
                       >
                         {batch.status}
@@ -477,10 +482,10 @@ export default function Batches() {
                     </td>
                     <td className="text-sm">
                       <div className="flex gap-2">
-                        <button onClick={() => setEditing(batch)} className="text-blue-600 hover:underline">
+                        <button onClick={() => setEditing(batch)} className="text-primary hover:underline">
                           <Edit3 size={15} />
                         </button>
-                        <button onClick={() => handleDelete(batch.id)} className="text-red-600 hover:underline">
+                        <button onClick={() => handleDelete(batch.id)} className="text-accent hover:underline">
                           <Trash2 size={15} />
                         </button>
                       </div>
@@ -499,7 +504,7 @@ export default function Batches() {
             onClick={() => fetchNextPage()}
             disabled={isFetchingNextPage}
             className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-60"
-            style={{ fontFamily: "var(--font-body)" }}
+            style={{ fontFamily: bodyFont }}
           >
             {isFetchingNextPage ? "Loading more…" : "Load More"}
           </button>

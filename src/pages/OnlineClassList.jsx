@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // 👈 import theme
 import BackButton from "../components/BackButton";
 import toast from "react-hot-toast";
 import {
@@ -29,9 +30,10 @@ export default function OnlineClassList() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingClass, setEditingClass] = useState(null);
-  const [sendingReminder, setSendingReminder] = useState(null); // track class id
+  const [sendingReminder, setSendingReminder] = useState(null);
 
   const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme(); // 👈 get theme colours
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -77,13 +79,17 @@ export default function OnlineClassList() {
         return;
       }
 
-      // Build HTML table rows
+      // Build HTML table rows using theme colors
       let tableRows = classes.map((cls) => {
         const teacherName = cls.teacher ? `${cls.teacher.first_name || ''} ${cls.teacher.last_name || ''}`.trim() : '—';
-        const statusColor = cls.status === "live" ? "#2e7d32" :
-                            cls.status === "scheduled" ? "#1565C0" : "#757575";
-        const statusBg = cls.status === "live" ? "#e8f5e9" :
-                         cls.status === "scheduled" ? "#e3f2fd" : "#f5f5f5";
+        const statusColor =
+          cls.status === "live" ? theme.accent_color || "#2e7d32" :
+          cls.status === "scheduled" ? theme.primary_color || "#1565C0" :
+          "#757575";
+        const statusBg =
+          cls.status === "live" ? theme.accent_light_color || "#e8f5e9" :
+          cls.status === "scheduled" ? theme.primary_light_color || "#e3f2fd" :
+          "#f5f5f5";
 
         return `
           <tr>
@@ -101,13 +107,13 @@ export default function OnlineClassList() {
 
       const htmlBody = `
         <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
-          <h2 style="color:#0D47A1;">Online Classes Report</h2>
+          <h2 style="color:${theme.primary_color};">Online Classes Report</h2>
           <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
           <p><strong>Filters:</strong> Status: ${filterStatus} | Search: ${search || 'None'}</p>
           <p><strong>Total Classes:</strong> ${classes.length}</p>
           <hr />
           <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
-            <thead style="background:#e3f2fd;">
+            <thead style="background:${theme.primary_light_color || '#e3f2fd'};">
               <tr>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Title</th>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Batch</th>
@@ -129,7 +135,6 @@ export default function OnlineClassList() {
         to: adminEmails,
         subject: `Online Classes Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-       // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");
@@ -139,12 +144,11 @@ export default function OnlineClassList() {
     }
   };
 
-  // ─── Send class reminder to students ───────────────────────────────
+  // ─── Send class reminder to students (unchanged) ─────────────────
   const sendClassReminder = async (cls) => {
     try {
       setSendingReminder(cls.id);
 
-      // 1. Fetch active students in the batch
       let studentQuery = supabase
         .from("student_batches")
         .select("student_id, students(first_name, last_name, email)")
@@ -162,13 +166,11 @@ export default function OnlineClassList() {
         return;
       }
 
-      // 2. Send email to each student (or parent)
       let sentCount = 0;
       for (const sb of studentBatches) {
         const student = sb.students;
         let recipientEmail = student.email;
 
-        // Try to find parent email
         const { data: parent, error: parentError } = await supabase
           .from("student_parents")
           .select("parents!inner(email)")
@@ -186,7 +188,7 @@ export default function OnlineClassList() {
           title: cls.title,
           start_time: new Date(cls.start_time).toLocaleString(),
           duration: cls.duration_minutes || '30',
-          room_link: `https://your-meeting-link.com/${cls.room_name || ''}`, // adjust as needed
+          room_link: `https://your-meeting-link.com/${cls.room_name || ''}`,
         };
 
         await sendTemplateEmail({
@@ -351,10 +353,10 @@ export default function OnlineClassList() {
   // ─── Helpers ─────────────────────────────────────────────────────────
   const getStatusColor = (status) => {
     switch (status) {
-      case "scheduled": return "bg-blue-100 text-blue-800";
-      case "live": return "bg-green-100 text-green-800 animate-pulse";
-      case "ended": return "bg-gray-100 text-gray-600";
-      default: return "bg-gray-100 text-gray-600";
+      case "scheduled": return "bg-primary-bg text-primary dark:bg-primary-dark dark:text-primary-light";
+      case "live": return "bg-accent-bg text-accent dark:bg-accent dark:text-accent-light animate-pulse";
+      case "ended": return "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400";
+      default: return "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400";
     }
   };
 
@@ -383,21 +385,21 @@ export default function OnlineClassList() {
 
   // ─── Render ─────────────────────────────────────────────────────────
   return (
-    <>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
       <BackButton to="/communication-hub" label="Communication" />
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
-          <h1 className="text-3xl font-righteous text-primary-dark">Online Classes</h1>
-          <p className="text-sm text-secondary-dark font-montserrat mt-1">
+          <h1 className="text-3xl font-heading text-primary-dark">Online Classes</h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400 font-body mt-1">
             Schedule and join live virtual sessions
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {/* 👇 Send Report button */}
+          {/* Send Report button */}
           <button
             onClick={sendReportEmail}
             disabled={classes.length === 0}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2 disabled:opacity-50"
+            className="bg-primary hover:bg-primary-dark text-white px-4 py-2.5 rounded-lg transition font-body text-sm flex items-center gap-2 disabled:opacity-50"
           >
             <Mail size={18} /> Send Report
           </button>
@@ -405,7 +407,7 @@ export default function OnlineClassList() {
             <>
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+                className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-body text-sm flex items-center gap-2"
               >
                 <Plus size={18} /> Create Class
               </button>
@@ -413,7 +415,7 @@ export default function OnlineClassList() {
                 <button
                   onClick={handleCleanup}
                   disabled={cleanupMutation.isPending}
-                  className="border border-red-300 text-red-600 hover:bg-red-50 px-4 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2 disabled:opacity-50"
+                  className="border border-accent-dark text-accent-dark hover:bg-accent-bg px-4 py-2.5 rounded-lg transition font-body text-sm flex items-center gap-2 disabled:opacity-50"
                   title="Delete ended classes older than 7 days"
                 >
                   <Trash size={16} />
@@ -425,7 +427,7 @@ export default function OnlineClassList() {
           <button
             onClick={() => refetch()}
             disabled={isLoading}
-            className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2 disabled:opacity-50"
+            className="border border-gray-300 dark:border-gray-600 px-4 py-2.5 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 font-body text-sm flex items-center gap-2 disabled:opacity-50"
           >
             <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
             Refresh
@@ -437,21 +439,21 @@ export default function OnlineClassList() {
         <div className="relative flex-1 max-w-md">
           <Search
             size={18}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
           />
           <input
             type="text"
             placeholder="Search by title..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-secondary-light rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none placeholder-gray-400 dark:placeholder-gray-500"
           />
         </div>
         <div>
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="border border-secondary-light rounded-lg px-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
           >
             <option value="all">All Status</option>
             <option value="scheduled">Scheduled</option>
@@ -461,32 +463,32 @@ export default function OnlineClassList() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-accent rounded-xl shadow-sm overflow-hidden border border-gray-200 dark:border-gray-700">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px]">
-            <thead className="bg-slate-100 border-b border-secondary-light">
+            <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <tr>
-                <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Title</th>
-                <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Batch</th>
-                <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Teacher</th>
-                <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Start Time</th>
-                <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Duration</th>
-                <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Status</th>
-                <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Actions</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Title</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Batch</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Teacher</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Start Time</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Duration</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {isLoading ? (
-                <tr><td colSpan={7} className="p-6 text-center text-secondary">Loading...</td></tr>
+                <tr><td colSpan={7} className="p-6 text-center text-gray-500 dark:text-gray-400">Loading...</td></tr>
               ) : error ? (
-                <tr><td colSpan={7} className="p-6 text-center text-red-500">Error: {error.message}</td></tr>
+                <tr><td colSpan={7} className="p-6 text-center text-accent-dark">Error: {error.message}</td></tr>
               ) : classes.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-6 text-center text-secondary">
+                  <td colSpan={7} className="p-6 text-center text-gray-500 dark:text-gray-400">
                     <div className="flex flex-col items-center gap-2">
-                      <Video size={32} className="text-secondary-light" />
+                      <Video size={32} className="text-gray-400 dark:text-gray-500" />
                       <span>No online classes found</span>
-                      <span className="text-xs text-secondary-light">
+                      <span className="text-xs text-gray-400 dark:text-gray-500">
                         {search || filterStatus !== "all"
                           ? "Try adjusting your filters"
                           : (isAdmin || isTeacher)
@@ -506,14 +508,14 @@ export default function OnlineClassList() {
                   const canStart = (isAdmin || (isTeacher && cls.teacher_id === profile?.id)) && isScheduled;
 
                   return (
-                    <tr key={cls.id} className={`border-b border-secondary-light hover:bg-primary-bg transition ${isLive ? "bg-green-50/50" : ""}`}>
-                      <td className="p-3 text-sm font-medium">{cls.title}</td>
-                      <td className="p-3 text-sm">{cls.batch?.batch_name || "—"}</td>
-                      <td className="p-3 text-sm">
+                    <tr key={cls.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700 transition ${isLive ? "bg-accent-bg/30" : ""}`}>
+                      <td className="p-3 text-sm font-medium text-gray-800 dark:text-gray-100">{cls.title}</td>
+                      <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{cls.batch?.batch_name || "—"}</td>
+                      <td className="p-3 text-sm text-gray-700 dark:text-gray-200">
                         {cls.teacher ? `${cls.teacher.first_name} ${cls.teacher.last_name}` : "—"}
                       </td>
-                      <td className="p-3 text-sm">{new Date(cls.start_time).toLocaleString()}</td>
-                      <td className="p-3 text-sm">{cls.duration_minutes || "—"} min</td>
+                      <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{new Date(cls.start_time).toLocaleString()}</td>
+                      <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{cls.duration_minutes || "—"} min</td>
                       <td className="p-3 text-sm">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(cls.status)}`}>
                           {cls.status}
@@ -524,7 +526,7 @@ export default function OnlineClassList() {
                           {canJoin && (
                             <button
                               onClick={() => navigate(`/online-classes/join/${cls.id}`)}
-                              className="text-green-600 hover:underline flex items-center gap-1"
+                              className="text-accent hover:underline flex items-center gap-1"
                             >
                               <Video size={15} /> Join
                             </button>
@@ -532,18 +534,17 @@ export default function OnlineClassList() {
                           {canStart && (
                             <button
                               onClick={() => startClassMutation.mutate(cls.id)}
-                              className="text-blue-600 hover:underline flex items-center gap-1"
+                              className="text-primary hover:underline flex items-center gap-1"
                               title="Start Class"
                             >
                               <Play size={15} /> Start
                             </button>
                           )}
-                          {/* 👇 Send Reminder button (mail icon) */}
                           {(isAdmin || (isTeacher && cls.teacher_id === profile?.id)) && (
                             <button
                               onClick={() => sendClassReminder(cls)}
                               disabled={sendingReminder === cls.id}
-                              className="text-purple-600 hover:underline flex items-center gap-1 disabled:opacity-50"
+                              className="text-primary-light hover:underline flex items-center gap-1 disabled:opacity-50"
                               title="Send reminder to students"
                             >
                               <Mail size={15} />
@@ -553,7 +554,7 @@ export default function OnlineClassList() {
                           {canEdit && (
                             <button
                               onClick={() => handleEdit(cls)}
-                              className="text-blue-600 hover:underline flex items-center gap-1"
+                              className="text-primary hover:underline flex items-center gap-1"
                             >
                               <Edit size={15} />
                             </button>
@@ -565,7 +566,7 @@ export default function OnlineClassList() {
                                   deleteMutation.mutate(cls.id);
                                 }
                               }}
-                              className="text-red-600 hover:underline flex items-center gap-1"
+                              className="text-accent-dark hover:underline flex items-center gap-1"
                             >
                               <Trash2 size={15} />
                             </button>
@@ -595,6 +596,6 @@ export default function OnlineClassList() {
         onClose={handleModalClose}
         onSuccess={handleModalSuccess}
       />
-    </>
+    </div>
   );
 }

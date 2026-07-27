@@ -5,7 +5,7 @@ import toast from "react-hot-toast";
 import { Plus, Edit3, Trash2, Search, DollarSign, Printer } from "lucide-react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { supabase } from "../api/supabase";                     // ← direct Supabase
+import { supabase } from "../api/supabase";
 import {
   createBillWiseEntry,
   updateBillWiseEntry,
@@ -13,6 +13,7 @@ import {
   recordBillPayment,
 } from "../services/billWiseService";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";
 
 /* ─── PDF helpers ──────────────────────────────────────────── */
 async function loadImageAsBase64(url) {
@@ -61,8 +62,12 @@ function drawCurrency(doc, amount, x, y, fontSize = 10, align = "left", color = 
 export default function BillWiseEntries() {
   const queryClient = useQueryClient();
   const { org, branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const context = { branchId, financialYearId };
 
@@ -300,19 +305,25 @@ export default function BillWiseEntries() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Bill‑wise Payables / Receivables</h1>
-          <p className="text-sm text-gray-600 mt-1">Track outstanding bills and payments</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+            Bill‑wise Payables / Receivables
+          </h1>
+          <p className="text-sm text-primary-dark mt-1" style={{ fontFamily: bodyFont }}>
+            Track outstanding bills and payments
+          </p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={handlePrintPDF}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: bodyFont }}
           >
             <Printer size={16} /> Print PDF
           </button>
           <button
             onClick={openCreate}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: bodyFont }}
           >
             <Plus size={16} /> Add Bill
           </button>
@@ -322,19 +333,21 @@ export default function BillWiseEntries() {
       {/* Filters */}
       <div className="flex flex-wrap gap-4">
         <div className="relative flex-1 min-w-[200px] max-w-xs">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-dark/60" />
           <input
             type="text"
             placeholder="Search reference or name..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 bg-white text-gray-900 rounded-lg text-sm"
+            className="w-full pl-10 pr-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg text-sm"
+            style={{ fontFamily: bodyFont }}
           />
         </div>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="border border-gray-300 bg-white text-gray-900 rounded-lg px-4 py-2.5 text-sm"
+          className="border border-primary-bg bg-white text-primary-dark rounded-lg px-4 py-2.5 text-sm"
+          style={{ fontFamily: bodyFont }}
         >
           <option value="">All Statuses</option>
           <option value="Pending">Pending</option>
@@ -346,60 +359,60 @@ export default function BillWiseEntries() {
           type="date"
           value={startDate}
           onChange={(e) => setStartDate(e.target.value)}
-          className="border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm"
+          className="border border-primary-bg bg-white text-primary-dark rounded-lg p-2.5 text-sm"
         />
         <input
           type="date"
           value={endDate}
           onChange={(e) => setEndDate(e.target.value)}
-          className="border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm"
+          className="border border-primary-bg bg-white text-primary-dark rounded-lg p-2.5 text-sm"
         />
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-primary-bg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px]">
-            <thead className="bg-gray-50">
+            <thead className="bg-primary-bg">
               <tr>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Bill Date</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Due Date</th>
-                <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Original</th>
-                <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Outstanding</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Reference</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Name</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Bill Date</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Due Date</th>
+                <th className="p-3 text-right text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Original</th>
+                <th className="p-3 text-right text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Outstanding</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Status</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-primary-bg">
               {isLoading ? (
-                <tr><td colSpan={8} className="p-6 text-center text-gray-500">Loading…</td></tr>
+                <tr><td colSpan={8} className="p-6 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>Loading…</td></tr>
               ) : bills.length === 0 ? (
-                <tr><td colSpan={8} className="p-6 text-center text-gray-500">No bills found.</td></tr>
+                <tr><td colSpan={8} className="p-6 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>No bills found.</td></tr>
               ) : (
                 bills.map((bill) => (
-                  <tr key={bill.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="p-3 text-sm font-medium text-gray-900">{bill.reference}</td>
-                    <td className="text-sm text-gray-700">{bill.vendor_customer_name || "—"}</td>
-                    <td className="text-sm text-gray-700">{bill.bill_date}</td>
-                    <td className="text-sm text-gray-700">{bill.due_date || "—"}</td>
-                    <td className="text-sm text-right text-gray-700">₹ {Number(bill.original_amount).toLocaleString("en-IN")}</td>
-                    <td className="text-sm text-right font-medium text-gray-900">₹ {Number(bill.outstanding_amount).toLocaleString("en-IN")}</td>
+                  <tr key={bill.id} className="hover:bg-primary-bg transition-colors">
+                    <td className="p-3 text-sm font-medium text-primary" style={{ fontFamily: headingFont }}>{bill.reference}</td>
+                    <td className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>{bill.vendor_customer_name || "—"}</td>
+                    <td className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>{bill.bill_date}</td>
+                    <td className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>{bill.due_date || "—"}</td>
+                    <td className="text-sm text-right text-primary-dark" style={{ fontFamily: bodyFont }}>₹ {Number(bill.original_amount).toLocaleString("en-IN")}</td>
+                    <td className="text-sm text-right font-medium text-primary" style={{ fontFamily: bodyFont }}>₹ {Number(bill.outstanding_amount).toLocaleString("en-IN")}</td>
                     <td className="text-sm">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        bill.status === "Paid" ? "bg-green-100 text-green-700" :
-                        bill.status === "Partially Paid" ? "bg-yellow-100 text-yellow-700" :
-                        bill.status === "Overdue" ? "bg-red-100 text-red-700" :
-                        "bg-blue-100 text-blue-700"
+                        bill.status === "Paid" ? "bg-primary-bg text-primary-dark" :
+                        bill.status === "Partially Paid" ? "bg-accent-bg text-accent-dark" :
+                        bill.status === "Overdue" ? "bg-accent text-white" :
+                        "bg-primary-bg/50 text-primary-dark"
                       }`}>{bill.status}</span>
                     </td>
                     <td className="text-sm">
                       <div className="flex gap-2">
-                        <button onClick={() => openEdit(bill)} className="text-blue-600 hover:underline"><Edit3 size={15} /></button>
-                        <button onClick={() => { if (window.confirm("Delete?")) deleteMut.mutate(bill.id); }} className="text-red-600 hover:underline"><Trash2 size={15} /></button>
+                        <button onClick={() => openEdit(bill)} className="text-primary hover:underline"><Edit3 size={15} /></button>
+                        <button onClick={() => { if (window.confirm("Delete?")) deleteMut.mutate(bill.id); }} className="text-accent-dark hover:underline"><Trash2 size={15} /></button>
                         {bill.status !== "Paid" && (
-                          <button onClick={() => { setPaymentModal(bill); setPaymentAmount(""); }} className="text-green-600 hover:underline"><DollarSign size={15} /></button>
+                          <button onClick={() => { setPaymentModal(bill); setPaymentAmount(""); }} className="text-accent hover:underline"><DollarSign size={15} /></button>
                         )}
                       </div>
                     </td>
@@ -414,42 +427,44 @@ export default function BillWiseEntries() {
       {/* Add / Edit Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl border border-gray-200">
-            <h2 className="text-xl font-bold mb-4 text-gray-900">{editing ? "Edit Bill" : "Add Bill"}</h2>
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl border border-primary-bg">
+            <h2 className="text-xl font-bold mb-4 text-primary" style={{ fontFamily: headingFont }}>
+              {editing ? "Edit Bill" : "Add Bill"}
+            </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm mb-1 text-gray-700">Reference *</label>
-                <input type="text" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} className="w-full border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm" required />
+                <label className="block text-sm mb-1 text-primary-dark" style={{ fontFamily: bodyFont }}>Reference *</label>
+                <input type="text" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} className="w-full border border-primary-bg bg-white text-primary-dark rounded-lg p-2.5 text-sm" required />
               </div>
               <div>
-                <label className="block text-sm mb-1 text-gray-700">Description</label>
-                <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm" />
+                <label className="block text-sm mb-1 text-primary-dark" style={{ fontFamily: bodyFont }}>Description</label>
+                <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full border border-primary-bg bg-white text-primary-dark rounded-lg p-2.5 text-sm" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm mb-1 text-gray-700">Bill Date *</label>
-                  <input type="date" value={form.bill_date} onChange={(e) => setForm({ ...form, bill_date: e.target.value })} className="w-full border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm" required />
+                  <label className="block text-sm mb-1 text-primary-dark" style={{ fontFamily: bodyFont }}>Bill Date *</label>
+                  <input type="date" value={form.bill_date} onChange={(e) => setForm({ ...form, bill_date: e.target.value })} className="w-full border border-primary-bg bg-white text-primary-dark rounded-lg p-2.5 text-sm" required />
                 </div>
                 <div>
-                  <label className="block text-sm mb-1 text-gray-700">Due Date</label>
-                  <input type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} className="w-full border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm" />
+                  <label className="block text-sm mb-1 text-primary-dark" style={{ fontFamily: bodyFont }}>Due Date</label>
+                  <input type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} className="w-full border border-primary-bg bg-white text-primary-dark rounded-lg p-2.5 text-sm" />
                 </div>
               </div>
               <div>
-                <label className="block text-sm mb-1 text-gray-700">Amount *</label>
-                <input type="number" value={form.original_amount} onChange={(e) => setForm({ ...form, original_amount: e.target.value })} className="w-full border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm" required />
+                <label className="block text-sm mb-1 text-primary-dark" style={{ fontFamily: bodyFont }}>Amount *</label>
+                <input type="number" value={form.original_amount} onChange={(e) => setForm({ ...form, original_amount: e.target.value })} className="w-full border border-primary-bg bg-white text-primary-dark rounded-lg p-2.5 text-sm" required />
               </div>
               <div>
-                <label className="block text-sm mb-1 text-gray-700">Vendor / Student Name</label>
-                <input type="text" value={form.vendor_customer_name} onChange={(e) => setForm({ ...form, vendor_customer_name: e.target.value })} className="w-full border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm" />
+                <label className="block text-sm mb-1 text-primary-dark" style={{ fontFamily: bodyFont }}>Vendor / Student Name</label>
+                <input type="text" value={form.vendor_customer_name} onChange={(e) => setForm({ ...form, vendor_customer_name: e.target.value })} className="w-full border border-primary-bg bg-white text-primary-dark rounded-lg p-2.5 text-sm" />
               </div>
               <div>
-                <label className="block text-sm mb-1 text-gray-700">Contact</label>
-                <input type="text" value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} className="w-full border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm" />
+                <label className="block text-sm mb-1 text-primary-dark" style={{ fontFamily: bodyFont }}>Contact</label>
+                <input type="text" value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} className="w-full border border-primary-bg bg-white text-primary-dark rounded-lg p-2.5 text-sm" />
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setShowForm(false)} className="border border-gray-300 px-4 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors">Cancel</button>
-                <button type="submit" className="bg-primary hover:bg-accent text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">{editing ? "Update" : "Create"}</button>
+                <button type="button" onClick={() => setShowForm(false)} className="border border-primary-bg px-4 py-2 rounded-lg text-sm text-primary-dark hover:bg-primary-bg transition-colors" style={{ fontFamily: bodyFont }}>Cancel</button>
+                <button type="submit" className="bg-primary hover:bg-accent text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors" style={{ fontFamily: bodyFont }}>{editing ? "Update" : "Create"}</button>
               </div>
             </form>
           </div>
@@ -459,20 +474,20 @@ export default function BillWiseEntries() {
       {/* Payment Modal */}
       {paymentModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-sm w-full p-6 shadow-xl border border-gray-200">
-            <h2 className="text-xl font-bold mb-4 text-gray-900">Record Payment</h2>
-            <p className="text-sm text-gray-700 mb-2">Bill: {paymentModal.reference}</p>
-            <p className="text-sm text-gray-700 mb-4">Outstanding: ₹ {Number(paymentModal.outstanding_amount).toLocaleString("en-IN")}</p>
+          <div className="bg-white rounded-xl max-w-sm w-full p-6 shadow-xl border border-primary-bg">
+            <h2 className="text-xl font-bold mb-4 text-primary" style={{ fontFamily: headingFont }}>Record Payment</h2>
+            <p className="text-sm text-primary-dark mb-2" style={{ fontFamily: bodyFont }}>Bill: {paymentModal.reference}</p>
+            <p className="text-sm text-primary-dark mb-4" style={{ fontFamily: bodyFont }}>Outstanding: ₹ {Number(paymentModal.outstanding_amount).toLocaleString("en-IN")}</p>
             <input
               type="number"
               value={paymentAmount}
               onChange={(e) => setPaymentAmount(e.target.value)}
               placeholder="Payment amount"
-              className="w-full border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm mb-4"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded-lg p-2.5 text-sm mb-4"
             />
             <div className="flex justify-end gap-3">
-              <button onClick={() => setPaymentModal(null)} className="border border-gray-300 px-4 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors">Cancel</button>
-              <button onClick={handlePayment} className="bg-primary hover:bg-accent text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">Record Payment</button>
+              <button onClick={() => setPaymentModal(null)} className="border border-primary-bg px-4 py-2 rounded-lg text-sm text-primary-dark hover:bg-primary-bg transition-colors" style={{ fontFamily: bodyFont }}>Cancel</button>
+              <button onClick={handlePayment} className="bg-primary hover:bg-accent text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors" style={{ fontFamily: bodyFont }}>Record Payment</button>
             </div>
           </div>
         </div>

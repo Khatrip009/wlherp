@@ -2,7 +2,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
-import { generateProfitLossPdf } from "../utils/profitLossPdf"; // ✅ only one import
+import { generateProfitLossPdf } from "../utils/profitLossPdf";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -10,6 +10,7 @@ import {
 
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // ✅ dynamic theme
 
 /* ─── Group config (parent IDs from YOUR chart) ─────────────── */
 const GROUP_CONFIG = {
@@ -29,8 +30,13 @@ export default function ProfitLoss() {
   const [endDate, setEndDate] = useState(today);
 
   const { org, branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme(); // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
+  const primaryColor = theme?.primary_color || "#0D47A1";
 
   /* ─── Data fetching ──────────── */
   const { data: accounts = [], isLoading } = useQuery({
@@ -179,11 +185,17 @@ export default function ProfitLoss() {
   return (
     <>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-righteous text-gray-900">Profit & Loss Statement</h1>
+        <h1
+          className="text-3xl font-bold text-primary"
+          style={{ fontFamily: headingFont }}
+        >
+          Profit & Loss Statement
+        </h1>
         <div className="flex gap-2">
           <button
             onClick={handlePrintPDF}
-            className="bg-gray-900 hover:bg-accent text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition"
+            className="bg-primary hover:bg-accent text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition"
+            style={{ fontFamily: bodyFont }}
           >
             <Printer size={16} /> Print PDF
           </button>
@@ -192,23 +204,23 @@ export default function ProfitLoss() {
 
       <div className="flex flex-wrap gap-4 mb-6">
         <div>
-          <label className="text-sm font-medium mr-2">From:</label>
-          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border rounded p-2 text-sm" />
+          <label className="text-sm font-medium mr-2 text-primary-dark" style={{ fontFamily: bodyFont }}>From:</label>
+          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-primary-bg rounded p-2 text-sm text-primary-dark bg-white" />
         </div>
         <div>
-          <label className="text-sm font-medium mr-2">To:</label>
-          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border rounded p-2 text-sm" />
+          <label className="text-sm font-medium mr-2 text-primary-dark" style={{ fontFamily: bodyFont }}>To:</label>
+          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-primary-bg rounded p-2 text-sm text-primary-dark bg-white" />
         </div>
       </div>
 
       {isLoading ? (
-        <p className="text-center py-8">Loading…</p>
+        <p className="text-center py-8 text-primary-dark/60" style={{ fontFamily: bodyFont }}>Loading…</p>
       ) : (
         <>
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <div className="bg-white rounded-xl p-5 shadow-sm border">
-              <h3 className="font-semibold text-gray-900 mb-4">Income vs Expenses</h3>
+            <div className="bg-white rounded-xl p-5 shadow-sm border border-primary-bg">
+              <h3 className="font-semibold text-primary mb-4" style={{ fontFamily: headingFont }}>Income vs Expenses</h3>
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={incomeVsExpenseData}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -216,14 +228,14 @@ export default function ProfitLoss() {
                   <YAxis />
                   <Tooltip />
                   <Legend />
-                  <Bar dataKey="value" fill="#0D47A1" name="Amount" />
+                  <Bar dataKey="value" fill={primaryColor} name="Amount" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <div className="bg-white rounded-xl p-5 shadow-sm border">
-              <h3 className="font-semibold text-gray-900 mb-4">Expense Breakdown</h3>
+            <div className="bg-white rounded-xl p-5 shadow-sm border border-primary-bg">
+              <h3 className="font-semibold text-primary mb-4" style={{ fontFamily: headingFont }}>Expense Breakdown</h3>
               {expenseBreakdown.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-10">No expenses recorded</p>
+                <p className="text-sm text-primary-dark/60 text-center py-10" style={{ fontFamily: bodyFont }}>No expenses recorded</p>
               ) : (
                 <ResponsiveContainer width="100%" height={250}>
                   <PieChart>
@@ -242,46 +254,52 @@ export default function ProfitLoss() {
           </div>
 
           {/* Tables */}
-          <div className="bg-white rounded-xl p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-green-700 mb-4 border-b pb-2">Income</h2>
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-primary-bg">
+            <h2 className="text-xl font-semibold text-primary mb-4 border-b border-primary-bg pb-2" style={{ fontFamily: headingFont }}>Income</h2>
             {Object.entries(groups).filter(([name]) => name.toLowerCase().includes("income")).map(([name, group]) => (
               <div key={name} className="mb-4">
-                <h3 className="font-bold text-sm text-gray-900 mb-2">{name}</h3>
-                <table className="w-full text-sm border">
-                  <thead><tr className="bg-slate-50"><th className="p-2 text-left border">Account</th><th className="p-2 text-right border w-32">Amount</th></tr></thead>
+                <h3 className="font-bold text-sm text-primary-dark mb-2" style={{ fontFamily: headingFont }}>{name}</h3>
+                <table className="w-full text-sm border border-primary-bg">
+                  <thead><tr className="bg-primary-bg"><th className="p-2 text-left border border-primary-bg text-primary-dark" style={{ fontFamily: bodyFont }}>Account</th><th className="p-2 text-right border border-primary-bg w-32 text-primary-dark" style={{ fontFamily: bodyFont }}>Amount</th></tr></thead>
                   <tbody>
                     {group.items.map(item => (
-                      <tr key={item.account_code}><td className="p-2 border">{item.account_name}</td><td className="p-2 border text-right">{formatCurrency(item.balance)}</td></tr>
+                      <tr key={item.account_code}><td className="p-2 border border-primary-bg text-primary-dark" style={{ fontFamily: bodyFont }}>{item.account_name}</td><td className="p-2 border border-primary-bg text-right text-primary-dark" style={{ fontFamily: bodyFont }}>{formatCurrency(item.balance)}</td></tr>
                     ))}
-                    <tr className="font-bold bg-green-50"><td className="p-2 border">Total {name}</td><td className="p-2 border text-right">{formatCurrency(group.total)}</td></tr>
+                    <tr className="font-bold bg-primary-bg"><td className="p-2 border border-primary-bg text-primary-dark" style={{ fontFamily: bodyFont }}>Total {name}</td><td className="p-2 border border-primary-bg text-right text-primary-dark" style={{ fontFamily: bodyFont }}>{formatCurrency(group.total)}</td></tr>
                   </tbody>
                 </table>
               </div>
             ))}
-            <div className="text-lg font-bold border-t-2 border-green-700 pt-3 mt-4 mb-8">Total Income: {formatCurrency(totalIncome)}</div>
+            <div className="text-lg font-bold border-t-2 border-primary pt-3 mt-4 mb-8 text-primary" style={{ fontFamily: headingFont }}>Total Income: {formatCurrency(totalIncome)}</div>
 
-            <h2 className="text-xl font-semibold text-red-700 mb-4 border-b pb-2">Expenses</h2>
+            <h2 className="text-xl font-semibold text-accent-dark mb-4 border-b border-primary-bg pb-2" style={{ fontFamily: headingFont }}>Expenses</h2>
             {Object.entries(groups).filter(([name]) => name.toLowerCase().includes("expense")).map(([name, group]) => (
               <div key={name} className="mb-4">
-                <h3 className="font-bold text-sm text-gray-900 mb-2">{name}</h3>
-                <table className="w-full text-sm border">
-                  <thead><tr className="bg-slate-50"><th className="p-2 text-left border">Account</th><th className="p-2 text-right border w-32">Amount</th></tr></thead>
+                <h3 className="font-bold text-sm text-primary-dark mb-2" style={{ fontFamily: headingFont }}>{name}</h3>
+                <table className="w-full text-sm border border-primary-bg">
+                  <thead><tr className="bg-accent-bg"><th className="p-2 text-left border border-primary-bg text-accent-dark" style={{ fontFamily: bodyFont }}>Account</th><th className="p-2 text-right border border-primary-bg w-32 text-accent-dark" style={{ fontFamily: bodyFont }}>Amount</th></tr></thead>
                   <tbody>
                     {group.items.map(item => (
-                      <tr key={item.account_code}><td className="p-2 border">{item.account_name}</td><td className="p-2 border text-right">{formatCurrency(item.balance)}</td></tr>
+                      <tr key={item.account_code}><td className="p-2 border border-primary-bg text-primary-dark" style={{ fontFamily: bodyFont }}>{item.account_name}</td><td className="p-2 border border-primary-bg text-right text-primary-dark" style={{ fontFamily: bodyFont }}>{formatCurrency(item.balance)}</td></tr>
                     ))}
-                    <tr className="font-bold bg-red-50"><td className="p-2 border">Total {name}</td><td className="p-2 border text-right">{formatCurrency(group.total)}</td></tr>
+                    <tr className="font-bold bg-accent-bg"><td className="p-2 border border-primary-bg text-accent-dark" style={{ fontFamily: bodyFont }}>Total {name}</td><td className="p-2 border border-primary-bg text-right text-accent-dark" style={{ fontFamily: bodyFont }}>{formatCurrency(group.total)}</td></tr>
                   </tbody>
                 </table>
               </div>
             ))}
-            <div className="text-lg font-bold border-t-2 border-red-700 pt-3 mt-4 mb-8">Total Expenses: {formatCurrency(totalExpenses)}</div>
+            <div className="text-lg font-bold border-t-2 border-accent-dark pt-3 mt-4 mb-8 text-accent-dark" style={{ fontFamily: headingFont }}>Total Expenses: {formatCurrency(totalExpenses)}</div>
 
-            <div className={`mt-6 p-4 rounded-lg border-2 ${netProfit >= 0 ? "bg-green-50 border-green-700" : "bg-red-50 border-red-700"}`}>
+            <div className={`mt-6 p-4 rounded-lg border-2 ${netProfit >= 0 ? "bg-primary-bg border-primary" : "bg-accent-bg border-accent-dark"}`}>
               <div className="text-center">
-                <p className="text-sm text-gray-600 mb-2">{netProfit >= 0 ? "Net Profit" : "Net Loss"}</p>
-                <p className="text-3xl font-bold text-gray-900">{formatCurrency(netProfit)}</p>
-                <p className="text-xs text-gray-600 mt-1">({netProfit >= 0 ? "Income exceeds Expenses" : "Expenses exceed Income"})</p>
+                <p className="text-sm text-primary-dark mb-2" style={{ fontFamily: bodyFont }}>
+                  {netProfit >= 0 ? "Net Profit" : "Net Loss"}
+                </p>
+                <p className="text-3xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+                  {formatCurrency(netProfit)}
+                </p>
+                <p className="text-xs text-primary-dark/60 mt-1" style={{ fontFamily: bodyFont }}>
+                  ({netProfit >= 0 ? "Income exceeds Expenses" : "Expenses exceed Income"})
+                </p>
               </div>
             </div>
           </div>

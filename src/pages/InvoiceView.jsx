@@ -43,6 +43,9 @@ export default function InvoiceView() {
 
   // ── Get theme ──
   const theme = useTheme();
+  const primaryColor = theme?.primary_color || "#0D47A1";
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   // ── Fetch invoice ──
   const { data: invoice, isLoading } = useQuery({
@@ -75,7 +78,6 @@ export default function InvoiceView() {
   const balance = invoice?.grand_total ? invoice.grand_total - totalPaid : 0;
   const receiptNumber = useMemo(() => {
     if (!payments || payments.length === 0) return null;
-    // Find the first payment that has a receipt (we want the latest one)
     const paymentWithReceipt = payments.find(p => p.receipts && p.receipts.length > 0);
     return paymentWithReceipt?.receipts?.[0]?.receipt_no || null;
   }, [payments]);
@@ -147,7 +149,6 @@ export default function InvoiceView() {
       const words = numberToWords(grandTotal);
       const reverseCharge = invoice.reverse_charge;
 
-      const primaryColor = theme?.primary_color || "#0D47A1";
       const studentName = `${student.first_name || ""} ${student.last_name || ""}`.trim() || "N/A";
 
       // Build items table rows
@@ -280,7 +281,6 @@ export default function InvoiceView() {
         to: recipientEmail,
         subject: `Invoice ${invoice.invoice_number} from ${org.company_name || 'Academy'}`,
         html: htmlBody,
-        // from: org?.email || undefined,
       });
 
       toast.success(`Invoice sent to ${recipientEmail}`);
@@ -343,11 +343,19 @@ export default function InvoiceView() {
   };
 
   if (isLoading) {
-    return <div className="p-8 text-center">Loading invoice…</div>;
+    return (
+      <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+        Loading invoice…
+      </div>
+    );
   }
 
   if (!invoice) {
-    return <div className="p-8 text-center text-red-600">Invoice not found</div>;
+    return (
+      <div className="p-8 text-center text-accent-dark" style={{ fontFamily: bodyFont }}>
+        Invoice not found
+      </div>
+    );
   }
 
   const orgName = org?.company_name || "Academy";
@@ -373,15 +381,14 @@ export default function InvoiceView() {
   const words = numberToWords(grandTotal);
   const reverseCharge = invoice.reverse_charge;
 
-  const primaryColor = theme?.primary_color || "#0D47A1";
-
   return (
     <>
       {/* Action buttons */}
       <div className="no-print flex justify-between items-center mb-6 flex-wrap gap-2">
         <button
           onClick={() => navigate("/invoices")}
-          className="inline-flex items-center gap-2 text-secondary hover:text-primary-dark text-sm"
+          className="inline-flex items-center gap-2 text-primary-dark hover:text-primary text-sm"
+          style={{ fontFamily: bodyFont }}
         >
           <ArrowLeft size={18} /> Back to Invoices
         </button>
@@ -389,21 +396,24 @@ export default function InvoiceView() {
           <button
             onClick={sendInvoiceEmail}
             disabled={sendingEmail}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
+            className="bg-accent hover:bg-accent-dark text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
+            style={{ fontFamily: bodyFont }}
           >
             <Mail size={16} /> {sendingEmail ? "Sending..." : "Email Invoice"}
           </button>
           <button
             onClick={handleDownloadPDF}
             disabled={generatingPDF}
-            className="border px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            className="border border-primary-bg text-primary-dark hover:bg-primary-bg px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition"
+            style={{ fontFamily: bodyFont }}
           >
             <FileText size={16} /> {generatingPDF ? "Generating..." : "Download PDF"}
           </button>
           <button
             onClick={handlePrint}
             disabled={printing}
-            className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition"
+            style={{ fontFamily: bodyFont }}
           >
             <Printer size={16} /> {printing ? "Printing…" : "Print"}
           </button>
@@ -411,14 +421,16 @@ export default function InvoiceView() {
             <>
               <button
                 onClick={() => navigate(`/invoices/${id}/edit`)}
-                className="border px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+                className="border border-primary-bg text-primary-dark hover:bg-primary-bg px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition"
+                style={{ fontFamily: bodyFont }}
               >
                 <Edit3 size={16} /> Edit
               </button>
               <button
                 onClick={() => finalizeMutation.mutate()}
                 disabled={finalizeMutation.isPending}
-                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+                className="bg-accent hover:bg-accent-dark text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition"
+                style={{ fontFamily: bodyFont }}
               >
                 {finalizeMutation.isPending ? (
                   <Loader className="w-4 h-4 animate-spin" />
@@ -434,12 +446,13 @@ export default function InvoiceView() {
               onClick={() => {
                 if (window.confirm("Delete this invoice?")) deleteMutation.mutate();
               }}
-              className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+              className="bg-accent-dark hover:bg-accent text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition"
+              style={{ fontFamily: bodyFont }}
             >
               <Trash2 size={16} /> Delete
             </button>
           )}
-          {!balance <= 0 && (
+          {balance > 0 && (
             <button
               onClick={() => {
                 setSelectedFee({
@@ -458,7 +471,8 @@ export default function InvoiceView() {
                 });
                 setPaymentModalOpen(true);
               }}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+              className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition"
+              style={{ fontFamily: bodyFont }}
             >
               <DollarSign size={16} /> Record Payment
             </button>
@@ -480,16 +494,18 @@ export default function InvoiceView() {
         }}
       >
         <div style={{ textAlign: "center", marginBottom: "20px" }}>
-          <h2 style={{ color: primaryColor, margin: 0 }}>TAX INVOICE</h2>
+          <h2 style={{ color: primaryColor, margin: 0, fontFamily: headingFont }}>
+            TAX INVOICE
+          </h2>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "16px" }}>
-          <div>
+          <div style={{ fontFamily: bodyFont }}>
             <strong>Billed To:</strong> {studentName}
             {student.admission_no && <div>Admission: {student.admission_no}</div>}
             {student.gstin && <div>GSTIN: {student.gstin}</div>}
             {student.billing_address && <div>Address: {student.billing_address}</div>}
           </div>
-          <div style={{ textAlign: "right" }}>
+          <div style={{ textAlign: "right", fontFamily: bodyFont }}>
             <strong>Invoice Details</strong>
             <div>No: {invoice.invoice_number}</div>
             <div>Date: {invoice.invoice_date}</div>
@@ -500,7 +516,7 @@ export default function InvoiceView() {
         </div>
 
         {/* Items table */}
-        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "16px" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "16px", fontFamily: bodyFont }}>
           <thead>
             <tr style={{ background: primaryColor, color: "#fff" }}>
               <th style={{ padding: "6px", border: "1px solid #ccc", textAlign: "left" }}>#</th>
@@ -532,7 +548,7 @@ export default function InvoiceView() {
         </table>
 
         {/* Totals */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8px" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8px", fontFamily: bodyFont }}>
           <div style={{ width: "250px" }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span>Taxable:</span>
@@ -582,19 +598,19 @@ export default function InvoiceView() {
         </div>
 
         {/* Amount in words */}
-        <div style={{ marginBottom: "8px" }}>
+        <div style={{ marginBottom: "8px", fontFamily: bodyFont }}>
           <strong>Amount in words:</strong> {words}
         </div>
 
         {/* Reverse Charge Note */}
         {reverseCharge && (
-          <div style={{ color: "#CC0000", fontWeight: "bold", marginBottom: "8px" }}>
+          <div style={{ color: "#CC0000", fontWeight: "bold", marginBottom: "8px", fontFamily: bodyFont }}>
             ** Reverse Charge Applicable – Tax payable by recipient **
           </div>
         )}
 
         {/* ─── Payment History ─── */}
-        <div style={{ marginTop: "20px", borderTop: `1px solid #ddd`, paddingTop: "16px" }}>
+        <div style={{ marginTop: "20px", borderTop: `1px solid #ddd`, paddingTop: "16px", fontFamily: bodyFont }}>
           <h3 style={{ margin: "0 0 8px 0" }}>Payment History</h3>
           {payments.length === 0 ? (
             <p style={{ color: "#888" }}>No payments recorded.</p>

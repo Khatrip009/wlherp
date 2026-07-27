@@ -35,14 +35,19 @@ import {
   getMediumOptions,
 } from "../services/courseService";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // ✅ dynamic theme
 
 export default function Courses() {
   const queryClient = useQueryClient();
 
   const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme();
   const organizationId = org?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { organizationId, financialYearId };
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const [search, setSearch] = useState("");
   const [mediumFilter, setMediumFilter] = useState("");
@@ -66,7 +71,7 @@ export default function Courses() {
         .from("courses")
         .select("*, mediums(name)", { count: "exact" })
         .eq("organization_id", organizationId)
-        .is("deleted_at", null)               // ✅ filter out soft‑deleted courses
+        .is("deleted_at", null)
         .order("course_name", { ascending: true })
         .range(from, to);
 
@@ -272,14 +277,14 @@ export default function Courses() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1
-            className="text-2xl sm:text-3xl font-bold"
-            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+            className="text-2xl sm:text-3xl font-bold text-primary"
+            style={{ fontFamily: headingFont }}
           >
             Courses
           </h1>
           <p
-            className="text-sm text-gray-600 dark:text-gray-400 mt-1"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="text-sm text-primary-dark mt-1"
+            style={{ fontFamily: bodyFont }}
           >
             Manage courses and levels
           </p>
@@ -288,21 +293,21 @@ export default function Courses() {
           <button
             onClick={() => setShowForm(true)}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
-            style={{ fontFamily: "var(--font-body)" }}
+            style={{ fontFamily: bodyFont }}
           >
             <BookOpen size={18} /> Add Course
           </button>
           <button
             onClick={handleCSVExport}
-            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+            style={{ fontFamily: bodyFont }}
           >
             <Download size={18} /> Export
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+            style={{ fontFamily: bodyFont }}
           >
             <Upload size={18} /> Import
           </button>
@@ -321,22 +326,22 @@ export default function Courses() {
         <div className="relative flex-1">
           <Search
             size={18}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-dark/60"
           />
           <input
             type="text"
             placeholder="Search courses..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg pl-10 pr-4 py-2.5 text-sm"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="w-full border border-primary-bg bg-white text-primary-dark rounded-lg pl-10 pr-4 py-2.5 text-sm"
+            style={{ fontFamily: bodyFont }}
           />
         </div>
         <select
           value={mediumFilter}
           onChange={(e) => setMediumFilter(e.target.value)}
-          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
-          style={{ fontFamily: "var(--font-body)" }}
+          className="border border-primary-bg bg-white text-primary-dark rounded-lg p-2.5 text-sm"
+          style={{ fontFamily: bodyFont }}
         >
           <option value="">All Mediums</option>
           {mediums.map((m) => (
@@ -346,30 +351,40 @@ export default function Courses() {
       </div>
 
       {/* Courses Table */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-primary-bg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[600px]">
-            <thead className="bg-gray-50 dark:bg-gray-700">
+            <thead className="bg-primary-bg">
               <tr>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Course Name</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Medium</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Duration</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
+                  Course Name
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
+                  Medium
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
+                  Duration
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
+                  Description
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
+                  Actions
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="divide-y divide-primary-bg">
               {coursesLoading ? (
                 <tr>
-                  <td colSpan={5} className="p-6 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={5} className="p-6 text-center text-primary-dark/60">
                     Loading courses…
                   </td>
                 </tr>
               ) : courses.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-6 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={5} className="p-6 text-center text-primary-dark/60">
                     <div className="flex flex-col items-center gap-2">
-                      <BookOpen size={32} className="text-gray-400 dark:text-gray-500" />
+                      <BookOpen size={32} className="text-primary-dark/40" />
                       <span>No courses found</span>
                       <span className="text-xs">
                         {search || mediumFilter ? "Try adjusting your filters" : "Add a new course to get started"}
@@ -380,30 +395,30 @@ export default function Courses() {
               ) : (
                 courses.map((course) => (
                   <React.Fragment key={course.id}>
-                    <tr className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                      <td className="p-3 text-sm font-medium text-gray-800 dark:text-gray-100">
+                    <tr className="hover:bg-primary-bg transition-colors">
+                      <td className="p-3 text-sm font-medium text-primary">
                         {course.course_name}
                       </td>
-                      <td className="text-sm text-gray-700 dark:text-gray-300">
+                      <td className="text-sm text-primary-dark">
                         {course.medium_name || "-"}
                       </td>
-                      <td className="text-sm text-gray-700 dark:text-gray-300">
+                      <td className="text-sm text-primary-dark">
                         {course.duration_months ? `${course.duration_months} Months` : "-"}
                       </td>
-                      <td className="text-sm text-gray-700 dark:text-gray-300">
+                      <td className="text-sm text-primary-dark">
                         {course.description || "-"}
                       </td>
                       <td className="text-sm">
                         <div className="flex gap-2">
-                          <button onClick={() => setEditing(course)} className="text-blue-600 dark:text-blue-400 hover:underline">
+                          <button onClick={() => setEditing(course)} className="text-primary hover:underline">
                             <Edit3 size={15} />
                           </button>
-                          <button onClick={() => handleDelete(course.id)} className="text-red-600 dark:text-red-400 hover:underline">
+                          <button onClick={() => handleDelete(course.id)} className="text-accent hover:underline">
                             <Trash2 size={15} />
                           </button>
                           <button
                             onClick={() => toggleLevels(course.id)}
-                            className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                            className="text-primary hover:underline flex items-center gap-1"
                           >
                             <Layers size={15} /> Levels
                           </button>
@@ -412,27 +427,30 @@ export default function Courses() {
                     </tr>
                     {/* Level sub-table */}
                     {expandedCourseId === course.id && (
-                      <tr className="bg-gray-50 dark:bg-gray-700">
+                      <tr className="bg-primary-bg">
                         <td colSpan={5} className="p-4">
                           <div className="flex justify-between items-center mb-3">
-                            <h4 className="font-semibold text-sm" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+                            <h4
+                              className="font-semibold text-sm text-primary"
+                              style={{ fontFamily: headingFont }}
+                            >
                               Levels for {course.course_name}
                             </h4>
                             <button
                               onClick={() => setLevelForm({ courseId: course.id, initialData: null })}
                               className="bg-primary hover:bg-primary-light text-white px-3 py-1 rounded text-xs font-medium"
-                              style={{ fontFamily: "var(--font-body)" }}
+                              style={{ fontFamily: bodyFont }}
                             >
                               + Add Level
                             </button>
                           </div>
                           {!levelsMap[course.id] || levelsMap[course.id].length === 0 ? (
-                            <p className="text-sm text-gray-500 dark:text-gray-400">No levels defined yet.</p>
+                            <p className="text-sm text-primary-dark/60">No levels defined yet.</p>
                           ) : (
                             <div className="overflow-x-auto">
-                              <table className="w-full bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600">
-                                <thead className="bg-gray-100 dark:bg-gray-700">
-                                  <tr className="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                              <table className="w-full bg-white rounded border border-primary-bg">
+                                <thead className="bg-primary-bg">
+                                  <tr className="text-left text-xs font-medium text-primary-dark uppercase">
                                     <th className="p-2">#</th>
                                     <th className="p-2">Name</th>
                                     <th className="p-2">Duration</th>
@@ -440,27 +458,27 @@ export default function Courses() {
                                     <th className="p-2">Actions</th>
                                   </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
+                                <tbody className="divide-y divide-primary-bg">
                                   {levelsMap[course.id].map((level) => (
-                                    <tr key={level.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                                      <td className="p-2 text-sm text-gray-700 dark:text-gray-300">{level.level_number}</td>
-                                      <td className="p-2 text-sm text-gray-700 dark:text-gray-300">{level.level_name}</td>
-                                      <td className="p-2 text-sm text-gray-700 dark:text-gray-300">
+                                    <tr key={level.id} className="hover:bg-primary-bg">
+                                      <td className="p-2 text-sm text-primary-dark">{level.level_number}</td>
+                                      <td className="p-2 text-sm text-primary-dark">{level.level_name}</td>
+                                      <td className="p-2 text-sm text-primary-dark">
                                         {level.duration_months ? `${level.duration_months}mo` : "-"}
                                       </td>
-                                      <td className="p-2 text-sm text-gray-700 dark:text-gray-300">
+                                      <td className="p-2 text-sm text-primary-dark">
                                         {level.certificate_eligible ? "Yes" : "No"}
                                       </td>
                                       <td className="p-2 text-sm space-x-2">
                                         <button
                                           onClick={() => setLevelForm({ courseId: course.id, initialData: level })}
-                                          className="text-blue-600 dark:text-blue-400 hover:underline"
+                                          className="text-primary hover:underline"
                                         >
                                           <Edit3 size={14} />
                                         </button>
                                         <button
                                           onClick={() => deleteLevelMutation.mutate(level.id)}
-                                          className="text-red-600 dark:text-red-400 hover:underline"
+                                          className="text-accent hover:underline"
                                         >
                                           <Trash2 size={14} />
                                         </button>
@@ -489,7 +507,7 @@ export default function Courses() {
             onClick={() => fetchNextPage()}
             disabled={isFetchingNextPage}
             className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-60"
-            style={{ fontFamily: "var(--font-body)" }}
+            style={{ fontFamily: bodyFont }}
           >
             {isFetchingNextPage ? "Loading more…" : "Load More"}
           </button>

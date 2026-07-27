@@ -8,9 +8,10 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // ✅ dynamic theme
 import { sendEmail } from "../services/emailService";
 
-/* ─── PDF helpers (same as other reports) ─────────────── */
+/* ─── PDF helpers (unchanged) ─────────────────────────────── */
 async function loadImageAsBase64(url) {
   if (!url) return null;
   try {
@@ -62,14 +63,17 @@ export default function BudgetVsActual() {
   const [endDate, setEndDate] = useState(today);
 
   const { org, branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  // ── Data fetching ───────────────────────────────────────
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
+
+  // ── Data fetching (unchanged) ────────────────────────────
   const { data: report = [], isLoading } = useQuery({
     queryKey: ["budget-vs-actual", startDate, endDate, branchId, financialYearId, org?.id],
     queryFn: async () => {
-      // 1. Fetch all budgets for this branch & FY
       let budgetQuery = supabase
         .from("budgets")
         .select("*, chart_of_accounts!inner(account_code, account_name)")
@@ -82,14 +86,10 @@ export default function BudgetVsActual() {
       if (budgetErr) throw budgetErr;
       if (!allBudgets?.length) return [];
 
-      // Normalize dates: swap if start > end
       const normalize = (budget) => {
         let start = budget.period_start;
         let end = budget.period_end;
-        if (start > end) {
-          // Reversed dates – swap them
-          [start, end] = [end, start];
-        }
+        if (start > end) [start, end] = [end, start];
         return { ...budget, period_start: start, period_end: end };
       };
 
@@ -101,7 +101,6 @@ export default function BudgetVsActual() {
 
       const accountIds = budgets.map((b) => b.account_id);
 
-      // 2. Fetch journal lines for those accounts in the date range
       let lineQuery = supabase
         .from("journal_entry_lines")
         .select("account_id, debit, credit, journal_entries!inner(entry_date)")
@@ -116,7 +115,6 @@ export default function BudgetVsActual() {
       const { data: lines, error: lineErr } = await lineQuery;
       if (lineErr) throw lineErr;
 
-      // Aggregate actuals (expense accounts: debit - credit)
       const actualMap = {};
       (lines || []).forEach((l) => {
         const aid = l.account_id;
@@ -124,7 +122,6 @@ export default function BudgetVsActual() {
         actualMap[aid] += Number(l.debit || 0) - Number(l.credit || 0);
       });
 
-      // Build report rows
       return budgets.map((b) => {
         const actual = actualMap[b.account_id] || 0;
         const variance = actual - b.amount;
@@ -149,7 +146,7 @@ export default function BudgetVsActual() {
   const totalActual = report.reduce((s, r) => s + r.actual, 0);
   const totalVariance = totalActual - totalBudget;
 
-  // ── Email helpers ─────────────────────────────────────
+  // ── Email helpers (unchanged) ─────────────────────────
   const getAdminEmails = async () => {
     if (!org?.id) return [];
     const { data, error } = await supabase
@@ -245,7 +242,7 @@ export default function BudgetVsActual() {
     }
   };
 
-  // ── PDF Export (black & white, landscape) ───────────────
+  // ── PDF Export (unchanged, black & white) ──────────────
   const handlePrintPDF = async () => {
     if (report.length === 0) return;
 
@@ -255,13 +252,11 @@ export default function BudgetVsActual() {
     const margin = 10;
     let y = margin;
 
-    // Logo
     let logoBase64 = null;
     if (org?.logo_dark_url) {
       logoBase64 = await loadImageAsBase64(org.logo_dark_url);
     }
 
-    // Header
     const logoWidth = 35, logoHeight = 14;
     if (logoBase64) {
       doc.addImage(logoBase64, "PNG", margin, y, logoWidth, logoHeight);
@@ -293,7 +288,6 @@ export default function BudgetVsActual() {
     doc.line(margin, y, pageWidth - margin, y);
     y += 6;
 
-    // Title
     doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
     doc.setTextColor("#000000");
@@ -304,7 +298,6 @@ export default function BudgetVsActual() {
     doc.text(`Period: ${startDate} – ${endDate}`, pageWidth / 2, y, { align: "center" });
     y += 10;
 
-    // Summary boxes
     const boxWidth = (pageWidth - 2 * margin - 30) / 3;
     const boxHeight = 16;
     const boxY = y;
@@ -326,7 +319,6 @@ export default function BudgetVsActual() {
     });
     y += boxHeight + 12;
 
-    // Table rows
     const rows = report.map((r) => [
       `${r.account_code} - ${r.account_name}`,
       `${r.period_start} → ${r.period_end}`,
@@ -336,7 +328,6 @@ export default function BudgetVsActual() {
       r.variancePercent + "%",
     ]);
 
-    // Totals row
     rows.push([
       "TOTAL", "", totalBudget, totalActual, totalVariance,
       totalBudget ? ((totalVariance / totalBudget) * 100).toFixed(1) + "%" : "0%",
@@ -375,7 +366,6 @@ export default function BudgetVsActual() {
 
     y = doc.lastAutoTable.finalY + 10;
 
-    // Footer
     const footerY = pageHeight - margin - 5;
     doc.setFontSize(7);
     doc.setTextColor("#000000");
@@ -390,26 +380,39 @@ export default function BudgetVsActual() {
     <div className="space-y-6 px-4 sm:px-6 lg:px-0">
       <Link
         to="/budgets"
-        className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 text-sm"
+        className="inline-flex items-center gap-2 text-primary-dark hover:text-primary text-sm"
+        style={{ fontFamily: bodyFont }}
       >
         <ArrowLeft size={18} /> Back to Budgets
       </Link>
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Budget vs Actual</h1>
-          <p className="text-sm text-gray-600 mt-1">Compare budgeted amounts against actual spending</p>
+          <h1
+            className="text-2xl sm:text-3xl font-bold text-primary"
+            style={{ fontFamily: headingFont }}
+          >
+            Budget vs Actual
+          </h1>
+          <p
+            className="text-sm text-primary-dark mt-1"
+            style={{ fontFamily: bodyFont }}
+          >
+            Compare budgeted amounts against actual spending
+          </p>
         </div>
         <div className="flex gap-3">
           <button
             onClick={sendReportEmail}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-dark text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: bodyFont }}
           >
             <Mail size={16} /> Send Report
           </button>
           <button
             onClick={handlePrintPDF}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: bodyFont }}
           >
             <Printer size={16} /> Print PDF
           </button>
@@ -418,73 +421,133 @@ export default function BudgetVsActual() {
 
       <div className="flex flex-wrap gap-4">
         <div>
-          <label className="text-sm font-medium text-gray-700 mr-2">From:</label>
+          <label
+            className="text-sm font-medium text-primary-dark mr-2"
+            style={{ fontFamily: bodyFont }}
+          >
+            From:
+          </label>
           <input
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm"
+            className="border border-primary-bg bg-white text-primary rounded-lg p-2.5 text-sm"
           />
         </div>
         <div>
-          <label className="text-sm font-medium text-gray-700 mr-2">To:</label>
+          <label
+            className="text-sm font-medium text-primary-dark mr-2"
+            style={{ fontFamily: bodyFont }}
+          >
+            To:
+          </label>
           <input
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="border border-gray-300 bg-white text-gray-900 rounded-lg p-2.5 text-sm"
+            className="border border-primary-bg bg-white text-primary rounded-lg p-2.5 text-sm"
           />
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 text-center">
-          <p className="text-xs text-gray-500">Total Budgeted</p>
-          <p className="text-xl font-bold text-gray-900">₹ {totalBudget.toLocaleString("en-IN")}</p>
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-primary-bg text-center">
+          <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
+            Total Budgeted
+          </p>
+          <p className="text-xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+            ₹ {totalBudget.toLocaleString("en-IN")}
+          </p>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 text-center">
-          <p className="text-xs text-gray-500">Total Actual</p>
-          <p className="text-xl font-bold text-gray-900">₹ {totalActual.toLocaleString("en-IN")}</p>
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-primary-bg text-center">
+          <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
+            Total Actual
+          </p>
+          <p className="text-xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+            ₹ {totalActual.toLocaleString("en-IN")}
+          </p>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 text-center">
-          <p className="text-xs text-gray-500">Variance</p>
-          <p className={`text-xl font-bold ${totalVariance > 0 ? "text-red-600" : "text-green-600"}`}>
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-primary-bg text-center">
+          <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
+            Variance
+          </p>
+          <p
+            className={`text-xl font-bold ${
+              totalVariance > 0 ? "text-accent-dark" : "text-accent"
+            }`}
+            style={{ fontFamily: headingFont }}
+          >
             {totalVariance > 0 ? "+" : ""}₹ {totalVariance.toLocaleString("en-IN")}
           </p>
         </div>
       </div>
 
       {isLoading ? (
-        <p className="text-center py-8 text-gray-500">Loading…</p>
+        <p className="text-center py-8 text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+          Loading…
+        </p>
       ) : report.length === 0 ? (
-        <div className="bg-white rounded-xl p-10 text-center text-gray-500 border border-gray-200">
+        <div
+          className="bg-white rounded-xl p-10 text-center text-primary-dark border border-primary-bg"
+          style={{ fontFamily: bodyFont }}
+        >
           <p>No budget data for the selected period.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-primary-bg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[700px] text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-primary-bg">
                 <tr>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Account</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Period</th>
-                  <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Budgeted</th>
-                  <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Actual</th>
-                  <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Variance</th>
-                  <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Variance %</th>
+                  <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Account
+                  </th>
+                  <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Period
+                  </th>
+                  <th className="p-3 text-right text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Budgeted
+                  </th>
+                  <th className="p-3 text-right text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Actual
+                  </th>
+                  <th className="p-3 text-right text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Variance
+                  </th>
+                  <th className="p-3 text-right text-xs font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Variance %
+                  </th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-primary-bg">
                 {report.map((r) => (
-                  <tr key={r.id} className="hover:bg-gray-50 transition">
-                    <td className="p-3 text-gray-900">{r.account_code} - {r.account_name}</td>
-                    <td className="p-3 text-gray-900">{r.period_start} → {r.period_end}</td>
-                    <td className="p-3 text-right text-gray-900">₹ {r.budgeted.toLocaleString("en-IN")}</td>
-                    <td className="p-3 text-right text-gray-900">₹ {r.actual.toLocaleString("en-IN")}</td>
-                    <td className={`p-3 text-right font-medium ${r.variance > 0 ? "text-red-600" : "text-green-600"}`}>
+                  <tr key={r.id} className="hover:bg-primary-bg transition">
+                    <td className="p-3 text-primary" style={{ fontFamily: bodyFont }}>
+                      {r.account_code} - {r.account_name}
+                    </td>
+                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>
+                      {r.period_start} → {r.period_end}
+                    </td>
+                    <td className="p-3 text-right text-primary" style={{ fontFamily: bodyFont }}>
+                      ₹ {r.budgeted.toLocaleString("en-IN")}
+                    </td>
+                    <td className="p-3 text-right text-primary" style={{ fontFamily: bodyFont }}>
+                      ₹ {r.actual.toLocaleString("en-IN")}
+                    </td>
+                    <td
+                      className={`p-3 text-right font-medium ${
+                        r.variance > 0 ? "text-accent-dark" : "text-accent"
+                      }`}
+                      style={{ fontFamily: bodyFont }}
+                    >
                       {r.variance > 0 ? "+" : ""}₹ {r.variance.toLocaleString("en-IN")}
                     </td>
-                    <td className={`p-3 text-right ${r.variance > 0 ? "text-red-600" : "text-green-600"}`}>
+                    <td
+                      className={`p-3 text-right ${
+                        r.variance > 0 ? "text-accent-dark" : "text-accent"
+                      }`}
+                      style={{ fontFamily: bodyFont }}
+                    >
                       {r.variancePercent}%
                     </td>
                   </tr>

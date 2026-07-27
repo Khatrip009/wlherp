@@ -5,13 +5,18 @@ import toast from "react-hot-toast";
 import { Plus, Trash2, Save } from "lucide-react";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
-import { sendTemplateEmail } from "../services/emailService"; // 👈 Import
+import { useTheme } from "../context/ThemeContext";
+import { sendTemplateEmail } from "../services/emailService";
 
 export default function AddStock() {
   const queryClient = useQueryClient();
-  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
+  const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const [vendor, setVendor] = useState("");
   const [reference, setReference] = useState("");
@@ -120,7 +125,6 @@ export default function AddStock() {
       const selectedTax = taxRates.find((t) => t.id == taxRateId);
       const taxRate = selectedTax ? parseFloat(selectedTax.rate) : 0;
 
-      // We'll collect transaction details for the email
       let totalSubtotal = 0;
       let totalTax = 0;
       let totalGrand = 0;
@@ -134,7 +138,6 @@ export default function AddStock() {
 
         if (!itemId || qty <= 0 || price <= 0) continue;
 
-        // Get item name for summary
         const item = items.find(i => i.id === itemId);
         if (item) itemNames.push(`${item.item_name} x ${qty}`);
 
@@ -270,9 +273,6 @@ export default function AddStock() {
     onError: (err) => toast.error(err.message || "Failed to add stock"),
   });
 
-  // ─── Rest of the component (addLine, removeLine, updateLine, handlers) unchanged ──
-  // ... (all the existing JSX and handlers remain exactly as before)
-
   const addLine = () => setLines([...lines, { item_id: "", quantity: "1", unit_price: "", total: 0 }]);
   const removeLine = (idx) => setLines(lines.filter((_, i) => i !== idx));
   const updateLine = (idx, field, value) => {
@@ -305,32 +305,32 @@ export default function AddStock() {
     <div className="space-y-6 px-4 sm:px-6 lg:px-0">
       {/* Header */}
       <div>
-        <h1 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+        <h1 className="text-2xl sm:text-3xl font-bold text-primary" style={{ fontFamily: headingFont }}>
           Add Stock / Purchase
         </h1>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>
+        <p className="text-sm text-primary-dark mt-1" style={{ fontFamily: bodyFont }}>
           Record inventory purchases with tax
         </p>
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-primary-bg p-6 space-y-6">
         {/* Top fields */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" style={{ fontFamily: "var(--font-body)" }}>
+            <label className="block text-sm font-medium text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
               Date
             </label>
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+              className="w-full border border-primary-bg bg-white text-primary rounded-lg p-2.5 text-sm"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" style={{ fontFamily: "var(--font-body)" }}>
+            <label className="block text-sm font-medium text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
               Vendor
             </label>
             <input
@@ -338,11 +338,11 @@ export default function AddStock() {
               value={vendor}
               onChange={(e) => setVendor(e.target.value)}
               placeholder="Vendor name"
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+              className="w-full border border-primary-bg bg-white text-primary rounded-lg p-2.5 text-sm"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" style={{ fontFamily: "var(--font-body)" }}>
+            <label className="block text-sm font-medium text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
               Reference
             </label>
             <input
@@ -350,17 +350,17 @@ export default function AddStock() {
               value={reference}
               onChange={(e) => setReference(e.target.value)}
               placeholder="e.g., INV-001"
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+              className="w-full border border-primary-bg bg-white text-primary rounded-lg p-2.5 text-sm"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" style={{ fontFamily: "var(--font-body)" }}>
+            <label className="block text-sm font-medium text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
               Tax Rate
             </label>
             <select
               value={taxRateId}
               onChange={(e) => setTaxRateId(e.target.value)}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm"
+              className="w-full border border-primary-bg bg-white text-primary rounded-lg p-2.5 text-sm"
             >
               <option value="">No Tax</option>
               {taxRates.map((t) => (
@@ -374,22 +374,22 @@ export default function AddStock() {
 
         {/* Items */}
         <div>
-          <h2 className="text-lg font-semibold mb-3" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+          <h2 className="text-lg font-semibold text-primary mb-3" style={{ fontFamily: headingFont }}>
             Items
           </h2>
           {lines.map((line, idx) => (
             <div
               key={idx}
-              className="grid grid-cols-1 sm:grid-cols-6 gap-2 items-end border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 p-3 rounded-lg mb-2"
+              className="grid grid-cols-1 sm:grid-cols-6 gap-2 items-end border border-primary-bg bg-primary-bg p-3 rounded-lg mb-2"
             >
               <div className="col-span-2">
-                <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+                <label className="text-xs font-medium text-primary-dark mb-1 block" style={{ fontFamily: bodyFont }}>
                   Item *
                 </label>
                 <select
                   value={line.item_id}
                   onChange={(e) => updateLine(idx, "item_id", e.target.value)}
-                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
+                  className="w-full border border-primary-bg bg-white text-primary rounded p-2 text-sm"
                   required
                 >
                   <option value="">Select item</option>
@@ -401,7 +401,7 @@ export default function AddStock() {
                 </select>
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+                <label className="text-xs font-medium text-primary-dark mb-1 block" style={{ fontFamily: bodyFont }}>
                   Qty *
                 </label>
                 <input
@@ -409,12 +409,12 @@ export default function AddStock() {
                   min="1"
                   value={line.quantity}
                   onChange={(e) => updateLine(idx, "quantity", e.target.value)}
-                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
+                  className="w-full border border-primary-bg bg-white text-primary rounded p-2 text-sm"
                   required
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+                <label className="text-xs font-medium text-primary-dark mb-1 block" style={{ fontFamily: bodyFont }}>
                   Unit Price *
                 </label>
                 <input
@@ -423,24 +423,24 @@ export default function AddStock() {
                   step="0.01"
                   value={line.unit_price}
                   onChange={(e) => updateLine(idx, "unit_price", e.target.value)}
-                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
+                  className="w-full border border-primary-bg bg-white text-primary rounded p-2 text-sm"
                   required
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+                <label className="text-xs font-medium text-primary-dark mb-1 block" style={{ fontFamily: bodyFont }}>
                   Total
                 </label>
                 <input
                   type="text"
                   value={`₹ ${(parseFloat(line.total) || 0).toLocaleString("en-IN")}`}
                   readOnly
-                  className="w-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-500 text-gray-700 dark:text-gray-300 rounded p-2 text-sm"
+                  className="w-full border border-primary-bg bg-primary-bg text-primary-dark rounded p-2 text-sm"
                 />
               </div>
               <div className="flex items-end justify-end sm:justify-start">
                 {lines.length > 1 && (
-                  <button type="button" onClick={() => removeLine(idx)} className="text-red-500 hover:text-red-700 p-1 transition-colors">
+                  <button type="button" onClick={() => removeLine(idx)} className="text-accent hover:text-accent-dark p-1 transition-colors">
                     <Trash2 size={18} />
                   </button>
                 )}
@@ -457,26 +457,26 @@ export default function AddStock() {
         </div>
 
         {/* Totals */}
-        <div className="border-t border-gray-200 dark:border-gray-700 pt-4 flex flex-col items-end space-y-1 text-sm">
+        <div className="border-t border-primary-bg pt-4 flex flex-col items-end space-y-1 text-sm">
           <div className="flex justify-between w-full sm:w-64">
-            <span className="text-gray-600 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>Subtotal:</span>
-            <span className="font-medium text-gray-800 dark:text-gray-200">₹ {subtotal.toLocaleString("en-IN")}</span>
+            <span className="text-primary-dark" style={{ fontFamily: bodyFont }}>Subtotal:</span>
+            <span className="font-medium text-primary">₹ {subtotal.toLocaleString("en-IN")}</span>
           </div>
           {taxPercent > 0 && (
             <>
               <div className="flex justify-between w-full sm:w-64">
-                <span className="text-gray-600 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>CGST ({taxPercent / 2}%)</span>
-                <span className="text-gray-800 dark:text-gray-200">₹ {(taxAmount / 2).toLocaleString("en-IN")}</span>
+                <span className="text-primary-dark" style={{ fontFamily: bodyFont }}>CGST ({taxPercent / 2}%)</span>
+                <span className="text-primary">₹ {(taxAmount / 2).toLocaleString("en-IN")}</span>
               </div>
               <div className="flex justify-between w-full sm:w-64">
-                <span className="text-gray-600 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>SGST ({taxPercent / 2}%)</span>
-                <span className="text-gray-800 dark:text-gray-200">₹ {(taxAmount / 2).toLocaleString("en-IN")}</span>
+                <span className="text-primary-dark" style={{ fontFamily: bodyFont }}>SGST ({taxPercent / 2}%)</span>
+                <span className="text-primary">₹ {(taxAmount / 2).toLocaleString("en-IN")}</span>
               </div>
             </>
           )}
-          <div className="flex justify-between w-full sm:w-64 font-bold text-lg border-t border-gray-200 dark:border-gray-700 pt-2">
-            <span className="text-gray-800 dark:text-gray-100" style={{ fontFamily: "var(--font-heading)" }}>Grand Total:</span>
-            <span style={{ color: "var(--color-primary)" }}>₹ {grandTotal.toLocaleString("en-IN")}</span>
+          <div className="flex justify-between w-full sm:w-64 font-bold text-lg border-t border-primary-bg pt-2">
+            <span className="text-primary" style={{ fontFamily: headingFont }}>Grand Total:</span>
+            <span className="text-primary">₹ {grandTotal.toLocaleString("en-IN")}</span>
           </div>
         </div>
 
@@ -484,7 +484,7 @@ export default function AddStock() {
           type="submit"
           disabled={addStockMutation.isPending}
           className="inline-flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ fontFamily: "var(--font-body)" }}
+          style={{ fontFamily: bodyFont }}
         >
           <Save size={16} />
           {addStockMutation.isPending ? "Saving…" : "Add Stock"}

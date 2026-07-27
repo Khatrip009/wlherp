@@ -42,19 +42,19 @@ import { supabase } from "../api/supabase";
 // ─── Reusable Stat Card ─────────────────────────────────────────────
 const StatCard = ({ icon: Icon, title, value, subtext, color, linkTo, onClick }) => {
   const content = (
-    <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-200 dark:border-gray-700 hover:border-primary dark:hover:border-primary transition-all cursor-pointer">
+    <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-primary-bg dark:border-gray-700 hover:border-primary dark:hover:border-primary transition-all cursor-pointer">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm font-medium text-gray-600 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
+          <p className="text-sm font-medium text-primary-dark dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>
             {title}
           </p>
-          <h3 className="text-2xl font-bold mt-1" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+          <h3 className="text-2xl font-bold mt-1 text-primary" style={{ fontFamily: "var(--font-heading)" }}>
             {value}
           </h3>
-          {subtext && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>{subtext}</p>}
+          {subtext && <p className="text-xs text-primary-dark/60 dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>{subtext}</p>}
         </div>
-        <div className={`p-3 rounded-xl ${color}`}>
-          <Icon size={22} className="text-white" />
+        <div className={`p-3 rounded-xl ${color} text-white`}>
+          <Icon size={22} />
         </div>
       </div>
     </div>
@@ -67,12 +67,12 @@ const StatCard = ({ icon: Icon, title, value, subtext, color, linkTo, onClick })
 const QuickAction = ({ icon: Icon, label, onClick }) => (
   <button
     onClick={onClick}
-    className="flex flex-col items-center justify-center gap-2 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 hover:border-primary dark:hover:border-primary hover:shadow-md transition-all w-full"
+    className="flex flex-col items-center justify-center gap-2 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-primary-bg dark:border-gray-700 hover:border-primary dark:hover:border-primary hover:shadow-md transition-all w-full"
   >
-    <div className="p-3 rounded-full" style={{ backgroundColor: "var(--color-primary)" }}>
+    <div className="p-3 rounded-full bg-primary">
       <Icon size={20} color="#ffffff" />
     </div>
-    <span className="text-xs font-medium text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>
+    <span className="text-xs font-medium text-primary-dark dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>
       {label}
     </span>
   </button>
@@ -80,29 +80,29 @@ const QuickAction = ({ icon: Icon, label, onClick }) => (
 
 // ─── Reusable Table ─────────────────────────────────────────────────
 const RecentTable = ({ title, columns, data, emptyMessage }) => (
-  <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-    <h3 className="text-lg font-semibold p-4 border-b border-gray-200 dark:border-gray-700" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+  <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-primary-bg dark:border-gray-700 overflow-hidden">
+    <h3 className="text-lg font-semibold p-4 border-b border-primary-bg dark:border-gray-700 text-primary" style={{ fontFamily: "var(--font-heading)" }}>
       {title}
     </h3>
     {data.length === 0 ? (
-      <p className="p-4 text-sm text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>{emptyMessage}</p>
+      <p className="p-4 text-sm text-primary-dark/60 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>{emptyMessage}</p>
     ) : (
       <div className="overflow-x-auto">
         <table className="w-full min-w-[400px]">
-          <thead className="bg-gray-50 dark:bg-gray-700">
+          <thead className="bg-primary-bg dark:bg-gray-700">
             <tr>
               {columns.map((col) => (
-                <th key={col} className="text-left p-3 text-sm font-medium text-gray-500 dark:text-gray-400 uppercase" style={{ fontFamily: "var(--font-body)" }}>
+                <th key={col} className="text-left p-3 text-sm font-medium text-primary-dark dark:text-gray-400 uppercase" style={{ fontFamily: "var(--font-body)" }}>
                   {col}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+          <tbody className="divide-y divide-primary-bg dark:divide-gray-700">
             {data.map((row, idx) => (
-              <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              <tr key={idx} className="hover:bg-primary-bg dark:hover:bg-gray-700 transition-colors">
                 {row.map((cell, i) => (
-                  <td key={i} className="p-3 text-sm text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>
+                  <td key={i} className="p-3 text-sm text-primary-dark dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>
                     {cell}
                   </td>
                 ))}
@@ -115,7 +115,7 @@ const RecentTable = ({ title, columns, data, emptyMessage }) => (
   </div>
 );
 
-// ─── Colors ─────────────────────────────────────────────────────────
+// ─── Colors (kept for chart differentiation) ───────────────────────
 const COLORS = ["#0D47A1", "#FF1070", "#00C49F", "#FFBB28", "#0088FE", "#FF8042", "#AF19FF"];
 
 // ─── Dashboard Component ────────────────────────────────────────────
@@ -124,7 +124,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { theme } = useTheme();
 
-  // Theme colors (for charts, dynamic)
+  // Dynamic chart colours
   const primaryColor = theme?.primary_color || "#0D47A1";
   const accentColor = theme?.accent_color || "#FF1070";
 
@@ -173,14 +173,14 @@ export default function Dashboard() {
     return (
       <div className="p-8 text-center">
         <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent" />
-        <p className="mt-4 text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>Loading dashboard…</p>
+        <p className="mt-4 text-primary-dark/60 dark:text-gray-400" style={{ fontFamily: "var(--font-body)" }}>Loading dashboard…</p>
       </div>
     );
   }
 
   if (isError) {
     return (
-      <div className="p-8 text-center text-red-600 dark:text-red-400">
+      <div className="p-8 text-center text-accent-dark dark:text-red-400">
         Failed to load dashboard data. Please try again later.
       </div>
     );
@@ -196,10 +196,10 @@ export default function Dashboard() {
       {/* Welcome & Quick Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+          <h1 className="text-2xl sm:text-3xl font-bold text-primary" style={{ fontFamily: "var(--font-heading)" }}>
             Welcome, {profile?.full_name || "Admin"}!
           </h1>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>
+          <p className="text-sm text-primary-dark dark:text-gray-400 mt-1" style={{ fontFamily: "var(--font-body)" }}>
             Here's your academy at a glance.
           </p>
         </div>
@@ -215,47 +215,47 @@ export default function Dashboard() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        <StatCard icon={Users} title="Total Students" value={stats.totalStudents} subtext="Active enrollments" color="bg-blue-500" />
-        <StatCard icon={BookOpen} title="Active Batches" value={stats.activeBatches} subtext="Currently running" color="bg-emerald-500" />
-        <StatCard icon={GraduationCap} title="Teachers" value={stats.totalTeachers} color="bg-purple-500" />
-        <StatCard icon={Users} title="Parents" value={stats.totalParents} color="bg-cyan-500" />
+        <StatCard icon={Users} title="Total Students" value={stats.totalStudents} subtext="Active enrollments" color="bg-primary" />
+        <StatCard icon={BookOpen} title="Active Batches" value={stats.activeBatches} subtext="Currently running" color="bg-accent" />
+        <StatCard icon={GraduationCap} title="Teachers" value={stats.totalTeachers} color="bg-primary-dark" />
+        <StatCard icon={Users} title="Parents" value={stats.totalParents} color="bg-accent-dark" />
 
         <StatCard
           icon={CalendarCheck}
           title="Today's Attendance"
           value={stats.todayAttendance.total > 0 ? `${Math.round((stats.todayAttendance.present / stats.todayAttendance.total) * 100)}%` : "N/A"}
           subtext={stats.todayAttendance.total > 0 ? `${stats.todayAttendance.present} / ${stats.todayAttendance.total} marked` : "No session today"}
-          color="bg-orange-500"
+          color="bg-primary-light"
         />
-        <StatCard icon={IndianRupee} title="Monthly Collection" value={`₹${stats.monthlyFeeCollection.toLocaleString()}`} subtext="This month" color="bg-green-600" />
-        <StatCard icon={AlertCircle} title="Pending Fees" value={`₹${stats.pendingFees.toLocaleString()}`} subtext="All time" color="bg-red-500" />
-        <StatCard icon={TrendingUp} title="Active Courses" value={stats.activeCourses} color="bg-teal-500" />
+        <StatCard icon={IndianRupee} title="Monthly Collection" value={`₹${stats.monthlyFeeCollection.toLocaleString()}`} subtext="This month" color="bg-accent" />
+        <StatCard icon={AlertCircle} title="Pending Fees" value={`₹${stats.pendingFees.toLocaleString()}`} subtext="All time" color="bg-accent-dark" />
+        <StatCard icon={TrendingUp} title="Active Courses" value={stats.activeCourses} color="bg-primary" />
 
-        <StatCard icon={Clock} title="Upcoming Exams" value={stats.upcomingExams.length} subtext="Next few days" color="bg-indigo-500" />
-        <StatCard icon={PhoneCall} title="New Inquiries (Month)" value={stats.newInquiriesThisMonth} subtext="This month" color="bg-pink-500" />
+        <StatCard icon={Clock} title="Upcoming Exams" value={stats.upcomingExams.length} subtext="Next few days" color="bg-primary-dark" />
+        <StatCard icon={PhoneCall} title="New Inquiries (Month)" value={stats.newInquiriesThisMonth} subtext="This month" color="bg-accent" />
 
-        <StatCard icon={Package} title="Low Stock Items" value={stats.lowStockItems.length} subtext={stats.lowStockItems.length > 0 ? "Need reorder" : "All stocked"} color="bg-yellow-500" />
-        <StatCard icon={Receipt} title="Pending Invoices" value={`₹${stats.pendingInvoicesAmount.toLocaleString()}`} subtext={`${stats.pendingInvoicesCount} invoice${stats.pendingInvoicesCount !== 1 ? 's' : ''} pending`} color="bg-rose-500" />
-        <StatCard icon={CheckCircle} title="Today's Income" value={`₹${stats.todayIncome.toLocaleString()}`} subtext="Collected today" color="bg-emerald-600" />
+        <StatCard icon={Package} title="Low Stock Items" value={stats.lowStockItems.length} subtext={stats.lowStockItems.length > 0 ? "Need reorder" : "All stocked"} color="bg-primary" />
+        <StatCard icon={Receipt} title="Pending Invoices" value={`₹${stats.pendingInvoicesAmount.toLocaleString()}`} subtext={`${stats.pendingInvoicesCount} invoice${stats.pendingInvoicesCount !== 1 ? 's' : ''} pending`} color="bg-accent-dark" />
+        <StatCard icon={CheckCircle} title="Today's Income" value={`₹${stats.todayIncome.toLocaleString()}`} subtext="Collected today" color="bg-accent" />
       </div>
 
       {/* Low Stock Alert */}
       {stats.lowStockItems.length > 0 && (
-        <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
-          <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+        <div className="p-4 bg-accent-bg dark:bg-accent/20 border border-accent dark:border-accent-dark rounded-xl">
+          <div className="flex items-center gap-2 text-accent-dark dark:text-accent-light">
             <AlertTriangle size={18} />
-            <h3 className="font-semibold" style={{ fontFamily: "var(--font-heading)" }}>Low Stock Alert</h3>
+            <h3 className="font-semibold text-accent-dark" style={{ fontFamily: "var(--font-heading)" }}>Low Stock Alert</h3>
           </div>
           <div className="flex flex-wrap gap-2 mt-2">
             {stats.lowStockItems.map((item) => (
-              <span key={item.id} className="px-3 py-1 bg-amber-100 dark:bg-amber-800 text-amber-800 dark:text-amber-200 rounded-full text-xs font-medium">
+              <span key={item.id} className="px-3 py-1 bg-accent/10 text-accent-dark dark:bg-accent/20 dark:text-accent-light rounded-full text-xs font-medium">
                 {item.item_name}: {item.current_stock} (Min: {item.reorder_level})
               </span>
             ))}
           </div>
           <button
             onClick={() => navigate("/inventory-items")}
-            className="mt-2 text-sm text-amber-700 dark:text-amber-300 underline"
+            className="mt-2 text-sm text-accent-dark dark:text-accent-light underline"
             style={{ fontFamily: "var(--font-body)" }}
           >
             View all inventory
@@ -266,12 +266,12 @@ export default function Dashboard() {
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Monthly Fee Collection */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold mb-4" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-primary-bg dark:border-gray-700">
+          <h3 className="text-lg font-semibold mb-4 text-primary" style={{ fontFamily: "var(--font-heading)" }}>
             Monthly Fee Collection (Last 6 Months)
           </h3>
           {stats.monthlyFeeData.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-12">No data available.</p>
+            <p className="text-sm text-primary-dark/60 dark:text-gray-400 text-center py-12">No data available.</p>
           ) : (
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={stats.monthlyFeeData}>
@@ -286,12 +286,12 @@ export default function Dashboard() {
         </div>
 
         {/* Students per Batch */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold mb-4" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-primary-bg dark:border-gray-700">
+          <h3 className="text-lg font-semibold mb-4 text-primary" style={{ fontFamily: "var(--font-heading)" }}>
             Students per Batch
           </h3>
           {stats.batchStudentData.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-12">No batch data available.</p>
+            <p className="text-sm text-primary-dark/60 dark:text-gray-400 text-center py-12">No batch data available.</p>
           ) : (
             <ResponsiveContainer width="100%" height={250}>
               <PieChart>
@@ -308,12 +308,12 @@ export default function Dashboard() {
         </div>
 
         {/* Attendance Trend */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold mb-4" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-primary-bg dark:border-gray-700">
+          <h3 className="text-lg font-semibold mb-4 text-primary" style={{ fontFamily: "var(--font-heading)" }}>
             Attendance Trend (Last 7 Days)
           </h3>
           {stats.attendanceTrend.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-12">No attendance data available.</p>
+            <p className="text-sm text-primary-dark/60 dark:text-gray-400 text-center py-12">No attendance data available.</p>
           ) : (
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={stats.attendanceTrend}>
@@ -328,12 +328,12 @@ export default function Dashboard() {
         </div>
 
         {/* Fee Status Pie */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold mb-4" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-primary-bg dark:border-gray-700">
+          <h3 className="text-lg font-semibold mb-4 text-primary" style={{ fontFamily: "var(--font-heading)" }}>
             Fee Status (Overall)
           </h3>
           {feeStatusPie.reduce((sum, item) => sum + item.value, 0) === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-12">No fee data available.</p>
+            <p className="text-sm text-primary-dark/60 dark:text-gray-400 text-center py-12">No fee data available.</p>
           ) : (
             <ResponsiveContainer width="100%" height={250}>
               <PieChart>
@@ -349,12 +349,12 @@ export default function Dashboard() {
         </div>
 
         {/* Course-wise Students */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold mb-4" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-primary-bg dark:border-gray-700">
+          <h3 className="text-lg font-semibold mb-4 text-primary" style={{ fontFamily: "var(--font-heading)" }}>
             Students per Course
           </h3>
           {stats.courseWiseStudents.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-12">No course data available.</p>
+            <p className="text-sm text-primary-dark/60 dark:text-gray-400 text-center py-12">No course data available.</p>
           ) : (
             <ResponsiveContainer width="100%" height={250}>
               <PieChart>
@@ -371,12 +371,12 @@ export default function Dashboard() {
         </div>
 
         {/* Inquiry Trend */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold mb-4" style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-primary-bg dark:border-gray-700">
+          <h3 className="text-lg font-semibold mb-4 text-primary" style={{ fontFamily: "var(--font-heading)" }}>
             Inquiry Trend (Last 6 Months)
           </h3>
           {stats.inquiryTrendData.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-12">No inquiry data available.</p>
+            <p className="text-sm text-primary-dark/60 dark:text-gray-400 text-center py-12">No inquiry data available.</p>
           ) : (
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={stats.inquiryTrendData}>
@@ -401,9 +401,9 @@ export default function Dashboard() {
             inq.student_name,
             inq.mobile,
             <span key={inq.inquiry_no} className={`px-2 py-1 rounded-full text-xs font-medium ${
-              inq.status === "New" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200" :
-              inq.status === "Joined" ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200" :
-              "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+              inq.status === "New" ? "bg-primary-bg text-primary-dark dark:bg-primary/20 dark:text-primary-light" :
+              inq.status === "Joined" ? "bg-accent-bg text-accent-dark dark:bg-accent/20 dark:text-accent-light" :
+              "bg-primary-bg text-primary-dark dark:bg-primary/20 dark:text-primary-light"
             }`}>{inq.status}</span>,
           ])}
           emptyMessage="No recent inquiries"

@@ -10,15 +10,20 @@ import {
 } from "../services/inventoryService";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 import { sendEmail } from "../services/emailService";
 
 export default function IssueInventory() {
   const queryClient = useQueryClient();
 
   const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme();                                     // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const [studentId, setStudentId] = useState("");
   const [itemId, setItemId] = useState("");
@@ -215,7 +220,7 @@ export default function IssueInventory() {
         unit_price: unitPrice,
         reference: `Student: ${studentName} (${selectedStudent?.admission_no || ""})`,
         notes,
-        student_id: parseInt(studentId, 10), // 👈 Added student_id for better tracking
+        student_id: parseInt(studentId, 10),
       };
 
       await addInventoryTransaction(payload, ctx);
@@ -252,12 +257,16 @@ export default function IssueInventory() {
     <>
       {/* Header with title and Send Report button */}
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">
+        <h1
+          className="text-3xl font-bold text-primary"
+          style={{ fontFamily: headingFont }}
+        >
           Issue Inventory to Student
         </h1>
         <button
           onClick={sendReportEmail}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-dark text-white rounded-lg transition-colors text-sm font-medium"
+          style={{ fontFamily: bodyFont }}
         >
           <Mail size={18} /> Send Report
         </button>
@@ -265,16 +274,19 @@ export default function IssueInventory() {
 
       <form
         onSubmit={handleSubmit}
-        className="bg-white rounded-xl p-6 shadow-sm max-w-xl space-y-4"
+        className="bg-white rounded-xl p-6 shadow-sm max-w-xl space-y-4 border border-primary-bg"
       >
         <div>
-          <label className="block text-sm mb-1">
+          <label
+            className="block text-sm mb-1 text-primary-dark"
+            style={{ fontFamily: bodyFont }}
+          >
             <User size={14} className="inline mr-1" /> Student
           </label>
           <select
             value={studentId}
             onChange={(e) => setStudentId(e.target.value)}
-            className="w-full border rounded p-2.5 text-sm"
+            className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 text-sm"
             required
           >
             <option value="">Select student</option>
@@ -287,13 +299,16 @@ export default function IssueInventory() {
         </div>
 
         <div>
-          <label className="block text-sm mb-1">
+          <label
+            className="block text-sm mb-1 text-primary-dark"
+            style={{ fontFamily: bodyFont }}
+          >
             <Box size={14} className="inline mr-1" /> Item
           </label>
           <select
             value={itemId}
             onChange={(e) => setItemId(e.target.value)}
-            className="w-full border rounded p-2.5 text-sm"
+            className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 text-sm"
             required
           >
             <option value="">Select item</option>
@@ -306,31 +321,43 @@ export default function IssueInventory() {
         </div>
 
         <div>
-          <label className="block text-sm mb-1">Quantity</label>
+          <label
+            className="block text-sm mb-1 text-primary-dark"
+            style={{ fontFamily: bodyFont }}
+          >
+            Quantity
+          </label>
           <input
             type="number"
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
             min={1}
-            className="w-full border rounded p-2.5 text-sm"
+            className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 text-sm"
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm mb-1">Notes</label>
+          <label
+            className="block text-sm mb-1 text-primary-dark"
+            style={{ fontFamily: bodyFont }}
+          >
+            Notes
+          </label>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
-            className="w-full border rounded p-2.5 text-sm"
+            className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 text-sm"
+            style={{ fontFamily: bodyFont }}
           />
         </div>
 
         <button
           type="submit"
           disabled={issueMutation.isPending}
-          className="bg-primary text-white px-6 py-2.5 rounded-lg"
+          className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg text-sm font-medium transition-colors"
+          style={{ fontFamily: bodyFont }}
         >
           {issueMutation.isPending ? "Issuing..." : "Issue Item"}
         </button>

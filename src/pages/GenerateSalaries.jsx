@@ -19,7 +19,8 @@ import {
 } from "lucide-react";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
-import { sendEmail } from "../services/emailService"; // 👈 Import for email
+import { useTheme } from "../context/ThemeContext"; // 👈 import theme
+import { sendEmail } from "../services/emailService";
 
 export default function GenerateSalaries() {
   const qc = useQueryClient();
@@ -31,7 +32,8 @@ export default function GenerateSalaries() {
   const [generating, setGenerating] = useState(false);
   const [results, setResults] = useState(null);
 
-  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
+  const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme(); // 👈 get theme colours
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
@@ -87,7 +89,7 @@ export default function GenerateSalaries() {
 
       const htmlBody = `
         <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
-          <h2 style="color:#0D47A1;">Salary Generation Report</h2>
+          <h2 style="color:${theme.primary_color};">Salary Generation Report</h2>
           <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
           <p><strong>Month:</strong> ${new Date(year, month-1).toLocaleString('default', { month: 'long', year: 'numeric' })}</p>
           <p><strong>Total Teachers:</strong> ${teachers.length}</p>
@@ -96,7 +98,7 @@ export default function GenerateSalaries() {
           <h3>Salary Breakdown</h3>
           <table style="width:100%;border-collapse:collapse;font-size:12px;">
             <thead>
-              <tr style="background:#e3f2fd;">
+              <tr style="background:${theme.primary_light_color || '#e3f2fd'};">
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Teacher</th>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:center;">Type</th>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Lectures</th>
@@ -238,7 +240,6 @@ export default function GenerateSalaries() {
       if (t.salary_type === "fixed") {
         gross = t.monthly_salary || 0;
         // Deduct for leaves: per day deduction = monthly_salary / total working days in month
-        // Use total days in month as an approximation (or we can compute weekdays)
         const daysInMonth = new Date(year, month, 0).getDate();
         const dailyRate = gross / daysInMonth;
         const deduction = dailyRate * leaveDays;
@@ -332,7 +333,7 @@ export default function GenerateSalaries() {
             subject: `Salary Generation Completed - ${new Date(year, month-1).toLocaleString('default', { month: 'long', year: 'numeric' })}`,
             html: `
               <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-                <h2 style="color:#0D47A1;">Salary Generation Completed</h2>
+                <h2 style="color:${theme.primary_color};">Salary Generation Completed</h2>
                 <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
                 <p><strong>Month:</strong> ${new Date(year, month-1).toLocaleString('default', { month: 'long', year: 'numeric' })}</p>
                 <ul>
@@ -380,8 +381,8 @@ export default function GenerateSalaries() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1
-            className="text-2xl sm:text-3xl font-bold"
-            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+            className="text-2xl sm:text-3xl font-bold text-primary"
+            style={{ fontFamily: "var(--font-heading)" }}
           >
             Generate Salaries
           </h1>
@@ -415,10 +416,10 @@ export default function GenerateSalaries() {
               className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-900 dark:text-gray-100 rounded-lg p-2 text-sm w-24"
             />
           </div>
-          {/* 👇 Send Report button */}
+          {/* Send Report button – now uses primary theme */}
           <button
             onClick={sendReportEmail}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors text-sm font-medium"
             style={{ fontFamily: "var(--font-body)" }}
           >
             <Mail size={18} /> Send Report
@@ -523,7 +524,7 @@ export default function GenerateSalaries() {
                           disabled={paid}
                         >
                           {paid ? (
-                            <CheckSquare className="w-4 h-4 text-green-500" />
+                            <CheckSquare className="w-4 h-4 text-primary" />
                           ) : selected ? (
                             <CheckSquare className="w-4 h-4 text-primary" />
                           ) : (
@@ -538,8 +539,8 @@ export default function GenerateSalaries() {
                         <span
                           className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                             t.salary_type === "fixed"
-                              ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200"
-                              : "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-200"
+                              ? "bg-primary-bg text-primary dark:bg-primary-dark dark:text-primary-light"
+                              : "bg-accent-bg text-accent dark:bg-accent dark:text-accent-light"
                           }`}
                         >
                           {t.salary_type === "fixed" ? "Fixed" : "Lecture"}
@@ -566,11 +567,11 @@ export default function GenerateSalaries() {
                       </td>
                       <td className="px-4 py-3 text-center text-sm">
                         {paid ? (
-                          <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-200">
+                          <span className="px-2 py-0.5 rounded-full text-xs bg-primary-bg text-primary dark:bg-primary-dark dark:text-primary-light">
                             Paid
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-200">
+                          <span className="px-2 py-0.5 rounded-full text-xs bg-accent-bg text-accent dark:bg-accent dark:text-accent-light">
                             Pending
                           </span>
                         )}
@@ -601,10 +602,10 @@ export default function GenerateSalaries() {
             {selectedCount} of {totalCount} teachers selected
           </span>
           <div className="flex gap-4 text-xs mt-1 sm:mt-0">
-            <span className="text-green-600 dark:text-green-400">
+            <span className="text-primary dark:text-primary-light">
               {teachers.filter((t) => isAlreadyPaid(t.id)).length} paid this month
             </span>
-            <span className="text-yellow-600 dark:text-yellow-400">
+            <span className="text-accent dark:text-accent-light">
               {teachers.filter((t) => !isAlreadyPaid(t.id)).length} pending
             </span>
           </div>
@@ -614,15 +615,15 @@ export default function GenerateSalaries() {
       {/* Results summary */}
       {results && (
         <div className="bg-white dark:bg-accent rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
-          <h3 className="font-medium mb-2" style={{ color: "var(--color-primary)" }}>
+          <h3 className="font-medium mb-2 text-primary">
             Generation Results
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm text-gray-700 dark:text-gray-200">
             <div>Total: {results.length}</div>
-            <div className="text-green-600 dark:text-green-400">
+            <div className="text-primary dark:text-primary-light">
               Success: {results.filter((r) => !r.error).length}
             </div>
-            <div className="text-red-600 dark:text-red-400">
+            <div className="text-accent dark:text-accent-light">
               Failed: {results.filter((r) => r.error).length}
             </div>
             <div>
@@ -634,7 +635,7 @@ export default function GenerateSalaries() {
             </div>
           </div>
           {results.some((r) => r.error) && (
-            <div className="mt-2 text-xs text-red-600 dark:text-red-400">
+            <div className="mt-2 text-xs text-accent dark:text-accent-light">
               {results
                 .filter((r) => r.error)
                 .map((r) => (

@@ -9,6 +9,7 @@ import {
 } from "../services/purchaseInvoiceService";
 import { generateInvoicePDF, numberToWords } from "../utils/invoicePdf";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 import { supabase } from "../api/supabase";
 import { sendEmail } from "../services/emailService";
 import toast from "react-hot-toast";
@@ -34,9 +35,14 @@ export default function PurchaseInvoiceView() {
 
   // ✅ Use org from context directly
   const { org, branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();                                     // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
+
+  const primaryColor = theme?.primary_color || "#0D47A1";
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   // Purchase invoice (scoped)
   const { data: invoice, isLoading } = useQuery({
@@ -122,7 +128,7 @@ export default function PurchaseInvoiceView() {
 
       const htmlBody = `
         <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:20px;border:1px solid #ddd;">
-          <h2 style="text-align:center;color:#0D47A1;">PURCHASE INVOICE</h2>
+          <h2 style="text-align:center;color:${primaryColor};">PURCHASE INVOICE</h2>
           <div style="display:flex;justify-content:space-between;margin-bottom:16px;">
             <div>
               <strong>Vendor:</strong> ${vendorName}<br/>
@@ -140,7 +146,7 @@ export default function PurchaseInvoiceView() {
           </div>
           <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:11px;">
             <thead>
-              <tr style="background:#0D47A1;color:#fff;">
+              <tr style="background:${primaryColor};color:#fff;">
                 <th style="padding:4px 8px;border:1px solid #ccc;text-align:center;">#</th>
                 <th style="padding:4px 8px;border:1px solid #ccc;text-align:left;">Item</th>
                 <th style="padding:4px 8px;border:1px solid #ccc;text-align:center;">Qty</th>
@@ -163,9 +169,9 @@ export default function PurchaseInvoiceView() {
               <div style="display:flex;justify-content:space-between;"><span>SGST:</span><span>${formatCurrency(totals.sgst)}</span></div>
               <div style="display:flex;justify-content:space-between;"><span>IGST:</span><span>${formatCurrency(totals.igst)}</span></div>
               ${roundOff !== 0 ? `<div style="display:flex;justify-content:space-between;"><span>Round Off:</span><span>${formatCurrency(roundOff)}</span></div>` : ''}
-              <div style="display:flex;justify-content:space-between;font-weight:bold;font-size:1.2em;border-top:2px solid #0D47A1;margin-top:4px;padding-top:4px;">
+              <div style="display:flex;justify-content:space-between;font-weight:bold;font-size:1.2em;border-top:2px solid ${primaryColor};margin-top:4px;padding-top:4px;">
                 <span>Grand Total:</span>
-                <span style="color:#0D47A1;">${formatCurrency(grandTotal)}</span>
+                <span style="color:${primaryColor};">${formatCurrency(grandTotal)}</span>
               </div>
             </div>
           </div>
@@ -254,7 +260,7 @@ export default function PurchaseInvoiceView() {
             .org-name {
               font-size: 18pt;
               font-weight: bold;
-              color: #0D47A1;
+              color: ${primaryColor};
             }
             .org-details {
               font-size: 9pt;
@@ -264,7 +270,7 @@ export default function PurchaseInvoiceView() {
               text-align: center;
               font-size: 16pt;
               font-weight: bold;
-              color: #0D47A1;
+              color: ${primaryColor};
               margin-bottom: 12px;
             }
             .details-table {
@@ -279,7 +285,7 @@ export default function PurchaseInvoiceView() {
             }
             .details-table .label {
               font-weight: bold;
-              color: #0D47A1;
+              color: ${primaryColor};
             }
             .items-table {
               width: 100%;
@@ -288,12 +294,12 @@ export default function PurchaseInvoiceView() {
               margin-bottom: 12px;
             }
             .items-table th {
-              background-color: #0D47A1;
+              background-color: ${primaryColor};
               color: #ffffff;
               font-weight: bold;
               font-size: 7.5pt;
               padding: 4px 6px;
-              border: 1px solid #0D47A1;
+              border: 1px solid ${primaryColor};
               text-align: left;
             }
             .items-table td {
@@ -313,7 +319,7 @@ export default function PurchaseInvoiceView() {
             .totals .total-value { text-align: right; }
             .grand-total {
               font-weight: bold;
-              color: #0D47A1;
+              color: ${primaryColor};
               font-size: 12pt;
             }
             .amount-words {
@@ -372,11 +378,19 @@ export default function PurchaseInvoiceView() {
   };
 
   if (isLoading) {
-    return <div className="p-8 text-center text-gray-500">Loading invoice…</div>;
+    return (
+      <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+        Loading invoice…
+      </div>
+    );
   }
 
   if (!invoice) {
-    return <div className="p-8 text-center text-red-600">Invoice not found</div>;
+    return (
+      <div className="p-8 text-center text-accent-dark" style={{ fontFamily: bodyFont }}>
+        Invoice not found
+      </div>
+    );
   }
 
   const orgName = org?.company_name || "Academy";
@@ -414,7 +428,8 @@ export default function PurchaseInvoiceView() {
       <div className="no-print flex justify-between items-center mb-6">
         <button
           onClick={() => navigate("/purchase-invoices")}
-          className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 text-sm"
+          className="inline-flex items-center gap-2 text-primary-dark hover:text-primary text-sm"
+          style={{ fontFamily: bodyFont }}
         >
           <ArrowLeft size={18} /> Back to Purchase Invoices
         </button>
@@ -422,21 +437,24 @@ export default function PurchaseInvoiceView() {
           <button
             onClick={sendInvoiceEmail}
             disabled={sendingEmail}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50"
+            className="bg-accent hover:bg-accent-dark text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50"
+            style={{ fontFamily: bodyFont }}
           >
             <Mail size={16} /> {sendingEmail ? "Sending..." : "Email Invoice"}
           </button>
           <button
             onClick={handleDownloadPDF}
             disabled={generatingPDF}
-            className="border px-4 py-2 rounded-lg text-sm flex items-center gap-2 text-gray-700 hover:bg-gray-50"
+            className="border border-primary-bg text-primary-dark hover:bg-primary-bg px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            style={{ fontFamily: bodyFont }}
           >
             <FileText size={16} /> {generatingPDF ? "Generating..." : "Download PDF"}
           </button>
           <button
             onClick={handlePrint}
             disabled={printing}
-            className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            className="bg-primary hover:bg-accent text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            style={{ fontFamily: bodyFont }}
           >
             <Printer size={16} /> {printing ? "Printing…" : "Print"}
           </button>
@@ -444,14 +462,16 @@ export default function PurchaseInvoiceView() {
             <>
               <button
                 onClick={() => navigate(`/purchase-invoices/${id}/edit`)}
-                className="border px-4 py-2 rounded-lg text-sm flex items-center gap-2 text-gray-700 hover:bg-gray-50"
+                className="border border-primary-bg text-primary-dark hover:bg-primary-bg px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+                style={{ fontFamily: bodyFont }}
               >
                 <Edit3 size={16} /> Edit
               </button>
               <button
                 onClick={() => finalizeMutation.mutate()}
                 disabled={finalizeMutation.isPending}
-                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+                className="bg-accent hover:bg-accent-dark text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+                style={{ fontFamily: bodyFont }}
               >
                 {finalizeMutation.isPending ? (
                   <Loader className="w-4 h-4 animate-spin" />
@@ -467,7 +487,8 @@ export default function PurchaseInvoiceView() {
               onClick={() => {
                 if (window.confirm("Delete this invoice?")) deleteMutation.mutate();
               }}
-              className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+              className="bg-accent-dark hover:bg-accent text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+              style={{ fontFamily: bodyFont }}
             >
               <Trash2 size={16} /> Delete
             </button>
@@ -475,11 +496,11 @@ export default function PurchaseInvoiceView() {
         </div>
       </div>
 
-      {/* Invoice Content (preserved professional styling) */}
+      {/* Invoice Content (preserved professional styling with dynamic primary color) */}
       <div
         id="invoice-print"
         style={{
-          fontFamily: "Helvetica, Arial, sans-serif",
+          fontFamily: bodyFont,
           fontSize: "9pt",
           color: "#333",
           padding: "0",
@@ -496,7 +517,7 @@ export default function PurchaseInvoiceView() {
             />
           )}
           <div>
-            <div className="org-name" style={{ fontSize: "18pt", fontWeight: "bold", color: "#0D47A1" }}>
+            <div className="org-name" style={{ fontSize: "18pt", fontWeight: "bold", color: primaryColor }}>
               {orgName}
             </div>
             <div className="org-details" style={{ fontSize: "9pt", color: "#555" }}>
@@ -508,7 +529,7 @@ export default function PurchaseInvoiceView() {
         </div>
 
         {/* Title */}
-        <div className="title" style={{ textAlign: "center", fontSize: "16pt", fontWeight: "bold", color: "#0D47A1", marginBottom: "12px" }}>
+        <div className="title" style={{ textAlign: "center", fontSize: "16pt", fontWeight: "bold", color: primaryColor, marginBottom: "12px" }}>
           PURCHASE INVOICE
         </div>
 
@@ -517,7 +538,7 @@ export default function PurchaseInvoiceView() {
           <tbody>
             <tr>
               <td style={{ verticalAlign: "top", padding: "2px 0", width: "50%" }}>
-                <div className="label" style={{ fontWeight: "bold", color: "#0D47A1", marginBottom: "2px" }}>Vendor:</div>
+                <div className="label" style={{ fontWeight: "bold", color: primaryColor, marginBottom: "2px" }}>Vendor:</div>
                 <div>{vendorName}</div>
                 {vendor.gstin && <div>GSTIN: {vendor.gstin}</div>}
                 {vendor.address && <div>Address: {vendor.address}</div>}
@@ -525,7 +546,7 @@ export default function PurchaseInvoiceView() {
                 <div>Payment Terms: {invoice.payment_terms || "Standard"}</div>
               </td>
               <td style={{ verticalAlign: "top", padding: "2px 0", width: "50%", textAlign: "right" }}>
-                <div className="label" style={{ fontWeight: "bold", color: "#0D47A1", marginBottom: "2px" }}>Invoice Details</div>
+                <div className="label" style={{ fontWeight: "bold", color: primaryColor, marginBottom: "2px" }}>Invoice Details</div>
                 <div>No: {invoice.invoice_number}</div>
                 <div>Date: {invoice.invoice_date}</div>
                 <div>Status: {invoice.status}</div>
@@ -538,17 +559,17 @@ export default function PurchaseInvoiceView() {
         {/* Items table */}
         <table className="items-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: "7pt", marginBottom: "12px" }}>
           <thead>
-            <tr>
-              <th style={{ width: "4%" }}>#</th>
-              <th style={{ width: "25%" }}>Item</th>
-              <th style={{ width: "13%" }}>HSN/SAC</th>
-              <th style={{ width: "6%", textAlign: "center" }}>Qty</th>
-              <th style={{ width: "10%", textAlign: "right" }}>Unit Price</th>
-              <th style={{ width: "10%", textAlign: "right" }}>Taxable</th>
-              <th style={{ width: "9%", textAlign: "right" }}>CGST</th>
-              <th style={{ width: "9%", textAlign: "right" }}>SGST</th>
-              <th style={{ width: "9%", textAlign: "right" }}>IGST</th>
-              <th style={{ width: "10%", textAlign: "right" }}>Total</th>
+            <tr style={{ backgroundColor: primaryColor }}>
+              <th style={{ width: "4%", color: "#fff" }}>#</th>
+              <th style={{ width: "25%", color: "#fff" }}>Item</th>
+              <th style={{ width: "13%", color: "#fff" }}>HSN/SAC</th>
+              <th style={{ width: "6%", textAlign: "center", color: "#fff" }}>Qty</th>
+              <th style={{ width: "10%", textAlign: "right", color: "#fff" }}>Unit Price</th>
+              <th style={{ width: "10%", textAlign: "right", color: "#fff" }}>Taxable</th>
+              <th style={{ width: "9%", textAlign: "right", color: "#fff" }}>CGST</th>
+              <th style={{ width: "9%", textAlign: "right", color: "#fff" }}>SGST</th>
+              <th style={{ width: "9%", textAlign: "right", color: "#fff" }}>IGST</th>
+              <th style={{ width: "10%", textAlign: "right", color: "#fff" }}>Total</th>
             </tr>
           </thead>
           <tbody>
@@ -582,7 +603,7 @@ export default function PurchaseInvoiceView() {
               <tr><td className="total-label" style={{ textAlign: "right", paddingRight: "8px" }}>SGST:</td><td className="total-value" style={{ textAlign: "right" }}>{formatCurrency(totals.sgst)}</td></tr>
               <tr><td className="total-label" style={{ textAlign: "right", paddingRight: "8px" }}>IGST:</td><td className="total-value" style={{ textAlign: "right" }}>{formatCurrency(totals.igst)}</td></tr>
               {roundOff !== 0 && <tr><td className="total-label" style={{ textAlign: "right", paddingRight: "8px" }}>Round Off:</td><td className="total-value" style={{ textAlign: "right" }}>{formatCurrency(roundOff)}</td></tr>}
-              <tr><td className="total-label grand-total" style={{ fontWeight: "bold", color: "#0D47A1", fontSize: "12pt", textAlign: "right", paddingRight: "8px" }}>Grand Total:</td><td className="total-value grand-total" style={{ fontWeight: "bold", color: "#0D47A1", fontSize: "12pt", textAlign: "right" }}>{formatCurrency(grandTotal)}</td></tr>
+              <tr><td className="total-label grand-total" style={{ fontWeight: "bold", color: primaryColor, fontSize: "12pt", textAlign: "right", paddingRight: "8px" }}>Grand Total:</td><td className="total-value grand-total" style={{ fontWeight: "bold", color: primaryColor, fontSize: "12pt", textAlign: "right" }}>{formatCurrency(grandTotal)}</td></tr>
             </tbody>
           </table>
         </div>

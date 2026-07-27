@@ -18,7 +18,7 @@ import {
   Award,
   Printer,
   Mail,
-} from "lucide-react"; // 👈 Added Mail
+} from "lucide-react";
 import Papa from "papaparse";
 import CertificateForm from "../components/CertificateForm";
 import BackButton from "../components/BackButton";
@@ -31,14 +31,19 @@ import {
 import { generateCertificatePdf } from "../utils/certificatePdf";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
-import { sendTemplateEmail, sendEmail } from "../services/emailService"; // 👈 Import
+import { useTheme } from "../context/ThemeContext"; // ✅ dynamic theme
+import { sendTemplateEmail, sendEmail } from "../services/emailService";
 
 export default function Certificates() {
   const queryClient = useQueryClient();
 
-  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
+  const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -135,9 +140,8 @@ export default function Certificates() {
   // ─── Send certificate email manually ──────────────────────────────
   const sendCertificateEmailMutation = useMutation({
     mutationFn: async (cert) => {
-      // Build context similar to what the service does
       const student = cert.students;
-      const parentEmail = student?.email; // we can also fetch parent later, but we'll use student email
+      const parentEmail = student?.email;
 
       if (!parentEmail) {
         throw new Error("No email found for the student.");
@@ -184,7 +188,6 @@ export default function Certificates() {
         return;
       }
 
-      // Build HTML table rows
       let tableRows = certificates.map((c) => `
         <tr>
           <td style="padding:4px 8px;border:1px solid #ddd;">${c.certificate_no}</td>
@@ -319,13 +322,13 @@ export default function Certificates() {
         <div>
           <h1
             className="text-2xl sm:text-3xl font-bold text-primary"
-            style={{ fontFamily: "var(--font-heading)" }}
+            style={{ fontFamily: headingFont }}
           >
             Certificates
           </h1>
           <p
-            className="text-sm text-gray-600 dark:text-gray-400 mt-1"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="text-sm text-primary-dark mt-1"
+            style={{ fontFamily: bodyFont }}
           >
             Issue and manage certificates
           </p>
@@ -334,28 +337,28 @@ export default function Certificates() {
           <button
             onClick={() => setShowForm(true)}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
-            style={{ fontFamily: "var(--font-body)" }}
+            style={{ fontFamily: bodyFont }}
           >
             <Award size={18} /> Issue Certificate
           </button>
           <button
             onClick={sendReportEmail}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-dark text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: bodyFont }}
           >
             <Mail size={18} /> Send Report
           </button>
           <button
             onClick={handleCSVExport}
-            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+            style={{ fontFamily: bodyFont }}
           >
             <Download size={18} /> Export
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+            style={{ fontFamily: bodyFont }}
           >
             <Upload size={18} /> Import
           </button>
@@ -373,56 +376,56 @@ export default function Certificates() {
       <div className="relative max-w-md">
         <Search
           size={18}
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-dark/60"
         />
         <input
           type="text"
           placeholder="Search by certificate no or student name..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg pl-10 pr-4 py-2.5 text-sm"
-          style={{ fontFamily: "var(--font-body)" }}
+          className="w-full border border-primary-bg bg-white text-primary-dark rounded-lg pl-10 pr-4 py-2.5 text-sm"
+          style={{ fontFamily: bodyFont }}
         />
       </div>
 
       {/* Certificates Table */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-primary-bg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px]">
-            <thead className="bg-gray-50 dark:bg-gray-700">
+            <thead className="bg-primary-bg">
               <tr>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
                   Certificate No
                 </th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
                   Student
                 </th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
                   Course
                 </th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
                   Level
                 </th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
                   Issue Date
                 </th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="divide-y divide-primary-bg">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={6} className="p-6 text-center text-primary-dark/60">
                     Loading certificates…
                   </td>
                 </tr>
               ) : certificates.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={6} className="p-6 text-center text-primary-dark/60">
                     <div className="flex flex-col items-center gap-2">
-                      <Award size={32} className="text-gray-400 dark:text-gray-500" />
+                      <Award size={32} className="text-primary-dark/40" />
                       <span>No certificates found</span>
                     </div>
                   </td>
@@ -431,24 +434,24 @@ export default function Certificates() {
                 certificates.map((cert) => (
                   <tr
                     key={cert.id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    className="hover:bg-primary-bg transition-colors"
                   >
-                    <td className="p-3 text-sm font-medium text-gray-800 dark:text-gray-100">
+                    <td className="p-3 text-sm font-medium text-primary">
                       {cert.certificate_no}
                     </td>
-                    <td className="text-sm text-gray-700 dark:text-gray-300">
+                    <td className="text-sm text-primary-dark">
                       {cert.students?.first_name} {cert.students?.last_name}{" "}
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                      <span className="text-xs text-primary-dark/60">
                         ({cert.students?.admission_no})
                       </span>
                     </td>
-                    <td className="text-sm text-gray-700 dark:text-gray-300">
+                    <td className="text-sm text-primary-dark">
                       {cert.courses?.course_name}
                     </td>
-                    <td className="text-sm text-gray-700 dark:text-gray-300">
+                    <td className="text-sm text-primary-dark">
                       {cert.course_levels?.level_name || "-"}
                     </td>
-                    <td className="text-sm text-gray-700 dark:text-gray-300">
+                    <td className="text-sm text-primary-dark">
                       {cert.issue_date}
                     </td>
                     <td className="text-sm">
@@ -463,7 +466,7 @@ export default function Certificates() {
                         <button
                           onClick={() => sendCertificateEmailMutation.mutate(cert)}
                           disabled={sendCertificateEmailMutation.isPending}
-                          className="text-blue-600 hover:underline flex items-center gap-1"
+                          className="text-primary hover:underline flex items-center gap-1"
                           title="Send Email"
                         >
                           <Mail size={16} />
@@ -474,7 +477,7 @@ export default function Certificates() {
                             if (!window.confirm("Delete this certificate?")) return;
                             deleteMutation.mutate(cert.id);
                           }}
-                          className="text-red-600 dark:text-red-400 hover:underline"
+                          className="text-accent hover:underline"
                           title="Delete"
                         >
                           <Trash2 size={15} />
@@ -496,7 +499,7 @@ export default function Certificates() {
             onClick={() => fetchNextPage()}
             disabled={isFetchingNextPage}
             className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-60"
-            style={{ fontFamily: "var(--font-body)" }}
+            style={{ fontFamily: bodyFont }}
           >
             {isFetchingNextPage ? "Loading more…" : "Load More"}
           </button>

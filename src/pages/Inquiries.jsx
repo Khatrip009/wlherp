@@ -1,5 +1,5 @@
 // src/pages/Inquiries.jsx
-import React, { useState, useRef } from "react"; 
+import React, { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   useInfiniteQuery,
@@ -39,8 +39,9 @@ import {
   rejectInquiry,
 } from "../services/inquiryService";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 import { supabase } from "../api/supabase";
-import { sendEmail, sendTemplateEmail } from "../services/emailService"; // 👈 Added
+import { sendEmail, sendTemplateEmail } from "../services/emailService";
 
 // ── Reject Modal ──
 function RejectModal({ inquiry, onConfirm, onClose }) {
@@ -56,22 +57,22 @@ function RejectModal({ inquiry, onConfirm, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
-        <div className="px-6 py-4 border-b border-secondary-light flex justify-between items-center">
-          <h3 className="font-righteous text-lg">Reject Inquiry</h3>
-          <button onClick={onClose} className="text-secondary-dark hover:text-primary">
+        <div className="px-6 py-4 border-b border-primary-bg flex justify-between items-center">
+          <h3 className="font-bold text-lg text-primary">Reject Inquiry</h3>
+          <button onClick={onClose} className="text-primary-dark hover:text-primary">
             <X size={20} />
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: "var(--font-body)" }}>
               Reason for rejection *
             </label>
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={4}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-primary-dark/40"
               placeholder="Why is this inquiry being rejected?"
               required
             />
@@ -80,13 +81,13 @@ function RejectModal({ inquiry, onConfirm, onClose }) {
             <button
               type="button"
               onClick={onClose}
-              className="border border-secondary-light text-secondary-dark px-4 py-2 rounded-lg hover:bg-secondary-bg transition"
+              className="border border-primary-bg text-primary-dark px-4 py-2 rounded-lg hover:bg-primary-bg transition"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition"
+              className="bg-accent-dark hover:bg-accent text-white px-4 py-2 rounded-lg transition"
             >
               Reject
             </button>
@@ -111,22 +112,22 @@ function ScheduleDemoModal({ inquiry, onConfirm, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
-        <div className="px-6 py-4 border-b border-secondary-light flex justify-between items-center">
-          <h3 className="font-righteous text-lg">Schedule Demo</h3>
-          <button onClick={onClose} className="text-secondary-dark hover:text-primary">
+        <div className="px-6 py-4 border-b border-primary-bg flex justify-between items-center">
+          <h3 className="font-bold text-lg text-primary">Schedule Demo</h3>
+          <button onClick={onClose} className="text-primary-dark hover:text-primary">
             <X size={20} />
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: "var(--font-body)" }}>
               Demo Date & Time *
             </label>
             <input
               type="datetime-local"
               value={datetime}
               onChange={(e) => setDatetime(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
               required
             />
           </div>
@@ -134,7 +135,7 @@ function ScheduleDemoModal({ inquiry, onConfirm, onClose }) {
             <button
               type="button"
               onClick={onClose}
-              className="border border-secondary-light text-secondary-dark px-4 py-2 rounded-lg hover:bg-secondary-bg transition"
+              className="border border-primary-bg text-primary-dark px-4 py-2 rounded-lg hover:bg-primary-bg transition"
             >
               Cancel
             </button>
@@ -155,10 +156,14 @@ function ScheduleDemoModal({ inquiry, onConfirm, onClose }) {
 export default function Inquiries() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
+  const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme();                                     // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const isBranchReady = !!branchId && !!financialYearId;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   // Filters
   const [search, setSearch] = useState("");
@@ -255,7 +260,7 @@ export default function Inquiries() {
         to: adminEmails,
         subject: `Inquiry Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-       // from: org?.email || undefined,
+        // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");
@@ -506,14 +511,15 @@ export default function Inquiries() {
     setShowRejectModal(inquiry);
   }
 
+  // ─── Status badge classes using theme ──────────────────────────────
   function getStatusBadge(status) {
     const map = {
-      "Interested": "bg-blue-100 text-blue-700",
-      "Demo Scheduled": "bg-yellow-100 text-yellow-700",
-      "Admitted": "bg-green-100 text-green-700",
-      "Rejected": "bg-red-100 text-red-700",
+      "Interested": "bg-primary-bg text-primary-dark",
+      "Demo Scheduled": "bg-accent-bg text-accent-dark",
+      "Admitted": "bg-accent text-white",
+      "Rejected": "bg-accent-dark text-white",
     };
-    return map[status] || "bg-gray-100 text-gray-700";
+    return map[status] || "bg-primary-bg text-primary-dark";
   }
 
   return (
@@ -522,41 +528,47 @@ export default function Inquiries() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
-          <h1 className="text-3xl font-righteous text-primary-dark">Inquiries</h1>
-          <p className="text-sm text-secondary-dark font-montserrat mt-1">
+          <h1 className="text-3xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+            Inquiries
+          </h1>
+          <p className="text-sm text-primary-dark mt-1" style={{ fontFamily: bodyFont }}>
             Manage prospective student inquiries
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {/* 👇 NEW Send Report button */}
           <button
             onClick={sendReportEmail}
-            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+            className="bg-accent hover:bg-accent-dark text-white px-5 py-2.5 rounded-lg transition text-sm flex items-center gap-2"
+            style={{ fontFamily: bodyFont }}
           >
             <Mail size={18} /> Send Report
           </button>
           <button
             onClick={() => setShowForm(true)}
             disabled={!isBranchReady}
-            className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2 disabled:opacity-50"
+            className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition text-sm flex items-center gap-2 disabled:opacity-50"
+            style={{ fontFamily: bodyFont }}
           >
             <PhoneCall size={18} /> New Inquiry
           </button>
           <button
             onClick={handleCSVExport}
-            className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+            className="border border-primary-bg px-4 py-2.5 rounded-lg text-primary-dark hover:bg-primary-bg text-sm flex items-center gap-2"
+            style={{ fontFamily: bodyFont }}
           >
             <Download size={18} /> Export
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+            className="border border-primary-bg px-4 py-2.5 rounded-lg text-primary-dark hover:bg-primary-bg text-sm flex items-center gap-2"
+            style={{ fontFamily: bodyFont }}
           >
             <Upload size={18} /> Import
           </button>
           <button
             onClick={() => navigate("/reports/admission_pipeline")}
-            className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+            className="border border-primary-bg px-4 py-2.5 rounded-lg text-primary-dark hover:bg-primary-bg text-sm flex items-center gap-2"
+            style={{ fontFamily: bodyFont }}
           >
             <FileText size={18} /> Pipeline Report
           </button>
@@ -568,19 +580,21 @@ export default function Inquiries() {
         <div className="relative flex-1">
           <Search
             size={18}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-dark/60"
           />
           <input
             type="text"
             placeholder="Search by student, parent, mobile, or inquiry no..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-secondary-light rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+            className="w-full border border-primary-bg bg-white text-primary-dark rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-primary-dark/40"
+            style={{ fontFamily: bodyFont }}
           />
         </div>
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+          className="border border-primary-bg px-4 py-2.5 rounded-lg text-primary-dark hover:bg-primary-bg text-sm flex items-center gap-2"
+          style={{ fontFamily: bodyFont }}
         >
           <Filter size={18} /> Filters
           {showFilters && <X size={16} />}
@@ -589,13 +603,15 @@ export default function Inquiries() {
 
       {/* Advanced Filters Panel */}
       {showFilters && (
-        <div className="bg-white rounded-xl p-4 shadow-sm mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border border-secondary-light">
+        <div className="bg-white rounded-xl p-4 shadow-sm mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border border-primary-bg">
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">Status</label>
+            <label className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
+              Status
+            </label>
             <select
               value={filters.status}
               onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
             >
               <option value="">All Statuses</option>
               <option>Interested</option>
@@ -605,11 +621,13 @@ export default function Inquiries() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">Interested Course</label>
+            <label className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
+              Interested Course
+            </label>
             <select
               value={filters.interested_course_id}
               onChange={(e) => setFilters((prev) => ({ ...prev, interested_course_id: e.target.value }))}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
             >
               <option value="">All Courses</option>
               {courses.map((c) => (
@@ -618,11 +636,13 @@ export default function Inquiries() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">Medium</label>
+            <label className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
+              Medium
+            </label>
             <select
               value={filters.medium_id}
               onChange={(e) => setFilters((prev) => ({ ...prev, medium_id: e.target.value }))}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
             >
               <option value="">All Mediums</option>
               {mediums.map((m) => (
@@ -631,32 +651,38 @@ export default function Inquiries() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">Source</label>
+            <label className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
+              Source
+            </label>
             <input
               type="text"
               value={filters.source}
               onChange={(e) => setFilters((prev) => ({ ...prev, source: e.target.value }))}
               placeholder="e.g., Walk-in"
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary placeholder-primary-dark/40"
             />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-xs font-montserrat text-secondary-dark">From Date</label>
+              <label className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
+                From Date
+              </label>
               <input
                 type="date"
                 value={filters.start_date}
                 onChange={(e) => setFilters((prev) => ({ ...prev, start_date: e.target.value }))}
-                className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+                className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
               />
             </div>
             <div>
-              <label className="text-xs font-montserrat text-secondary-dark">To Date</label>
+              <label className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
+                To Date
+              </label>
               <input
                 type="date"
                 value={filters.end_date}
                 onChange={(e) => setFilters((prev) => ({ ...prev, end_date: e.target.value }))}
-                className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+                className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
               />
             </div>
           </div>
@@ -674,6 +700,7 @@ export default function Inquiries() {
                 });
               }}
               className="text-primary text-sm hover:underline"
+              style={{ fontFamily: bodyFont }}
             >
               Clear Filters
             </button>
@@ -682,30 +709,44 @@ export default function Inquiries() {
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-primary-bg">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px]">
-            <thead className="bg-slate-100 border-b border-secondary-light">
+            <thead className="bg-primary-bg border-b border-primary-bg">
               <tr>
-                <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Inquiry No</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Student</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Parent</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Mobile</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Course</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Status</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Actions</th>
+                <th className="p-3 text-left text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                  Inquiry No
+                </th>
+                <th className="text-left text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                  Student
+                </th>
+                <th className="text-left text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                  Parent
+                </th>
+                <th className="text-left text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                  Mobile
+                </th>
+                <th className="text-left text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                  Course
+                </th>
+                <th className="text-left text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                  Status
+                </th>
+                <th className="text-left text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={7} className="p-6 text-center text-secondary">Loading inquiries…</td></tr>
+                <tr><td colSpan={7} className="p-6 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>Loading inquiries…</td></tr>
               ) : inquiries.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-6 text-center text-secondary">
+                  <td colSpan={7} className="p-6 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
                     <div className="flex flex-col items-center gap-2">
-                      <PhoneCall size={32} className="text-secondary-light" />
+                      <PhoneCall size={32} className="text-primary-dark/40" />
                       <span>No inquiries found</span>
-                      <span className="text-xs text-secondary-light">
+                      <span className="text-xs text-primary-dark/60">
                         {search || Object.values(filters).some(Boolean)
                           ? "Try adjusting your filters"
                           : "Add a new inquiry to get started"}
@@ -715,30 +756,30 @@ export default function Inquiries() {
                 </tr>
               ) : (
                 inquiries.map((inquiry, idx) => (
-                  <tr key={`${inquiry.id}-${idx}`} className="border-b border-secondary-light hover:bg-primary-bg transition">
-                    <td className="p-3 text-sm font-medium">{inquiry.inquiry_no}</td>
-                    <td className="text-sm">{inquiry.student_name}</td>
-                    <td className="text-sm">{inquiry.parent_name || "-"}</td>
-                    <td className="text-sm">{inquiry.mobile}</td>
-                    <td className="text-sm">{getCourseName(inquiry.interested_course_id)}</td>
+                  <tr key={`${inquiry.id}-${idx}`} className="border-b border-primary-bg hover:bg-primary-bg transition">
+                    <td className="p-3 text-sm font-medium text-primary">{inquiry.inquiry_no}</td>
+                    <td className="text-sm text-primary-dark">{inquiry.student_name}</td>
+                    <td className="text-sm text-primary-dark">{inquiry.parent_name || "-"}</td>
+                    <td className="text-sm text-primary-dark">{inquiry.mobile}</td>
+                    <td className="text-sm text-primary-dark">{getCourseName(inquiry.interested_course_id)}</td>
                     <td className="text-sm">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(inquiry.status)}`}>
                         {inquiry.status}
                       </span>
                       {inquiry.status === "Rejected" && inquiry.rejection_reason && (
-                        <span className="block text-xs text-secondary-light mt-1" title={inquiry.rejection_reason}>
+                        <span className="block text-xs text-primary-dark/60 mt-1" title={inquiry.rejection_reason}>
                           (reason given)
                         </span>
                       )}
                       {inquiry.demo_scheduled_at && inquiry.status === "Demo Scheduled" && (
-                        <span className="block text-xs text-secondary-light mt-1">
+                        <span className="block text-xs text-primary-dark/60 mt-1">
                           {new Date(inquiry.demo_scheduled_at).toLocaleString()}
                         </span>
                       )}
                     </td>
                     <td className="text-sm">
                       <div className="flex flex-wrap gap-1">
-                        {/* 👇 Resend Email button */}
+                        {/* Resend Email button */}
                         <button
                           onClick={() => {
                             setSendingEmailId(inquiry.id);
@@ -747,7 +788,7 @@ export default function Inquiries() {
                             );
                           }}
                           disabled={sendingEmailId === inquiry.id || !inquiry.email}
-                          className={`text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50`}
+                          className="text-primary hover:underline flex items-center gap-1 disabled:opacity-50"
                           title="Resend confirmation email"
                         >
                           <Mail size={15} />
@@ -755,14 +796,14 @@ export default function Inquiries() {
                         </button>
                         <button
                           onClick={() => setEditing(inquiry)}
-                          className="text-yellow-600 hover:underline flex items-center gap-1"
+                          className="text-primary hover:underline flex items-center gap-1"
                         >
                           <Edit3 size={15} />
                         </button>
                         <button
                           onClick={() => handleSchedule(inquiry)}
                           disabled={inquiry.status === "Admitted" || inquiry.status === "Rejected"}
-                          className={`text-amber-600 hover:underline flex items-center gap-1 ${
+                          className={`text-primary hover:underline flex items-center gap-1 ${
                             (inquiry.status === "Admitted" || inquiry.status === "Rejected") && "opacity-50 cursor-not-allowed"
                           }`}
                         >
@@ -774,7 +815,7 @@ export default function Inquiries() {
                             setShowStudentForm(true);
                           }}
                           disabled={inquiry.status === "Admitted" || inquiry.status === "Rejected"}
-                          className={`text-green-600 hover:underline flex items-center gap-1 ${
+                          className={`text-accent hover:underline flex items-center gap-1 ${
                             (inquiry.status === "Admitted" || inquiry.status === "Rejected") && "opacity-50 cursor-not-allowed"
                           }`}
                         >
@@ -783,7 +824,7 @@ export default function Inquiries() {
                         <button
                           onClick={() => handleReject(inquiry)}
                           disabled={inquiry.status === "Admitted" || inquiry.status === "Rejected"}
-                          className={`text-red-600 hover:underline flex items-center gap-1 ${
+                          className={`text-accent-dark hover:underline flex items-center gap-1 ${
                             (inquiry.status === "Admitted" || inquiry.status === "Rejected") && "opacity-50 cursor-not-allowed"
                           }`}
                         >
@@ -791,7 +832,7 @@ export default function Inquiries() {
                         </button>
                         <button
                           onClick={() => handleDelete(inquiry.id)}
-                          className="text-gray-500 hover:underline flex items-center gap-1"
+                          className="text-primary-dark/60 hover:underline flex items-center gap-1"
                         >
                           <Trash2 size={15} />
                         </button>
@@ -811,7 +852,8 @@ export default function Inquiries() {
           <button
             onClick={() => fetchNextPage()}
             disabled={isFetchingNextPage}
-            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat text-sm transition disabled:opacity-60"
+            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg text-sm transition disabled:opacity-60"
+            style={{ fontFamily: bodyFont }}
           >
             {isFetchingNextPage ? "Loading more…" : "Load More"}
           </button>

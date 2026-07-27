@@ -1,3 +1,4 @@
+// src/pages/GSTSettings.jsx
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
@@ -115,8 +116,8 @@ export default function GSTSettings() {
       {/* Header */}
       <div>
         <h1
-          className="text-2xl sm:text-3xl font-bold"
-          style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+          className="text-2xl sm:text-3xl font-bold text-primary"
+          style={{ fontFamily: "var(--font-heading)" }}
         >
           GST Settings
         </h1>
@@ -129,9 +130,9 @@ export default function GSTSettings() {
       </div>
 
       {isBranchAdmin && (
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
-          <p className="text-yellow-700 text-sm font-medium">Read‑only mode</p>
-          <p className="text-yellow-600 text-sm">
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 dark:border-yellow-600 p-4 rounded">
+          <p className="text-yellow-700 dark:text-yellow-300 text-sm font-medium">Read‑only mode</p>
+          <p className="text-yellow-600 dark:text-yellow-400 text-sm">
             As a branch admin, you can view but cannot edit GST settings.
           </p>
         </div>
@@ -176,7 +177,7 @@ export default function GSTSettings() {
               value={form.business_legal_name}
               onChange={handleChange}
               disabled={isBranchAdmin}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
               placeholder="As per GST registration"
             />
           </div>
@@ -193,7 +194,7 @@ export default function GSTSettings() {
               value={form.trade_name}
               onChange={handleChange}
               disabled={isBranchAdmin}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
               placeholder="Display name (optional)"
             />
           </div>
@@ -213,7 +214,7 @@ export default function GSTSettings() {
               value={form.gstin}
               onChange={handleChange}
               disabled={isBranchAdmin}
-              className="flex-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm uppercase focus:ring-2 focus:ring-[var(--color-primary)] outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
+              className="flex-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm uppercase focus:ring-2 focus:ring-primary outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
               placeholder="22AAAAA0000A1Z5"
               maxLength={15}
             />
@@ -248,7 +249,7 @@ export default function GSTSettings() {
               value={form.state_code}
               onChange={handleChange}
               disabled={isBranchAdmin}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
             >
               <option value="">Select State</option>
               {states.map((state) => (
@@ -270,7 +271,7 @@ export default function GSTSettings() {
               value={form.place_of_supply}
               onChange={handleChange}
               disabled={isBranchAdmin}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
             >
               <option value="">Default Place of Supply</option>
               {states.map((state) => (
@@ -301,7 +302,7 @@ export default function GSTSettings() {
               value={form.registration_type}
               onChange={handleChange}
               disabled={isBranchAdmin}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
             >
               <option value="">Select Type</option>
               <option value="Regular">Regular</option>
@@ -322,7 +323,7 @@ export default function GSTSettings() {
               value={form.financial_year}
               onChange={handleChange}
               disabled={isBranchAdmin}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
               placeholder="e.g. 2025-26"
             />
           </div>
@@ -341,7 +342,7 @@ export default function GSTSettings() {
             value={form.fiscal_year_start}
             onChange={handleChange}
             disabled={isBranchAdmin}
-            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
+            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-600 dark:disabled:text-gray-400"
           />
         </div>
 
@@ -370,7 +371,7 @@ export default function GSTSettings() {
         )}
 
         {isBranchAdmin && (
-          <div className="text-center text-sm text-gray-400 border-t pt-4 mt-2">
+          <div className="text-center text-sm text-gray-400 dark:text-gray-500 border-t border-gray-200 dark:border-gray-700 pt-4 mt-2">
             You are viewing this page in read‑only mode.
           </div>
         )}

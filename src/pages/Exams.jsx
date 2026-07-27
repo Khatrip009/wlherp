@@ -20,7 +20,7 @@ import {
   Calendar,
   Layers,
   Mail,
-} from "lucide-react"; // 👈 Added Mail
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Papa from "papaparse";
 
@@ -39,8 +39,9 @@ import {
 } from "../services/examService";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 import { supabase } from "../api/supabase";
-import { sendTemplateEmail, sendEmail } from "../services/emailService"; // 👈 Import
+import { sendTemplateEmail, sendEmail } from "../services/emailService";
 
 export default function Exams() {
   const { profile } = useAuth();
@@ -51,10 +52,14 @@ export default function Exams() {
 
   const queryClient = useQueryClient();
 
-  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
+  const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const [search, setSearch] = useState("");
   const [batchFilter, setBatchFilter] = useState("");
@@ -75,7 +80,7 @@ export default function Exams() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [sendingSchedule, setSendingSchedule] = useState(null); // store exam id for loading state
+  const [sendingSchedule, setSendingSchedule] = useState(null);
   const fileInputRef = useRef(null);
 
   // ─── Helper: get admin emails ──────────────────────────────────────
@@ -97,7 +102,6 @@ export default function Exams() {
   // ─── Send exam schedule emails to students ─────────────────────────
   const sendExamScheduleEmails = async (examId) => {
     try {
-      // 1. Fetch exam details with batch info
       const { data: exam, error: examError } = await supabase
         .from("exams")
         .select(`
@@ -109,7 +113,6 @@ export default function Exams() {
         .single();
       if (examError) throw examError;
 
-      // 2. Fetch active students in the batch
       const { data: studentBatches, error: studentError } = await supabase
         .from("student_batches")
         .select("student_id, students(first_name, last_name, email)")
@@ -124,13 +127,11 @@ export default function Exams() {
         return;
       }
 
-      // 3. Send email to each student (or parent)
       let sentCount = 0;
       for (const sb of studentBatches) {
         const student = sb.students;
         let recipientEmail = student.email;
 
-        // Try to find parent email
         const { data: parent, error: parentError } = await supabase
           .from("student_parents")
           .select("parents!inner(email)")
@@ -181,7 +182,6 @@ export default function Exams() {
         return;
       }
 
-      // Build HTML table rows
       let tableRows = exams.map((e) => `
         <tr>
           <td style="padding:4px 8px;border:1px solid #ddd;">${e.exam_name}</td>
@@ -377,14 +377,14 @@ export default function Exams() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1
-            className="text-2xl sm:text-3xl font-bold"
-            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+            className="text-2xl sm:text-3xl font-bold text-primary"
+            style={{ fontFamily: headingFont }}
           >
             Exams
           </h1>
           <p
-            className="text-sm text-gray-600 dark:text-gray-400 mt-1"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="text-sm text-primary-dark mt-1"
+            style={{ fontFamily: bodyFont }}
           >
             Create and manage exams
           </p>
@@ -394,29 +394,29 @@ export default function Exams() {
             <button
               onClick={() => setShowForm(true)}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
-              style={{ fontFamily: "var(--font-body)" }}
+              style={{ fontFamily: bodyFont }}
             >
               <Award size={18} /> Add Exam
             </button>
-            {/* 👇 NEW Send Report button */}
+            {/* Send Report button */}
             <button
               onClick={sendReportEmail}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
-              style={{ fontFamily: "var(--font-body)" }}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-dark text-white rounded-lg transition-colors text-sm font-medium"
+              style={{ fontFamily: bodyFont }}
             >
               <Mail size={18} /> Send Report
             </button>
             <button
               onClick={handleCSVExport}
-              className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-              style={{ fontFamily: "var(--font-body)" }}
+              className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+              style={{ fontFamily: bodyFont }}
             >
               <Download size={18} /> Export
             </button>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-              style={{ fontFamily: "var(--font-body)" }}
+              className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+              style={{ fontFamily: bodyFont }}
             >
               <Upload size={18} /> Import
             </button>
@@ -431,41 +431,41 @@ export default function Exams() {
         )}
       </div>
 
-      {/* Search & Filters (unchanged) */}
+      {/* Search & Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search
             size={18}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-dark/60"
           />
           <input
             type="text"
             placeholder="Search by exam or batch name..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-900 dark:text-gray-100 rounded-lg pl-10 pr-4 py-2.5 text-sm"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="w-full border border-primary-bg bg-white text-primary-dark rounded-lg pl-10 pr-4 py-2.5 text-sm"
+            style={{ fontFamily: bodyFont }}
           />
         </div>
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-          style={{ fontFamily: "var(--font-body)" }}
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg hover:bg-primary-bg transition-colors text-sm"
+          style={{ fontFamily: bodyFont }}
         >
           <Filter size={18} /> Filters {showFilters && <X size={16} />}
         </button>
       </div>
 
       {showFilters && (
-        <div className="bg-white dark:bg-accent rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-primary-bg grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <div>
-            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+            <label className="text-xs font-medium text-primary-dark mb-1 block" style={{ fontFamily: bodyFont }}>
               Batch
             </label>
             <select
               value={batchFilter}
               onChange={(e) => setBatchFilter(e.target.value)}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm"
             >
               <option value="">All Batches</option>
               {batches.map((b) => (
@@ -474,13 +474,13 @@ export default function Exams() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+            <label className="text-xs font-medium text-primary-dark mb-1 block" style={{ fontFamily: bodyFont }}>
               Course
             </label>
             <select
               value={courseFilter}
               onChange={(e) => setCourseFilter(e.target.value)}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm"
             >
               <option value="">All Courses</option>
               {courses.map((c) => (
@@ -489,13 +489,13 @@ export default function Exams() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+            <label className="text-xs font-medium text-primary-dark mb-1 block" style={{ fontFamily: bodyFont }}>
               Medium
             </label>
             <select
               value={mediumFilter}
               onChange={(e) => setMediumFilter(e.target.value)}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm"
             >
               <option value="">All Mediums</option>
               {mediums.map((m) => (
@@ -504,14 +504,14 @@ export default function Exams() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block" style={{ fontFamily: "var(--font-body)" }}>
+            <label className="text-xs font-medium text-primary-dark mb-1 block" style={{ fontFamily: bodyFont }}>
               From Date
             </label>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm"
             />
           </div>
           <div className="flex items-end">
@@ -525,7 +525,7 @@ export default function Exams() {
                 setEndDate("");
               }}
               className="text-sm text-primary hover:underline"
-              style={{ fontFamily: "var(--font-body)" }}
+              style={{ fontFamily: bodyFont }}
             >
               Clear Filters
             </button>
@@ -534,30 +534,30 @@ export default function Exams() {
       )}
 
       {/* Table */}
-      <div className="bg-white dark:bg-accent rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-primary-bg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px]">
-            <thead className="bg-gray-50 dark:bg-gray-700">
+            <thead className="bg-primary-bg">
               <tr>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Exam</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Batch</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Course</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Medium</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total Marks</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">Exam</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">Batch</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">Course</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">Medium</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">Date</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">Total Marks</th>
+                <th className="p-3 text-left text-xs font-medium text-primary-dark uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="divide-y divide-primary-bg">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="p-6 text-center text-gray-500 dark:text-gray-400">Loading exams…</td>
+                  <td colSpan={7} className="p-6 text-center text-primary-dark/60">Loading exams…</td>
                 </tr>
               ) : exams.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-6 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={7} className="p-6 text-center text-primary-dark/60">
                     <div className="flex flex-col items-center gap-2">
-                      <Award size={32} className="text-gray-400 dark:text-gray-500" />
+                      <Award size={32} className="text-primary-dark/40" />
                       <span>No exams found</span>
                       <span className="text-xs">
                         {search || batchFilter || courseFilter || mediumFilter || startDate || endDate
@@ -571,37 +571,31 @@ export default function Exams() {
                 exams.map((exam) => (
                   <tr
                     key={exam.id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    className="hover:bg-primary-bg transition-colors"
                   >
-                    <td className="p-3 text-sm font-medium text-gray-800 dark:text-gray-100">{exam.exam_name}</td>
-                    <td className="text-sm text-gray-700 dark:text-gray-300">{exam.batches?.batch_name}</td>
-                    <td className="text-sm text-gray-700 dark:text-gray-300">{exam.batches?.courses?.course_name}</td>
+                    <td className="p-3 text-sm font-medium text-primary">{exam.exam_name}</td>
+                    <td className="text-sm text-primary-dark">{exam.batches?.batch_name}</td>
+                    <td className="text-sm text-primary-dark">{exam.batches?.courses?.course_name}</td>
                     <td className="text-sm">
                       {exam.medium_name ? (
-                        <span
-                          className="px-2 py-0.5 rounded-full text-xs"
-                          style={{
-                            backgroundColor: "var(--color-primary-light)",
-                            color: "var(--color-primary)",
-                          }}
-                        >
+                        <span className="px-2 py-0.5 rounded-full text-xs bg-primary-light text-primary">
                           {exam.medium_name}
                         </span>
                       ) : (
                         "-"
                       )}
                     </td>
-                    <td className="text-sm text-gray-700 dark:text-gray-300">{exam.exam_date}</td>
-                    <td className="text-sm text-gray-700 dark:text-gray-300">{exam.total_marks || "-"}</td>
+                    <td className="text-sm text-primary-dark">{exam.exam_date}</td>
+                    <td className="text-sm text-primary-dark">{exam.total_marks || "-"}</td>
                     <td className="text-sm">
                       <div className="flex gap-2 flex-wrap">
                         <button
                           onClick={() => navigate(`/results/enter/${exam.id}`)}
-                          className="text-purple-600 dark:text-purple-400 hover:underline"
+                          className="text-accent hover:underline"
                         >
                           Results
                         </button>
-                        {/* 👇 Send Schedule button */}
+                        {/* Send Schedule button */}
                         <button
                           onClick={() => {
                             setSendingSchedule(exam.id);
@@ -610,7 +604,7 @@ export default function Exams() {
                             );
                           }}
                           disabled={sendingSchedule === exam.id}
-                          className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 disabled:opacity-50"
+                          className="text-primary hover:underline flex items-center gap-1 disabled:opacity-50"
                           title="Send schedule to students"
                         >
                           <Mail size={15} />
@@ -620,13 +614,13 @@ export default function Exams() {
                           <>
                             <button
                               onClick={() => setEditing(exam)}
-                              className="text-yellow-600 dark:text-yellow-400 hover:underline"
+                              className="text-primary hover:underline"
                             >
                               <Edit3 size={15} />
                             </button>
                             <button
                               onClick={() => handleDelete(exam.id)}
-                              className="text-red-600 dark:text-red-400 hover:underline"
+                              className="text-accent hover:underline"
                             >
                               <Trash2 size={15} />
                             </button>
@@ -648,7 +642,7 @@ export default function Exams() {
             onClick={() => fetchNextPage()}
             disabled={isFetchingNextPage}
             className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-60"
-            style={{ fontFamily: "var(--font-body)" }}
+            style={{ fontFamily: bodyFont }}
           >
             {isFetchingNextPage ? "Loading more…" : "Load More"}
           </button>

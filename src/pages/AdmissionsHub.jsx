@@ -1,5 +1,6 @@
 // src/pages/AdmissionsHub.jsx
 import HubCard from "../components/HubCard";
+import { useTheme } from "../context/ThemeContext";
 import {
   Users,
   Megaphone,
@@ -108,22 +109,23 @@ const groups = [
 ];
 
 export default function AdmissionsHub() {
+  const theme = useTheme();
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
+
   return (
     <div className="space-y-8 px-4 sm:px-6 lg:px-0">
       {/* Header */}
       <div>
         <h1
-          className="text-2xl sm:text-3xl font-bold"
-          style={{
-            fontFamily: "var(--font-heading)",
-            color: "var(--color-primary)",
-          }}
+          className="text-2xl sm:text-3xl font-bold text-primary"
+          style={{ fontFamily: headingFont }}
         >
           Admissions Hub
         </h1>
         <p
-          className="text-sm text-gray-600 dark:text-gray-400 mt-1"
-          style={{ fontFamily: "var(--font-body)" }}
+          className="text-sm text-primary-dark mt-1"
+          style={{ fontFamily: bodyFont }}
         >
           Manage inquiries, student records, and admission reports
         </p>
@@ -132,7 +134,7 @@ export default function AdmissionsHub() {
       {/* Groups */}
       {groups.map((g) => (
         <div key={g.label}>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 pb-2 mb-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-primary-dark border-b border-primary-bg pb-2 mb-4">
             {g.label}
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">

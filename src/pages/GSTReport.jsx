@@ -7,9 +7,10 @@ import autoTable from "jspdf-autotable";
 import { supabase } from "../api/supabase";
 import toast from "react-hot-toast";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // 👈 import theme
 import { sendEmail } from "../services/emailService";
 
-/* ─── PDF helpers ──────────────────────────────────────────── */
+/* ─── PDF helpers (unchanged) ────────────────────────────── */
 async function loadImageAsBase64(url) {
   if (!url) return null;
   try {
@@ -22,20 +23,28 @@ async function loadImageAsBase64(url) {
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 function createRupeeSymbolImage() {
   const canvas = document.createElement("canvas");
-  canvas.width = 30; canvas.height = 30;
+  canvas.width = 30;
+  canvas.height = 30;
   const ctx = canvas.getContext("2d");
-  ctx.font = "bold 24px sans-serif"; ctx.fillStyle = "#000";
-  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = "bold 24px sans-serif";
+  ctx.fillStyle = "#000";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
   ctx.fillText("₹", 15, 15);
   return canvas.toDataURL("image/png");
 }
 let rupeeImage = null;
-function getRupeeImage() { if (!rupeeImage) rupeeImage = createRupeeSymbolImage(); return rupeeImage; }
+function getRupeeImage() {
+  if (!rupeeImage) rupeeImage = createRupeeSymbolImage();
+  return rupeeImage;
+}
 
 function drawCurrency(doc, amount, x, y, fontSize = 10, align = "left", color = "#000") {
   const img = getRupeeImage();
@@ -62,13 +71,12 @@ function getRatePercent(taxRateName) {
   return match ? parseFloat(match[0]) : 0;
 }
 
-/* ─── GSTR‑1 JSON Builder ───────────────────────────────────── */
+/* ─── GSTR‑1 JSON Builder (unchanged) ────────────────────── */
 function buildGSTR1JSON(invoices, org, startDate, endDate) {
   const gstin = org?.gstin || "";
-  const fp = startDate.substring(0, 6); // YYYYMM
+  const fp = startDate.substring(0, 6);
   const orgState = org?.state_code || "";
 
-  // B2B Supplies (customers with GSTIN)
   const b2bInvoices = invoices.filter((inv) => inv.students?.gstin);
   const b2b = b2bInvoices.map((inv) => {
     const items = inv.invoice_items || [];
@@ -93,7 +101,6 @@ function buildGSTR1JSON(invoices, org, startDate, endDate) {
     };
   });
 
-  // B2C Supplies (customers without GSTIN)
   const b2cInvoices = invoices.filter((inv) => !inv.students?.gstin);
   const b2cs = b2cInvoices.map((inv) => {
     const items = inv.invoice_items || [];
@@ -119,7 +126,6 @@ function buildGSTR1JSON(invoices, org, startDate, endDate) {
     };
   });
 
-  // HSN Summary
   const allItems = invoices.flatMap((inv) => inv.invoice_items || []);
   const hsnMap = {};
   allItems.forEach((item) => {
@@ -150,7 +156,6 @@ function buildGSTR1JSON(invoices, org, startDate, endDate) {
     iamt: formatAmount(h.iamt),
   }));
 
-  // Nil / Exempt / Non‑GST Supplies (placeholder)
   const nilSupplies = {
     sply_ty: "INTER",
     etin: "",
@@ -180,10 +185,11 @@ export default function GSTReport() {
   const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
 
   const { org, branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme(); // 👈 get theme colours
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  // Fetch invoices – now includes both Final and Paid statuses
+  // Fetch invoices – includes both Final and Paid statuses
   const { data: invoices = [], isLoading, refetch } = useQuery({
     queryKey: ["gst-invoices", startDate, endDate, branchId, financialYearId],
     queryFn: async () => {
@@ -197,7 +203,7 @@ export default function GSTReport() {
         )
         .gte("invoice_date", startDate)
         .lte("invoice_date", endDate)
-        .in("status", ["Final", "Paid"])   // ✅ FIXED: now includes paid invoices
+        .in("status", ["Final", "Paid"])
         .eq("branch_id", branchId)
         .eq("financial_year_id", financialYearId);
 
@@ -348,7 +354,6 @@ export default function GSTReport() {
       const orgName = org?.company_name || "Academy";
       const gstin = org?.gstin || "Not Registered";
 
-      // Build HSN rows
       let hsnRows = summaries.hsnSummary.map((h) => `
         <tr>
           <td style="padding:4px 8px;border:1px solid #ddd;font-family:monospace;">${h.hsn_code}</td>
@@ -365,7 +370,7 @@ export default function GSTReport() {
 
       const htmlBody = `
         <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
-          <h2 style="color:#000;">GSTR-1 Report</h2>
+          <h2 style="color:${theme.primary_color};">GSTR-1 Report</h2>
           <p><strong>Organization:</strong> ${orgName}</p>
           <p><strong>GSTIN:</strong> ${gstin}</p>
           <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
@@ -383,11 +388,11 @@ export default function GSTReport() {
             </div>
             <div style="border:1px solid #ddd;padding:8px 16px;border-radius:6px;background:#f9f9f9;">
               <div style="font-size:10px;color:#888;">Total GST</div>
-              <div style="font-size:18px;font-weight:700;color:#000;">₹ ${summaries.totalGst.toLocaleString('en-IN')}</div>
+              <div style="font-size:18px;font-weight:700;color:${theme.primary_color};">₹ ${summaries.totalGst.toLocaleString('en-IN')}</div>
             </div>
             <div style="border:1px solid #ddd;padding:8px 16px;border-radius:6px;background:#f9f9f9;">
               <div style="font-size:10px;color:#888;">Avg Tax Rate</div>
-              <div style="font-size:18px;font-weight:700;color:#000;">
+              <div style="font-size:18px;font-weight:700;color:${theme.primary_color};">
                 ${summaries.totalTaxable > 0 ? ((summaries.totalGst / summaries.totalTaxable) * 100).toFixed(1) : 0}%
               </div>
             </div>
@@ -395,18 +400,18 @@ export default function GSTReport() {
 
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:15px;">
             <div style="border:1px solid #ddd;padding:8px 16px;border-radius:6px;background:#f9f9f9;">
-              <div style="font-weight:600;color:#000;">B2B Supplies (${summaries.totalB2B} invoices)</div>
+              <div style="font-weight:600;color:${theme.primary_color};">B2B Supplies (${summaries.totalB2B} invoices)</div>
               <div>Taxable Value: ₹ ${summaries.b2bTaxable.toLocaleString('en-IN')}</div>
               <div>GST: ₹ ${summaries.b2bGst.toLocaleString('en-IN')}</div>
             </div>
             <div style="border:1px solid #ddd;padding:8px 16px;border-radius:6px;background:#f9f9f9;">
-              <div style="font-weight:600;color:#000;">B2C Supplies (${summaries.totalB2C} invoices)</div>
+              <div style="font-weight:600;color:${theme.primary_color};">B2C Supplies (${summaries.totalB2C} invoices)</div>
               <div>Taxable Value: ₹ ${summaries.b2cTaxable.toLocaleString('en-IN')}</div>
               <div>GST: ₹ ${summaries.b2cGst.toLocaleString('en-IN')}</div>
             </div>
           </div>
 
-          <h3 style="color:#000;">HSN Summary</h3>
+          <h3 style="color:${theme.primary_color};">HSN Summary</h3>
           <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
             <thead style="background:#f5f5f5;">
               <tr>
@@ -647,69 +652,85 @@ export default function GSTReport() {
       {/* Header & Buttons */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">GST Report (GSTR‑1)</h1>
-          <p className="text-sm text-gray-600 mt-1">Generate GST return JSON and summaries</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-primary">
+            GST Report (GSTR‑1)
+          </h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            Generate GST return JSON and summaries
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={sendReportEmail} className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium">
+          <button
+            onClick={sendReportEmail}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors text-sm font-medium"
+          >
             <Mail size={16} /> Send Report
           </button>
-          <button onClick={handlePrintPDF} className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg transition-colors text-sm font-medium">
+          <button
+            onClick={handlePrintPDF}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
+          >
             <Printer size={16} /> Print PDF
           </button>
-          <button onClick={handleDownloadJSON} className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm">
+          <button
+            onClick={handleDownloadJSON}
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+          >
             <Download size={16} /> Download JSON
           </button>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+      <div className="flex flex-wrap gap-4 bg-white dark:bg-accent p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
         <div className="flex items-center">
-          <label className="text-sm font-medium text-gray-700 mr-2">From:</label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2">From:</label>
           <input
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="border border-gray-300 bg-white text-gray-900 rounded-lg p-2 text-sm"
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2 text-sm"
           />
         </div>
         <div className="flex items-center">
-          <label className="text-sm font-medium text-gray-700 mr-2">To:</label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2">To:</label>
           <input
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="border border-gray-300 bg-white text-gray-900 rounded-lg p-2 text-sm"
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2 text-sm"
           />
         </div>
-        <button onClick={() => refetch()} className="inline-flex items-center px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg text-sm font-medium transition-colors">
+        <button
+          onClick={() => refetch()}
+          className="inline-flex items-center px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg text-sm font-medium transition-colors"
+        >
           Refresh
         </button>
-        {isLoading && <span className="text-sm text-gray-500 flex items-center">Loading...</span>}
+        {isLoading && <span className="text-sm text-gray-500 dark:text-gray-400 flex items-center">Loading...</span>}
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
-          <p className="text-xs text-gray-500">Total Invoices</p>
-          <p className="text-2xl font-bold text-gray-900">{summaries.totalInvoices}</p>
-          <div className="flex gap-2 mt-1 text-xs">
-            <span className="text-gray-600">B2B: {summaries.totalB2B}</span>
-            <span className="text-gray-600">B2C: {summaries.totalB2C}</span>
+        <div className="bg-white dark:bg-accent rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Total Invoices</p>
+          <p className="text-2xl font-bold text-primary">{summaries.totalInvoices}</p>
+          <div className="flex gap-2 mt-1 text-xs text-gray-600 dark:text-gray-300">
+            <span>B2B: {summaries.totalB2B}</span>
+            <span>B2C: {summaries.totalB2C}</span>
           </div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
-          <p className="text-xs text-gray-500">Taxable Value</p>
-          <p className="text-2xl font-bold text-gray-900">₹ {summaries.totalTaxable.toLocaleString("en-IN")}</p>
+        <div className="bg-white dark:bg-accent rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Taxable Value</p>
+          <p className="text-2xl font-bold text-primary">₹ {summaries.totalTaxable.toLocaleString("en-IN")}</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
-          <p className="text-xs text-gray-500">Total GST</p>
-          <p className="text-2xl font-bold text-gray-900">₹ {summaries.totalGst.toLocaleString("en-IN")}</p>
+        <div className="bg-white dark:bg-accent rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Total GST</p>
+          <p className="text-2xl font-bold text-primary">₹ {summaries.totalGst.toLocaleString("en-IN")}</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
-          <p className="text-xs text-gray-500">Avg Tax Rate</p>
-          <p className="text-2xl font-bold text-gray-900">
+        <div className="bg-white dark:bg-accent rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Avg Tax Rate</p>
+          <p className="text-2xl font-bold text-primary">
             {summaries.totalTaxable > 0 ? ((summaries.totalGst / summaries.totalTaxable) * 100).toFixed(1) : 0}%
           </p>
         </div>
@@ -717,30 +738,30 @@ export default function GSTReport() {
 
       {/* B2B & B2C Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
-          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">B2B</span>
-            Supplies ({summaries.totalB2B} invoices)
+        <div className="bg-white dark:bg-accent rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+          <h3 className="font-semibold flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded-full text-xs bg-primary-bg text-primary">B2B</span>
+            <span className="text-primary">Supplies ({summaries.totalB2B} invoices)</span>
           </h3>
-          <div className="flex justify-between mt-2 text-sm text-gray-700">
+          <div className="flex justify-between mt-2 text-sm text-gray-700 dark:text-gray-200">
             <span>Taxable Value:</span>
             <span className="font-medium">₹ {summaries.b2bTaxable.toLocaleString("en-IN")}</span>
           </div>
-          <div className="flex justify-between text-sm text-gray-700">
+          <div className="flex justify-between text-sm text-gray-700 dark:text-gray-200">
             <span>Total GST:</span>
             <span className="font-medium">₹ {summaries.b2bGst.toLocaleString("en-IN")}</span>
           </div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
-          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">B2C</span>
-            Supplies ({summaries.totalB2C} invoices)
+        <div className="bg-white dark:bg-accent rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+          <h3 className="font-semibold flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded-full text-xs bg-primary-bg text-primary">B2C</span>
+            <span className="text-primary">Supplies ({summaries.totalB2C} invoices)</span>
           </h3>
-          <div className="flex justify-between mt-2 text-sm text-gray-700">
+          <div className="flex justify-between mt-2 text-sm text-gray-700 dark:text-gray-200">
             <span>Taxable Value:</span>
             <span className="font-medium">₹ {summaries.b2cTaxable.toLocaleString("en-IN")}</span>
           </div>
-          <div className="flex justify-between text-sm text-gray-700">
+          <div className="flex justify-between text-sm text-gray-700 dark:text-gray-200">
             <span>Total GST:</span>
             <span className="font-medium">₹ {summaries.b2cGst.toLocaleString("en-IN")}</span>
           </div>
@@ -748,43 +769,43 @@ export default function GSTReport() {
       </div>
 
       {/* HSN Summary Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
-        <h2 className="text-lg font-semibold p-4 border-b border-gray-200 bg-gray-50 flex items-center gap-2 text-gray-900">
+      <div className="bg-white dark:bg-accent rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-6">
+        <h2 className="text-lg font-semibold p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 flex items-center gap-2 text-primary">
           <FileText size={18} /> HSN Summary
         </h2>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[600px]">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">HSN/SAC</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase">Unit</th>
-                <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Taxable Value</th>
-                <th className="p-3 text-right text-xs font-medium text-gray-500 uppercase">Tax</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">HSN/SAC</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Description</th>
+                <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Qty</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Unit</th>
+                <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Taxable Value</th>
+                <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Tax</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {summaries.hsnSummary.length === 0 ? (
-                <tr><td colSpan={6} className="p-4 text-center text-gray-500">No HSN data available</td></tr>
+                <tr><td colSpan={6} className="p-4 text-center text-gray-500 dark:text-gray-400">No HSN data available</td></tr>
               ) : (
                 summaries.hsnSummary.map((h, idx) => (
-                  <tr key={idx} className="hover:bg-gray-50">
-                    <td className="p-3 text-sm text-gray-900 font-mono">{h.hsn_code}</td>
-                    <td className="p-3 text-sm text-gray-900">{h.description || "—"}</td>
-                    <td className="p-3 text-sm text-right text-gray-900">{h.quantity}</td>
-                    <td className="p-3 text-sm text-gray-900">{h.unit}</td>
-                    <td className="p-3 text-sm text-right text-gray-900">₹ {h.taxable_value.toLocaleString("en-IN")}</td>
-                    <td className="p-3 text-sm text-right text-gray-900">₹ {h.tax_amount.toLocaleString("en-IN")}</td>
+                  <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200 font-mono">{h.hsn_code}</td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{h.description || "—"}</td>
+                    <td className="p-3 text-sm text-right text-gray-700 dark:text-gray-200">{h.quantity}</td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{h.unit}</td>
+                    <td className="p-3 text-sm text-right text-gray-700 dark:text-gray-200">₹ {h.taxable_value.toLocaleString("en-IN")}</td>
+                    <td className="p-3 text-sm text-right text-gray-700 dark:text-gray-200">₹ {h.tax_amount.toLocaleString("en-IN")}</td>
                   </tr>
                 ))
               )}
             </tbody>
-            <tfoot className="bg-gray-50 border-t border-gray-200 font-medium">
+            <tfoot className="bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600 font-medium">
               <tr>
-                <td colSpan={4} className="p-3 text-right text-gray-900">Total</td>
-                <td className="p-3 text-right text-gray-900">₹ {summaries.hsnSummary.reduce((s, h) => s + h.taxable_value, 0).toLocaleString("en-IN")}</td>
-                <td className="p-3 text-right text-gray-900">₹ {summaries.hsnSummary.reduce((s, h) => s + h.tax_amount, 0).toLocaleString("en-IN")}</td>
+                <td colSpan={4} className="p-3 text-right text-primary">Total</td>
+                <td className="p-3 text-right text-primary">₹ {summaries.hsnSummary.reduce((s, h) => s + h.taxable_value, 0).toLocaleString("en-IN")}</td>
+                <td className="p-3 text-right text-primary">₹ {summaries.hsnSummary.reduce((s, h) => s + h.tax_amount, 0).toLocaleString("en-IN")}</td>
               </tr>
             </tfoot>
           </table>
@@ -792,11 +813,11 @@ export default function GSTReport() {
       </div>
 
       {/* JSON Preview */}
-      <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-        <h2 className="text-lg font-semibold mb-3 flex items-center gap-2 text-gray-900">
+      <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+        <h2 className="text-lg font-semibold mb-3 flex items-center gap-2 text-primary">
           <IndianRupee size={18} /> GSTR‑1 JSON Preview
         </h2>
-        <pre className="text-xs bg-white p-3 rounded border border-gray-200 max-h-80 overflow-auto text-gray-900">
+        <pre className="text-xs bg-white dark:bg-gray-700 p-3 rounded border border-gray-200 dark:border-gray-600 max-h-80 overflow-auto text-gray-900 dark:text-gray-100">
           {isLoading
             ? "Loading invoice data..."
             : invoices.length === 0
@@ -805,7 +826,7 @@ export default function GSTReport() {
             ? JSON.stringify(buildGSTR1JSON(invoices, org, startDate, endDate), null, 2)
             : "Organization details not loaded. Please refresh."}
         </pre>
-        <p className="text-xs text-gray-500 mt-2">
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
           JSON follows the GST portal offline utility schema (v1.0.0). Contains B2B, B2C, and HSN summary.
         </p>
       </div>

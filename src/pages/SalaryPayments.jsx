@@ -7,11 +7,13 @@ import { Search, Download, Filter, X, Mail } from "lucide-react";
 import Papa from "papaparse";
 import toast from "react-hot-toast";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // 👈 import theme
 import { supabase } from "../api/supabase";
 import { sendEmail, sendTemplateEmail } from "../services/emailService";
 
 export default function SalaryPayments() {
   const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme(); // 👈 get theme colours
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -52,7 +54,7 @@ export default function SalaryPayments() {
         return;
       }
 
-      // Build HTML table rows
+      // Build HTML table rows with theme colours
       let tableRows = filteredPayments.map((p) => `
         <tr>
           <td style="padding:4px 8px;border:1px solid #ddd;">${p.teachers?.first_name || ''} ${p.teachers?.last_name || ''}</td>
@@ -72,7 +74,7 @@ export default function SalaryPayments() {
 
       const htmlBody = `
         <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
-          <h2 style="color:#0D47A1;">Salary Payments Report</h2>
+          <h2 style="color:${theme.primary_color};">Salary Payments Report</h2>
           <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
           <p><strong>Total Records:</strong> ${filteredPayments.length}</p>
           <p><strong>Gross Total:</strong> ₹ ${totalGross.toLocaleString('en-IN')}</p>
@@ -80,7 +82,7 @@ export default function SalaryPayments() {
           <p><strong>Net Total:</strong> ₹ ${totalNet.toLocaleString('en-IN')}</p>
           <hr />
           <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
-            <thead style="background:#e3f2fd;">
+            <thead style="background:${theme.primary_light_color || '#e3f2fd'};">
               <tr>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Teacher</th>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Date</th>
@@ -114,7 +116,6 @@ export default function SalaryPayments() {
         to: adminEmails,
         subject: `Salary Payments Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-       // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");
@@ -128,10 +129,8 @@ export default function SalaryPayments() {
   const sendSalarySlipEmail = async (payment) => {
     setSendingSlipId(payment.id);
     try {
-      // 1. Get teacher email
       let teacherEmail = payment.teachers?.email;
       if (!teacherEmail) {
-        // Fetch from teachers table
         const { data: teacher, error } = await supabase
           .from("teachers")
           .select("email, first_name, last_name, employee_code")
@@ -144,8 +143,6 @@ export default function SalaryPayments() {
           return;
         }
         teacherEmail = teacher.email;
-        // We already have teacher name from payment, but we'll use fetched if needed.
-        // For context, we'll use payment.teachers if available, else fetched.
         if (!payment.teachers) {
           payment.teachers = teacher;
         }
@@ -253,29 +250,30 @@ export default function SalaryPayments() {
   }, [payments]);
 
   return (
-    <>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
       <BackButton to="/hr-hub" label="HR & Staff" />
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">Salary Payments</h1>
+        <h1 className="text-3xl font-heading text-primary-dark">
+          Salary Payments
+        </h1>
         <div className="flex gap-2 mt-2 sm:mt-0">
-          {/* 👇 Send Report button */}
           <button
             onClick={sendReportEmail}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 font-body"
           >
             <Mail className="w-4 h-4" />
             Send Report
           </button>
           <button
             onClick={handleExport}
-            className="border px-4 py-2 rounded-lg text-sm flex items-center gap-2 hover:bg-gray-50"
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 font-body"
           >
             <Download className="w-4 h-4" />
             Export CSV
           </button>
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className="border px-4 py-2 rounded-lg text-sm flex items-center gap-2 hover:bg-gray-50"
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 font-body"
           >
             <Filter className="w-4 h-4" />
             Filters {showFilters && <X className="w-3 h-3" />}
@@ -286,13 +284,13 @@ export default function SalaryPayments() {
       {/* Search & Filters */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary-light w-4 h-4" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 w-4 h-4" />
           <input
             type="text"
             placeholder="Search by teacher name..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 border rounded-lg text-sm focus:ring-1 focus:ring-primary"
+            className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none placeholder-gray-400 dark:placeholder-gray-500"
           />
         </div>
         {showFilters && (
@@ -300,7 +298,7 @@ export default function SalaryPayments() {
             <select
               value={teacherFilter}
               onChange={(e) => setTeacherFilter(e.target.value)}
-              className="border rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-primary"
+              className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none"
             >
               <option value="">All Teachers</option>
               {teacherOptions.map((t) => (
@@ -313,14 +311,14 @@ export default function SalaryPayments() {
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="border rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-primary"
+              className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none"
               placeholder="From"
             />
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="border rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-primary"
+              className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none"
               placeholder="To"
             />
             <button
@@ -329,7 +327,7 @@ export default function SalaryPayments() {
                 setStartDate("");
                 setEndDate("");
               }}
-              className="text-primary text-sm hover:underline"
+              className="text-primary text-sm hover:underline font-body"
             >
               Clear
             </button>
@@ -340,86 +338,118 @@ export default function SalaryPayments() {
       {/* Summary Cards */}
       {filteredPayments.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <div className="bg-white rounded-lg shadow-sm p-4 border">
-            <p className="text-xs text-secondary-light">Gross Total</p>
+          <div className="bg-white dark:bg-accent rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-gray-500 dark:text-gray-400">Gross Total</p>
             <p className="text-xl font-bold text-primary">₹ {totalGross.toLocaleString("en-IN")}</p>
           </div>
-          <div className="bg-white rounded-lg shadow-sm p-4 border">
-            <p className="text-xs text-secondary-light">Total TDS</p>
-            <p className="text-xl font-bold text-red-600">₹ {totalTDS.toLocaleString("en-IN")}</p>
+          <div className="bg-white dark:bg-accent rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-gray-500 dark:text-gray-400">Total TDS</p>
+            <p className="text-xl font-bold text-accent-dark">₹ {totalTDS.toLocaleString("en-IN")}</p>
           </div>
-          <div className="bg-white rounded-lg shadow-sm p-4 border">
-            <p className="text-xs text-secondary-light">Net Total</p>
-            <p className="text-xl font-bold text-green-600">₹ {totalNet.toLocaleString("en-IN")}</p>
+          <div className="bg-white dark:bg-accent rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-gray-500 dark:text-gray-400">Net Total</p>
+            <p className="text-xl font-bold text-accent">₹ {totalNet.toLocaleString("en-IN")}</p>
           </div>
         </div>
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-accent rounded-xl shadow-sm overflow-hidden border border-gray-200 dark:border-gray-700">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-slate-50 border-b">
+            <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-secondary-dark">Teacher</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-secondary-dark">Date</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-secondary-dark">Gross</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-secondary-dark">TDS %</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-secondary-dark">TDS Amount</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-secondary-dark">Net</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-secondary-dark">Type</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-secondary-dark">Mode</th>
-                <th className="px-4 py-3 text-center text-sm font-medium text-secondary-dark">Slip</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Teacher
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Date
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Gross
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  TDS %
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  TDS Amount
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Net
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Type
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Mode
+                </th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Slip
+                </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {isLoading ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-8 text-secondary">
+                  <td colSpan={9} className="text-center py-8 text-gray-500 dark:text-gray-400">
                     Loading payments...
                   </td>
                 </tr>
               ) : filteredPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-8 text-secondary">
+                  <td colSpan={9} className="text-center py-8 text-gray-500 dark:text-gray-400">
                     No salary payments found.
                   </td>
                 </tr>
               ) : (
                 filteredPayments.map((p) => (
-                  <tr key={p.id} className="border-t hover:bg-gray-50 transition">
-                    <td className="px-4 py-3 text-sm">
+                  <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
                       <div className="font-medium">
                         {p.teachers?.first_name} {p.teachers?.last_name}
                       </div>
-                      <div className="text-xs text-secondary-light">{p.teachers?.employee_code}</div>
+                      <div className="text-xs text-gray-400 dark:text-gray-500">
+                        {p.teachers?.employee_code}
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-sm">{p.payment_date}</td>
-                    <td className="px-4 py-3 text-right text-sm font-medium">
+                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                      {p.payment_date}
+                    </td>
+                    <td className="px-4 py-3 text-right text-sm font-medium text-gray-800 dark:text-gray-100">
                       ₹ {p.amount?.toLocaleString("en-IN")}
                     </td>
-                    <td className="px-4 py-3 text-right text-sm">{p.tds_percentage || 0}%</td>
-                    <td className="px-4 py-3 text-right text-sm">₹ {p.tds_amount?.toLocaleString("en-IN")}</td>
-                    <td className="px-4 py-3 text-right text-sm font-semibold text-green-700">
+                    <td className="px-4 py-3 text-right text-sm text-gray-700 dark:text-gray-200">
+                      {p.tds_percentage || 0}%
+                    </td>
+                    <td className="px-4 py-3 text-right text-sm text-accent-dark font-medium">
+                      ₹ {p.tds_amount?.toLocaleString("en-IN")}
+                    </td>
+                    <td className="px-4 py-3 text-right text-sm font-semibold text-primary">
                       ₹ {p.net_amount?.toLocaleString("en-IN")}
                     </td>
                     <td className="px-4 py-3 text-sm">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        p.payment_type === "fixed" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"
-                      }`}>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          p.payment_type === "fixed"
+                            ? "bg-primary-bg text-primary"
+                            : "bg-accent-bg text-accent"
+                        }`}
+                      >
                         {p.payment_type || "fixed"}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm">{p.payment_mode || "—"}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                      {p.payment_mode || "—"}
+                    </td>
                     <td className="px-4 py-3 text-center text-sm">
                       <button
                         onClick={() => sendSalarySlipEmail(p)}
                         disabled={sendingSlipId === p.id}
-                        className="text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                        className="text-primary hover:text-primary-light disabled:opacity-50"
                         title="Send salary slip to teacher"
                       >
                         <Mail className="w-4 h-4" />
-                        {sendingSlipId === p.id ? '...' : ''}
+                        {sendingSlipId === p.id ? "..." : ""}
                       </button>
                     </td>
                   </tr>
@@ -429,11 +459,11 @@ export default function SalaryPayments() {
           </table>
         </div>
         {filteredPayments.length > 0 && (
-          <div className="px-4 py-2 text-xs text-secondary-light border-t">
+          <div className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">
             Showing {filteredPayments.length} of {payments.length} payments
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }

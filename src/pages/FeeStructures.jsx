@@ -106,8 +106,8 @@ export default function FeeStructures() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1
-            className="text-2xl sm:text-3xl font-bold"
-            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+            className="text-2xl sm:text-3xl font-bold text-primary"
+            style={{ fontFamily: "var(--font-heading)" }}
           >
             Fee Structures
           </h1>
@@ -182,7 +182,7 @@ export default function FeeStructures() {
                         {fs.fee_structure_components?.map((comp) => (
                           <span
                             key={comp.id}
-                            className="inline-flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-200 px-2 py-0.5 rounded-full text-xs"
+                            className="inline-flex items-center gap-1 bg-primary-bg dark:bg-primary-dark text-primary dark:text-primary-light px-2 py-0.5 rounded-full text-xs"
                           >
                             {comp.component_name}: ₹{Number(comp.amount).toLocaleString("en-IN")}
                             {comp.tax_rates && (
@@ -198,7 +198,7 @@ export default function FeeStructures() {
                       <div className="flex gap-2">
                         <button
                           onClick={() => openEdit(fs)}
-                          className="text-blue-600 dark:text-blue-400 hover:underline"
+                          className="text-primary dark:text-primary-light hover:underline"
                         >
                           <Edit3 size={15} />
                         </button>

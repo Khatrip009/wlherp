@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext"; // ✅ theme context
 import toast from "react-hot-toast";
 import {
   Plus,
@@ -19,11 +20,15 @@ import * as branchService from "../services/branchService";
 export default function Branches() {
   const orgContext = useOrg();
   const { profile } = useAuth();
+  const theme = useTheme();
   const [org, setOrg] = useState(orgContext?.org || null);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingBranch, setEditingBranch] = useState(null);
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const [form, setForm] = useState({
     branch_name: "",
@@ -149,7 +154,10 @@ export default function Branches() {
 
   if (loading) {
     return (
-      <div className="p-6 text-center text-gray-500 dark:text-gray-400">
+      <div
+        className="p-6 text-center text-primary-dark/60"
+        style={{ fontFamily: bodyFont }}
+      >
         Loading branches...
       </div>
     );
@@ -161,14 +169,14 @@ export default function Branches() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1
-            className="text-2xl sm:text-3xl font-bold"
-            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+            className="text-2xl sm:text-3xl font-bold text-primary"
+            style={{ fontFamily: headingFont }}
           >
             Branches
           </h1>
           <p
-            className="text-sm text-gray-600 dark:text-gray-400 mt-1"
-            style={{ fontFamily: "var(--font-body)" }}
+            className="text-sm text-primary-dark mt-1"
+            style={{ fontFamily: bodyFont }}
           >
             Manage your organization's branches
           </p>
@@ -176,7 +184,7 @@ export default function Branches() {
         <button
           onClick={openCreateForm}
           className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors text-sm font-medium"
-          style={{ fontFamily: "var(--font-body)" }}
+          style={{ fontFamily: bodyFont }}
         >
           <Plus size={18} /> Add Branch
         </button>
@@ -184,19 +192,24 @@ export default function Branches() {
 
       {/* Branch List */}
       {branches.length === 0 ? (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-          <Building size={48} className="mx-auto mb-4 opacity-50" />
-          <p>No branches yet. Create your first branch to get started.</p>
+        <div className="text-center py-12 text-primary-dark/60">
+          <Building size={48} className="mx-auto mb-4 opacity-50 text-primary-dark/40" />
+          <p style={{ fontFamily: bodyFont }}>
+            No branches yet. Create your first branch to get started.
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {branches.map((branch) => (
             <div
               key={branch.id}
-              className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition"
+              className="bg-white rounded-xl p-4 shadow-sm border border-primary-bg hover:shadow-md transition"
             >
               <div className="flex items-start justify-between">
-                <h3 className="font-semibold text-lg truncate text-gray-800 dark:text-gray-100">
+                <h3
+                  className="font-semibold text-lg truncate text-primary"
+                  style={{ fontFamily: headingFont }}
+                >
                   {branch.branch_name}
                 </h3>
                 <div className="flex gap-2 ml-2">
@@ -208,24 +221,24 @@ export default function Branches() {
                   </button>
                   <button
                     onClick={() => handleDelete(branch.id)}
-                    className="text-red-500 hover:text-red-700 transition-colors"
+                    className="text-accent hover:text-accent-dark transition-colors"
                   >
                     <Trash2 size={16} />
                   </button>
                 </div>
               </div>
               {branch.address && (
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 flex items-center gap-1">
+                <p className="text-sm text-primary-dark mt-2 flex items-center gap-1" style={{ fontFamily: bodyFont }}>
                   <MapPin size={14} /> {branch.address}
                 </p>
               )}
               {branch.phone && (
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 flex items-center gap-1">
+                <p className="text-sm text-primary-dark mt-1 flex items-center gap-1" style={{ fontFamily: bodyFont }}>
                   <Phone size={14} /> {branch.phone}
                 </p>
               )}
               {branch.email && (
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 flex items-center gap-1">
+                <p className="text-sm text-primary-dark mt-1 flex items-center gap-1" style={{ fontFamily: bodyFont }}>
                   <Mail size={14} /> {branch.email}
                 </p>
               )}
@@ -237,26 +250,26 @@ export default function Branches() {
       {/* Create/Edit Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md shadow-xl border border-gray-200 dark:border-gray-700">
-            <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-xl">
+          <div className="bg-white rounded-xl w-full max-w-md shadow-xl border border-primary-bg">
+            <div className="sticky top-0 bg-white border-b border-primary-bg px-6 py-4 flex items-center justify-between rounded-t-xl">
               <h2
-                className="text-xl font-bold"
-                style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+                className="text-xl font-bold text-primary"
+                style={{ fontFamily: headingFont }}
               >
                 {editingBranch ? "Edit Branch" : "New Branch"}
               </h2>
               <button
                 onClick={() => setShowForm(false)}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                className="p-2 hover:bg-primary-bg rounded-lg transition-colors"
               >
-                <X size={20} className="text-gray-500 dark:text-gray-400" />
+                <X size={20} className="text-primary-dark" />
               </button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
                 <label
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                  style={{ fontFamily: "var(--font-body)" }}
+                  className="block text-sm font-medium text-primary-dark mb-1"
+                  style={{ fontFamily: bodyFont }}
                 >
                   Branch Name *
                 </label>
@@ -266,13 +279,13 @@ export default function Branches() {
                   value={form.branch_name}
                   onChange={handleChange}
                   required
-                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
+                  className="w-full border border-primary-bg bg-white text-primary rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
                 />
               </div>
               <div>
                 <label
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                  style={{ fontFamily: "var(--font-body)" }}
+                  className="block text-sm font-medium text-primary-dark mb-1"
+                  style={{ fontFamily: bodyFont }}
                 >
                   Address
                 </label>
@@ -281,14 +294,14 @@ export default function Branches() {
                   name="address"
                   value={form.address}
                   onChange={handleChange}
-                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
+                  className="w-full border border-primary-bg bg-white text-primary rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label
-                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                    style={{ fontFamily: "var(--font-body)" }}
+                    className="block text-sm font-medium text-primary-dark mb-1"
+                    style={{ fontFamily: bodyFont }}
                   >
                     City
                   </label>
@@ -297,13 +310,13 @@ export default function Branches() {
                     name="city"
                     value={form.city}
                     onChange={handleChange}
-                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
+                    className="w-full border border-primary-bg bg-white text-primary rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
                   />
                 </div>
                 <div>
                   <label
-                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                    style={{ fontFamily: "var(--font-body)" }}
+                    className="block text-sm font-medium text-primary-dark mb-1"
+                    style={{ fontFamily: bodyFont }}
                   >
                     State
                   </label>
@@ -312,15 +325,15 @@ export default function Branches() {
                     name="state"
                     value={form.state}
                     onChange={handleChange}
-                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
+                    className="w-full border border-primary-bg bg-white text-primary rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label
-                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                    style={{ fontFamily: "var(--font-body)" }}
+                    className="block text-sm font-medium text-primary-dark mb-1"
+                    style={{ fontFamily: bodyFont }}
                   >
                     Pincode
                   </label>
@@ -329,13 +342,13 @@ export default function Branches() {
                     name="pincode"
                     value={form.pincode}
                     onChange={handleChange}
-                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
+                    className="w-full border border-primary-bg bg-white text-primary rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
                   />
                 </div>
                 <div>
                   <label
-                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                    style={{ fontFamily: "var(--font-body)" }}
+                    className="block text-sm font-medium text-primary-dark mb-1"
+                    style={{ fontFamily: bodyFont }}
                   >
                     Phone
                   </label>
@@ -344,14 +357,14 @@ export default function Branches() {
                     name="phone"
                     value={form.phone}
                     onChange={handleChange}
-                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
+                    className="w-full border border-primary-bg bg-white text-primary rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
                   />
                 </div>
               </div>
               <div>
                 <label
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                  style={{ fontFamily: "var(--font-body)" }}
+                  className="block text-sm font-medium text-primary-dark mb-1"
+                  style={{ fontFamily: bodyFont }}
                 >
                   Email
                 </label>
@@ -360,22 +373,22 @@ export default function Branches() {
                   name="email"
                   value={form.email}
                   onChange={handleChange}
-                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[var(--color-primary)] outline-none"
+                  className="w-full border border-primary-bg bg-white text-primary rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
                 />
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowForm(false)}
-                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                  style={{ fontFamily: "var(--font-body)" }}
+                  className="px-4 py-2 border border-primary-bg rounded-lg text-sm text-primary-dark hover:bg-primary-bg transition-colors"
+                  style={{ fontFamily: bodyFont }}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 bg-primary hover:bg-primary-light text-white rounded-lg text-sm font-medium transition-colors"
-                  style={{ fontFamily: "var(--font-body)" }}
+                  style={{ fontFamily: bodyFont }}
                 >
                   {editingBranch ? "Update" : "Create"}
                 </button>

@@ -8,6 +8,7 @@ import { useAuth } from "../context/AuthContext";
 import { supabase } from "../api/supabase";
 import BackButton from "../components/BackButton";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // 👈 import theme
 import { generateLeaveApplicationPdf } from "../utils/leaveApplicationPdf";
 import { sendEmail } from "../services/emailService";
 
@@ -15,6 +16,7 @@ export default function MyLeaves() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { org, branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme(); // 👈 get theme colours
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const [showForm, setShowForm] = useState(false);
@@ -99,7 +101,6 @@ export default function MyLeaves() {
 
     setSendingReport(true);
     try {
-      // Get teacher email from the first leave (or fetch separately)
       let teacherEmail = leaves[0]?.teachers?.email;
       if (!teacherEmail && teacherId) {
         const { data: teacher } = await supabase
@@ -117,10 +118,15 @@ export default function MyLeaves() {
 
       // Build HTML table rows
       let tableRows = leaves.map((l) => {
-        const statusColor = l.status === "Approved" ? "#2e7d32" :
-                            l.status === "Rejected" ? "#c62828" : "#e65100";
-        const statusBg = l.status === "Approved" ? "#e8f5e9" :
-                         l.status === "Rejected" ? "#ffebee" : "#fff3e0";
+        const statusColor =
+          l.status === "Approved" ? theme.primary_color :
+          l.status === "Rejected" ? theme.accent_dark_color || "#c62828" :
+          theme.accent_color || "#e65100";
+        const statusBg =
+          l.status === "Approved" ? theme.primary_light_color || "#e8f5e9" :
+          l.status === "Rejected" ? theme.accent_bg_color || "#ffebee" :
+          theme.accent_light_color || "#fff3e0";
+
         return `
           <tr>
             <td style="padding:4px 8px;border:1px solid #ddd;">${l.start_date}</td>
@@ -140,13 +146,13 @@ export default function MyLeaves() {
 
       const htmlBody = `
         <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
-          <h2 style="color:#0D47A1;">My Leave History</h2>
+          <h2 style="color:${theme.primary_color};">My Leave History</h2>
           <p><strong>Teacher:</strong> ${leaves[0]?.teachers?.first_name || ''} ${leaves[0]?.teachers?.last_name || ''}</p>
           <p><strong>Total Requests:</strong> ${leaves.length}</p>
           <p><strong>Pending:</strong> ${pendingCount} | <strong>Approved:</strong> ${approvedCount} | <strong>Rejected:</strong> ${rejectedCount}</p>
           <hr />
           <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
-            <thead style="background:#e3f2fd;">
+            <thead style="background:${theme.primary_light_color || '#e3f2fd'};">
               <tr>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Start Date</th>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">End Date</th>
@@ -167,7 +173,6 @@ export default function MyLeaves() {
         to: teacherEmail,
         subject: `My Leave Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-       // from: org?.email || undefined,
       });
 
       toast.success("Report sent to your email.");
@@ -235,26 +240,29 @@ export default function MyLeaves() {
   }
 
   return (
-    <>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
       <BackButton to="/teacher" label="Dashboard" />
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-righteous text-primary-dark">My Leaves</h1>
-          <p className="text-sm text-secondary-dark font-montserrat mt-1">Manage your leave requests</p>
+          <h1 className="text-3xl font-heading text-primary-dark">
+            My Leaves
+          </h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400 font-body mt-1">
+            Manage your leave requests
+          </p>
         </div>
         <div className="flex gap-2">
-          {/* 👇 Send Report button */}
           <button
             onClick={sendLeaveReport}
             disabled={sendingReport || leaves.length === 0}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-montserrat flex items-center gap-2 disabled:opacity-50"
+            className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-lg text-sm font-body flex items-center gap-2 disabled:opacity-50"
           >
             <Mail size={16} />
             {sendingReport ? "Sending..." : "Send Report"}
           </button>
           <button
             onClick={() => setShowForm(true)}
-            className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg text-sm font-montserrat flex items-center gap-2"
+            className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg text-sm font-body flex items-center gap-2"
           >
             <Plus size={16} /> Request Leave
           </button>
@@ -263,55 +271,55 @@ export default function MyLeaves() {
 
       {leaves.length > 0 && (
         <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-secondary-light text-center">
+          <div className="bg-white dark:bg-accent rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 text-center">
             <p className="text-2xl font-bold text-primary">{leaves.length}</p>
-            <p className="text-xs text-secondary mt-1">Total Requests</p>
+            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">Total Requests</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-secondary-light text-center">
-            <p className="text-2xl font-bold text-yellow-600">{pending}</p>
-            <p className="text-xs text-secondary mt-1">Pending</p>
+          <div className="bg-white dark:bg-accent rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 text-center">
+            <p className="text-2xl font-bold text-accent">{pending}</p>
+            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">Pending</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-secondary-light text-center">
-            <p className="text-2xl font-bold text-green-600">{approved}</p>
-            <p className="text-xs text-secondary mt-1">Approved</p>
+          <div className="bg-white dark:bg-accent rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 text-center">
+            <p className="text-2xl font-bold text-primary">{approved}</p>
+            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">Approved</p>
           </div>
         </div>
       )}
 
       {isLoading ? (
-        <div className="p-8 text-center">Loading...</div>
+        <div className="p-8 text-center text-gray-500 dark:text-gray-400">Loading...</div>
       ) : leaves.length === 0 ? (
-        <div className="bg-white rounded-xl p-8 shadow-sm border border-secondary-light text-center">
-          <Calendar size={32} className="text-secondary-light mx-auto mb-2" />
-          <p className="text-secondary">No leave requests yet.</p>
+        <div className="bg-white dark:bg-accent rounded-xl p-8 shadow-sm border border-gray-200 dark:border-gray-700 text-center">
+          <Calendar size={32} className="text-gray-400 dark:text-gray-500 mx-auto mb-2" />
+          <p className="text-gray-600 dark:text-gray-400">No leave requests yet.</p>
         </div>
       ) : (
         <div className="space-y-3">
           {leaves.map((l) => (
-            <div key={l.id} className="bg-white rounded-xl p-4 shadow-sm border border-secondary-light">
+            <div key={l.id} className="bg-white dark:bg-accent rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700">
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-3">
                   <Calendar size={16} className="text-primary" />
-                  <span className="text-sm font-medium">{l.start_date} → {l.end_date}</span>
+                  <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{l.start_date} → {l.end_date}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                    l.status === "Approved" ? "bg-green-100 text-green-700" :
-                    l.status === "Rejected" ? "bg-red-100 text-red-700" :
-                    "bg-yellow-100 text-yellow-700"
+                    l.status === "Approved" ? "bg-primary-bg text-primary" :
+                    l.status === "Rejected" ? "bg-accent-bg text-accent-dark" :
+                    "bg-accent-bg text-accent"
                   }`}>{l.status}</span>
                   <button
                     onClick={() => handleDownloadPDF(l)}
                     disabled={downloading === l.id}
-                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition disabled:opacity-50"
+                    className="p-1.5 text-primary hover:bg-primary-bg rounded transition disabled:opacity-50"
                     title="Download PDF"
                   >
                     <Download size={16} />
                   </button>
                 </div>
               </div>
-              {l.reason && <p className="text-sm text-secondary mt-2">{l.reason}</p>}
-              {l.admin_remarks && <p className="text-xs text-red-500 mt-1">Admin: {l.admin_remarks}</p>}
+              {l.reason && <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">{l.reason}</p>}
+              {l.admin_remarks && <p className="text-xs text-accent-dark mt-1">Admin: {l.admin_remarks}</p>}
             </div>
           ))}
         </div>
@@ -320,42 +328,42 @@ export default function MyLeaves() {
       {/* ── Leave Request Modal ── */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
-            <div className="sticky top-0 bg-white border-b border-secondary-light px-6 py-4 flex items-center justify-between rounded-t-xl">
-              <h2 className="text-xl font-righteous text-primary-dark">Request Leave</h2>
-              <button onClick={() => setShowForm(false)} className="p-2 hover:bg-secondary-bg rounded-lg">
-                <X size={20} className="text-secondary-dark" />
+          <div className="bg-white dark:bg-accent rounded-xl w-full max-w-md shadow-xl border border-gray-200 dark:border-gray-700">
+            <div className="sticky top-0 bg-white dark:bg-accent border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-xl">
+              <h2 className="text-xl font-heading text-primary">Request Leave</h2>
+              <button onClick={() => setShowForm(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                <X size={20} className="text-gray-600 dark:text-gray-400" />
               </button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+                <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
                   <Calendar size={14} className="inline mr-1" />Start Date *
                 </label>
                 <input type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })}
-                  className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary outline-none" required />
+                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary outline-none" required />
               </div>
               <div>
-                <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+                <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
                   <Calendar size={14} className="inline mr-1" />End Date *
                 </label>
                 <input type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })}
-                  className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary outline-none" required />
+                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary outline-none" required />
               </div>
               <div>
-                <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+                <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
                   <FileText size={14} className="inline mr-1" />Reason
                 </label>
                 <textarea value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })}
-                  rows={3} className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary outline-none" />
+                  rows={3} className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary outline-none" />
               </div>
               <div className="flex flex-col sm:flex-row-reverse gap-3 pt-2">
                 <button type="submit" disabled={createMutation.isPending}
-                  className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat transition disabled:opacity-60">
+                  className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-body transition disabled:opacity-60">
                   {createMutation.isPending ? "Submitting..." : "Submit"}
                 </button>
                 <button type="button" onClick={() => setShowForm(false)}
-                  className="w-full sm:w-auto border border-secondary-light text-secondary-dark hover:bg-secondary-bg px-6 py-2.5 rounded-lg font-montserrat transition">
+                  className="w-full sm:w-auto border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 px-6 py-2.5 rounded-lg font-body transition">
                   Cancel
                 </button>
               </div>
@@ -363,6 +371,6 @@ export default function MyLeaves() {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

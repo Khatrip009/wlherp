@@ -14,6 +14,7 @@ import toast from "react-hot-toast";
 import { ArrowLeft, Save, Plus, Trash2, CheckCircle, Loader } from "lucide-react";
 import GSTLookup from "../components/GSTLookup";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 import CollectPaymentModal from "../components/CollectPaymentModal";
 
 // Helper to split GST
@@ -33,10 +34,14 @@ export default function InvoiceForm() {
   const queryClient = useQueryClient();
 
   const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme();                                     // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
   const orgState = org?.state_code || "";
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const [form, setForm] = useState({
     student_id: "",
@@ -389,33 +394,44 @@ export default function InvoiceForm() {
   };
 
   if (loadingInvoice) {
-    return <div className="p-8 text-center">Loading invoice…</div>;
+    return (
+      <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+        Loading invoice…
+      </div>
+    );
   }
 
   return (
     <>
       <button
         onClick={() => navigate("/invoices")}
-        className="inline-flex items-center gap-2 text-secondary hover:text-primary-dark mb-4 text-sm"
+        className="inline-flex items-center gap-2 text-primary-dark hover:text-primary mb-4 text-sm"
+        style={{ fontFamily: bodyFont }}
       >
         <ArrowLeft size={18} /> Back to Invoices
       </button>
 
-      <h1 className="text-3xl font-righteous text-primary-dark mb-6">
+      <h1
+        className="text-3xl font-bold text-primary mb-6"
+        style={{ fontFamily: headingFont }}
+      >
         {isEditing ? "Edit Invoice" : "New Invoice"}
       </h1>
 
-      <form className="bg-white rounded-xl shadow-sm p-6 space-y-6">
+      <form className="bg-white rounded-xl shadow-sm p-6 space-y-6 border border-primary-bg">
         {/* Header fields */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label
+              className="block text-sm text-primary-dark mb-1"
+              style={{ fontFamily: bodyFont }}
+            >
               Student *
             </label>
             <select
               value={form.student_id}
               onChange={(e) => handleStudentChange(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary"
               required
             >
               <option value="">Select Student</option>
@@ -425,43 +441,60 @@ export default function InvoiceForm() {
                 </option>
               ))}
             </select>
-            {studentsLoading && <p className="text-xs text-gray-500 mt-1">Loading students...</p>}
-            {studentsError && <p className="text-xs text-red-500 mt-1">Error loading students</p>}
+            {studentsLoading && (
+              <p className="text-xs text-primary-dark/60 mt-1" style={{ fontFamily: bodyFont }}>
+                Loading students...
+              </p>
+            )}
+            {studentsError && (
+              <p className="text-xs text-accent-dark mt-1" style={{ fontFamily: bodyFont }}>
+                Error loading students
+              </p>
+            )}
           </div>
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label
+              className="block text-sm text-primary-dark mb-1"
+              style={{ fontFamily: bodyFont }}
+            >
               Invoice Date
             </label>
             <input
               type="date"
               value={form.invoice_date}
               onChange={(e) => setForm({ ...form, invoice_date: e.target.value })}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary"
             />
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label
+              className="block text-sm text-primary-dark mb-1"
+              style={{ fontFamily: bodyFont }}
+            >
               Due Date
             </label>
             <input
               type="date"
               value={form.due_date}
               onChange={(e) => setForm({ ...form, due_date: e.target.value })}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary"
             />
           </div>
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label
+              className="block text-sm text-primary-dark mb-1"
+              style={{ fontFamily: bodyFont }}
+            >
               Payment Terms
             </label>
             <input
               type="text"
               value={form.payment_terms}
               onChange={(e) => setForm({ ...form, payment_terms: e.target.value })}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary"
               placeholder="e.g. 15 days"
             />
           </div>
@@ -469,24 +502,36 @@ export default function InvoiceForm() {
 
         {/* GST details */}
         {studentDetails && (
-          <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+          <div className="bg-primary-bg p-4 rounded-lg border border-primary-bg">
             <div className="flex justify-between items-start">
               <div>
-                <p className="text-sm font-medium text-gray-700">Student GST Details</p>
+                <p className="text-sm font-medium text-primary-dark" style={{ fontFamily: bodyFont }}>
+                  Student GST Details
+                </p>
                 {studentDetails.legal_business_name && (
-                  <p className="text-sm">Legal Name: {studentDetails.legal_business_name}</p>
+                  <p className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                    Legal Name: {studentDetails.legal_business_name}
+                  </p>
                 )}
                 {studentDetails.gstin && (
-                  <p className="text-sm">GSTIN: {studentDetails.gstin}</p>
+                  <p className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                    GSTIN: {studentDetails.gstin}
+                  </p>
                 )}
                 {studentDetails.state_code && (
-                  <p className="text-sm">State: {studentDetails.state_code}</p>
+                  <p className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                    State: {studentDetails.state_code}
+                  </p>
                 )}
                 {studentDetails.billing_address && (
-                  <p className="text-sm">Address: {studentDetails.billing_address}</p>
+                  <p className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                    Address: {studentDetails.billing_address}
+                  </p>
                 )}
                 {!studentDetails.gstin && (
-                  <p className="text-sm text-gray-500">No GSTIN – B2C customer</p>
+                  <p className="text-sm text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+                    No GSTIN – B2C customer
+                  </p>
                 )}
               </div>
               {studentDetails.gstin && (
@@ -503,13 +548,16 @@ export default function InvoiceForm() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label
+              className="block text-sm text-primary-dark mb-1"
+              style={{ fontFamily: bodyFont }}
+            >
               Place of Supply
             </label>
             <select
               value={form.place_of_supply}
               onChange={(e) => setForm({ ...form, place_of_supply: e.target.value })}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary"
             >
               <option value="">Default (Student State)</option>
               {students.find((s) => s.id === Number(form.student_id))?.state_code && (
@@ -521,21 +569,21 @@ export default function InvoiceForm() {
             </select>
           </div>
           <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
               <input
                 type="checkbox"
                 checked={form.gst_applicable}
                 onChange={(e) => setForm({ ...form, gst_applicable: e.target.checked })}
-                className="rounded text-primary"
+                className="rounded text-primary focus:ring-primary"
               />
               GST Applicable
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
               <input
                 type="checkbox"
                 checked={form.reverse_charge}
                 onChange={(e) => setForm({ ...form, reverse_charge: e.target.checked })}
-                className="rounded text-primary"
+                className="rounded text-primary focus:ring-primary"
               />
               Reverse Charge
             </label>
@@ -544,28 +592,47 @@ export default function InvoiceForm() {
 
         {/* Items table */}
         <div>
-          <h3 className="text-lg font-semibold text-secondary-dark mb-3">Items</h3>
+          <h3
+            className="text-lg font-semibold text-primary-dark mb-3"
+            style={{ fontFamily: headingFont }}
+          >
+            Items
+          </h3>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[700px]">
-              <thead className="bg-slate-100">
+              <thead className="bg-primary-bg">
                 <tr>
-                  <th className="p-2 text-left text-sm">Type</th>
-                  <th className="p-2 text-left text-sm">Description</th>
-                  <th className="p-2 text-left text-sm">HSN/SAC</th>
-                  <th className="p-2 text-right text-sm">Qty</th>
-                  <th className="p-2 text-right text-sm">Unit Price</th>
-                  <th className="p-2 text-left text-sm">Tax Rate</th>
-                  <th className="p-2 text-center text-sm">Actions</th>
+                  <th className="p-2 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Type
+                  </th>
+                  <th className="p-2 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Description
+                  </th>
+                  <th className="p-2 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    HSN/SAC
+                  </th>
+                  <th className="p-2 text-right text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Qty
+                  </th>
+                  <th className="p-2 text-right text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Unit Price
+                  </th>
+                  <th className="p-2 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Tax Rate
+                  </th>
+                  <th className="p-2 text-center text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((item, idx) => (
-                  <tr key={idx} className="border-t">
+                  <tr key={idx} className="border-t border-primary-bg">
                     <td className="p-2">
                       <select
                         value={item.item_type}
                         onChange={(e) => updateItem(idx, "item_type", e.target.value)}
-                        className="w-full border rounded p-1 text-sm"
+                        className="w-full border border-primary-bg bg-white text-primary-dark rounded p-1 text-sm"
                       >
                         <option value="fee_structure">Fee Structure</option>
                         <option value="product">Product</option>
@@ -577,7 +644,7 @@ export default function InvoiceForm() {
                         <select
                           value={item.item_id}
                           onChange={(e) => handleFeeStructureSelect(idx, e.target.value)}
-                          className="w-full border rounded p-1 text-sm"
+                          className="w-full border border-primary-bg bg-white text-primary-dark rounded p-1 text-sm"
                         >
                           <option value="">Select Fee</option>
                           {feeStructures.map((fs) => (
@@ -591,7 +658,7 @@ export default function InvoiceForm() {
                           type="text"
                           value={item.description}
                           onChange={(e) => updateItem(idx, "description", e.target.value)}
-                          className="w-full border rounded p-1 text-sm"
+                          className="w-full border border-primary-bg bg-white text-primary-dark rounded p-1 text-sm"
                           placeholder="Description"
                         />
                       )}
@@ -601,7 +668,7 @@ export default function InvoiceForm() {
                         type="text"
                         value={item.hsn_sac_code}
                         onChange={(e) => updateItem(idx, "hsn_sac_code", e.target.value)}
-                        className="w-full border rounded p-1 text-sm"
+                        className="w-full border border-primary-bg bg-white text-primary-dark rounded p-1 text-sm"
                         placeholder="HSN/SAC"
                       />
                     </td>
@@ -610,7 +677,7 @@ export default function InvoiceForm() {
                         type="number"
                         value={item.quantity}
                         onChange={(e) => updateItem(idx, "quantity", e.target.value)}
-                        className="w-16 border rounded p-1 text-sm text-right"
+                        className="w-16 border border-primary-bg bg-white text-primary-dark rounded p-1 text-sm text-right"
                         min="1"
                         step="1"
                       />
@@ -620,7 +687,7 @@ export default function InvoiceForm() {
                         type="number"
                         value={item.unit_price}
                         onChange={(e) => updateItem(idx, "unit_price", e.target.value)}
-                        className="w-24 border rounded p-1 text-sm text-right"
+                        className="w-24 border border-primary-bg bg-white text-primary-dark rounded p-1 text-sm text-right"
                         min="0"
                         step="0.01"
                       />
@@ -629,7 +696,7 @@ export default function InvoiceForm() {
                       <select
                         value={item.tax_rate_id}
                         onChange={(e) => updateItem(idx, "tax_rate_id", e.target.value)}
-                        className="w-full border rounded p-1 text-sm"
+                        className="w-full border border-primary-bg bg-white text-primary-dark rounded p-1 text-sm"
                       >
                         <option value="">No Tax</option>
                         {taxRates.map((tr) => (
@@ -643,7 +710,7 @@ export default function InvoiceForm() {
                       <button
                         type="button"
                         onClick={() => removeItem(idx)}
-                        className="text-red-600 hover:text-red-800"
+                        className="text-accent hover:text-accent-dark"
                       >
                         <Trash2 size={16} />
                       </button>
@@ -656,56 +723,57 @@ export default function InvoiceForm() {
           <button
             type="button"
             onClick={addItem}
-            className="mt-2 text-primary text-sm flex items-center gap-1"
+            className="mt-2 text-primary text-sm flex items-center gap-1 hover:underline"
+            style={{ fontFamily: bodyFont }}
           >
             <Plus size={16} /> Add Item
           </button>
         </div>
 
         {/* Totals */}
-        <div className="border-t pt-4 space-y-2">
+        <div className="border-t border-primary-bg pt-4 space-y-2">
           <div className="flex justify-end">
             <div className="w-72 space-y-1">
               <div className="flex justify-between text-sm">
-                <span>Taxable Amount:</span>
-                <span className="font-medium">₹ {totals.taxableTotal.toFixed(2)}</span>
+                <span className="text-primary-dark">Taxable Amount:</span>
+                <span className="font-medium text-primary">₹ {totals.taxableTotal.toFixed(2)}</span>
               </div>
               {totals.totalCgst > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span>CGST:</span>
-                  <span>₹ {totals.totalCgst.toFixed(2)}</span>
+                  <span className="text-primary-dark">CGST:</span>
+                  <span className="text-primary">₹ {totals.totalCgst.toFixed(2)}</span>
                 </div>
               )}
               {totals.totalSgst > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span>SGST:</span>
-                  <span>₹ {totals.totalSgst.toFixed(2)}</span>
+                  <span className="text-primary-dark">SGST:</span>
+                  <span className="text-primary">₹ {totals.totalSgst.toFixed(2)}</span>
                 </div>
               )}
               {totals.totalIgst > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span>IGST:</span>
-                  <span>₹ {totals.totalIgst.toFixed(2)}</span>
+                  <span className="text-primary-dark">IGST:</span>
+                  <span className="text-primary">₹ {totals.totalIgst.toFixed(2)}</span>
                 </div>
               )}
               {totals.totalGST > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span>Total GST:</span>
-                  <span>₹ {totals.totalGST.toFixed(2)}</span>
+                  <span className="text-primary-dark">Total GST:</span>
+                  <span className="text-primary">₹ {totals.totalGST.toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm">
-                <span>Total:</span>
-                <span className="font-medium">₹ {totals.totalAmount.toFixed(2)}</span>
+                <span className="text-primary-dark">Total:</span>
+                <span className="font-medium text-primary">₹ {totals.totalAmount.toFixed(2)}</span>
               </div>
               {totals.roundOff !== 0 && (
-                <div className="flex justify-between text-sm text-gray-500">
+                <div className="flex justify-between text-sm text-primary-dark/60">
                   <span>Round Off:</span>
                   <span>₹ {totals.roundOff.toFixed(2)}</span>
                 </div>
               )}
-              <div className="flex justify-between text-lg font-bold border-t pt-1">
-                <span>Grand Total:</span>
+              <div className="flex justify-between text-lg font-bold border-t border-primary-bg pt-1">
+                <span className="text-primary">Grand Total:</span>
                 <span className="text-primary">₹ {totals.grandTotal.toFixed(2)}</span>
               </div>
             </div>
@@ -713,11 +781,12 @@ export default function InvoiceForm() {
         </div>
 
         {/* Actions */}
-        <div className="flex flex-wrap gap-3 pt-4 border-t">
+        <div className="flex flex-wrap gap-3 pt-4 border-t border-primary-bg">
           <button
             type="button"
             onClick={() => navigate("/invoices")}
-            className="border border-secondary-light px-4 py-2 rounded-lg text-sm hover:bg-secondary-bg transition"
+            className="border border-primary-bg text-primary-dark px-4 py-2 rounded-lg text-sm hover:bg-primary-bg transition-colors"
+            style={{ fontFamily: bodyFont }}
           >
             Cancel
           </button>
@@ -725,7 +794,8 @@ export default function InvoiceForm() {
             type="button"
             onClick={(e) => handleSubmit(e, false, false)}
             disabled={saving}
-            className="bg-primary text-white px-6 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
+            className="bg-primary hover:bg-primary-light text-white px-6 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
+            style={{ fontFamily: bodyFont }}
           >
             {saving ? <Loader className="w-4 h-4 animate-spin" /> : <Save size={16} />}
             {isEditing ? "Update Draft" : "Save Draft"}
@@ -735,7 +805,8 @@ export default function InvoiceForm() {
               type="button"
               onClick={(e) => handleSubmit(e, true, false)}
               disabled={saving}
-              className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
+              className="bg-accent hover:bg-accent-dark text-white px-6 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
+              style={{ fontFamily: bodyFont }}
             >
               {saving ? <Loader className="w-4 h-4 animate-spin" /> : <CheckCircle size={16} />}
               Finalize
@@ -746,7 +817,8 @@ export default function InvoiceForm() {
               type="button"
               onClick={(e) => handleSubmit(e, false, true)}
               disabled={saving}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
+              className="bg-primary hover:bg-primary-light text-white px-6 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
+              style={{ fontFamily: bodyFont }}
             >
               {saving ? <Loader className="w-4 h-4 animate-spin" /> : <Save size={16} />}
               Save & Collect Payment

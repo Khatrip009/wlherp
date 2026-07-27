@@ -14,14 +14,15 @@ import {
   User,
   Clock,
   Mail,
-  Download,          // added icon for download
+  Download,
 } from "lucide-react";
 import BackButton from "../components/BackButton";
 import { getLeaves, updateLeaveStatus } from "../services/leaveService";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 import { supabase } from "../api/supabase";
 import { sendEmail } from "../services/emailService";
-import { generateLeaveApplicationPdf } from "../utils/leaveApplicationPdf";  // added PDF generator
+import { generateLeaveApplicationPdf } from "../utils/leaveApplicationPdf";
 
 export default function LeaveManagement() {
   const queryClient = useQueryClient();
@@ -29,9 +30,13 @@ export default function LeaveManagement() {
   const [search, setSearch] = useState("");
 
   const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme();                                     // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   // ─── Helper: get admin emails ──────────────────────────────────────
   const getAdminEmails = async () => {
@@ -179,13 +184,23 @@ export default function LeaveManagement() {
       <BackButton to="/hr-hub" label="HR & Staff" />
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
         <div>
-          <h1 className="text-3xl font-righteous text-primary-dark">Leave Management</h1>
-          <p className="text-sm text-secondary-dark font-montserrat">Approve or reject teacher leave requests</p>
+          <h1
+            className="text-3xl font-bold text-primary"
+            style={{ fontFamily: headingFont }}
+          >
+            Leave Management
+          </h1>
+          <p
+            className="text-sm text-primary-dark mt-1"
+            style={{ fontFamily: bodyFont }}
+          >
+            Approve or reject teacher leave requests
+          </p>
         </div>
-        {/* Send Report button */}
         <button
           onClick={sendReportEmail}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-dark text-white rounded-lg transition-colors text-sm font-medium"
+          style={{ fontFamily: bodyFont }}
         >
           <Mail size={18} /> Send Report
         </button>
@@ -193,19 +208,24 @@ export default function LeaveManagement() {
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1 max-w-md">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+          <Search
+            size={18}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-dark/60"
+          />
           <input
             type="text"
             placeholder="Search by teacher name..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-secondary-light rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+            className="w-full border border-primary-bg bg-white text-primary-dark rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-primary-dark/40"
+            style={{ fontFamily: bodyFont }}
           />
         </div>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="border border-secondary-light rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-primary outline-none"
+          className="border border-primary-bg bg-white text-primary-dark rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-primary outline-none"
+          style={{ fontFamily: bodyFont }}
         >
           <option value="">All Status</option>
           <option value="Pending">Pending</option>
@@ -214,45 +234,110 @@ export default function LeaveManagement() {
         </select>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-primary-bg">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[700px]">
-            <thead className="bg-slate-100 border-b border-secondary-light">
+            <thead className="bg-primary-bg">
               <tr>
-                <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Teacher</th>
-                <th className="text-left">Start</th>
-                <th className="text-left">End</th>
-                <th className="text-left">Reason</th>
-                <th className="text-left">Status</th>
-                <th className="text-left">Actions</th>
+                <th
+                  className="p-3 text-left text-sm font-medium text-primary-dark uppercase"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  Teacher
+                </th>
+                <th
+                  className="text-left text-sm font-medium text-primary-dark uppercase"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  Start
+                </th>
+                <th
+                  className="text-left text-sm font-medium text-primary-dark uppercase"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  End
+                </th>
+                <th
+                  className="text-left text-sm font-medium text-primary-dark uppercase"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  Reason
+                </th>
+                <th
+                  className="text-left text-sm font-medium text-primary-dark uppercase"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  Status
+                </th>
+                <th
+                  className="text-left text-sm font-medium text-primary-dark uppercase"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={6} className="p-6 text-center text-secondary">Loading...</td></tr>
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="p-6 text-center text-primary-dark/60"
+                    style={{ fontFamily: bodyFont }}
+                  >
+                    Loading...
+                  </td>
+                </tr>
               ) : leaves.length === 0 ? (
-                <tr><td colSpan={6} className="p-6 text-center text-secondary">No leave requests found.</td></tr>
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="p-6 text-center text-primary-dark/60"
+                    style={{ fontFamily: bodyFont }}
+                  >
+                    No leave requests found.
+                  </td>
+                </tr>
               ) : (
                 leaves.map((l) => (
-                  <tr key={l.id} className="border-b border-secondary-light hover:bg-primary-bg transition">
-                    <td className="p-3 text-sm">{l.teachers?.first_name} {l.teachers?.last_name}</td>
-                    <td className="text-sm">{l.start_date}</td>
-                    <td className="text-sm">{l.end_date}</td>
-                    <td className="text-sm">{l.reason || "-"}</td>
+                  <tr
+                    key={l.id}
+                    className="border-b border-primary-bg hover:bg-primary-bg transition-colors"
+                  >
+                    <td className="p-3 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                      {l.teachers?.first_name} {l.teachers?.last_name}
+                    </td>
+                    <td className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                      {l.start_date}
+                    </td>
+                    <td className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                      {l.end_date}
+                    </td>
+                    <td className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                      {l.reason || "-"}
+                    </td>
                     <td className="text-sm">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        l.status === "Approved" ? "bg-green-100 text-green-700" :
-                        l.status === "Rejected" ? "bg-red-100 text-red-700" :
-                        "bg-yellow-100 text-yellow-700"
-                      }`}>{l.status}</span>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          l.status === "Approved"
+                            ? "bg-primary-bg text-primary-dark"
+                            : l.status === "Rejected"
+                            ? "bg-accent text-white"
+                            : "bg-accent-bg text-accent-dark"
+                        }`}
+                      >
+                        {l.status}
+                      </span>
                     </td>
                     <td className="text-sm">
                       <div className="flex gap-2">
                         {l.status === "Pending" && (
                           <>
                             <button
-                              onClick={() => updateMutation.mutate({ id: l.id, status: "Approved" })}
-                              className="text-green-600 hover:underline"
+                              onClick={() =>
+                                updateMutation.mutate({ id: l.id, status: "Approved" })
+                              }
+                              className="text-primary hover:underline"
                             >
                               <Check size={15} /> Approve
                             </button>
@@ -265,7 +350,7 @@ export default function LeaveManagement() {
                                   adminRemarks: remark || "",
                                 });
                               }}
-                              className="text-red-600 hover:underline"
+                              className="text-accent-dark hover:underline"
                             >
                               <X size={15} /> Reject
                             </button>
@@ -274,7 +359,7 @@ export default function LeaveManagement() {
                         {/* Download button for all leave requests */}
                         <button
                           onClick={() => handleDownloadLeave(l)}
-                          className="text-blue-600 hover:underline"
+                          className="text-primary hover:underline"
                           title="Download Leave Application PDF"
                         >
                           <Download size={15} />
@@ -294,7 +379,8 @@ export default function LeaveManagement() {
           <button
             onClick={() => fetchNextPage()}
             disabled={isFetchingNextPage}
-            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat text-sm transition disabled:opacity-60"
+            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-60"
+            style={{ fontFamily: bodyFont }}
           >
             {isFetchingNextPage ? "Loading more…" : "Load More"}
           </button>

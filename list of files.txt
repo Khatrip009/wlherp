@@ -1,9 +1,1 @@
-Batches
-Subjects
-Exams
-Results
-Homework
-Attendance
-Attendance Reports
-Course Levels
-remove adminlayout from these files
+primary color : #37386E

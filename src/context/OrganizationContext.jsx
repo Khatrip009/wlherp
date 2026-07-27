@@ -1,14 +1,13 @@
+// src/context/OrganizationContext.jsx
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { supabase } from "../api/supabase";
 import { useAuth } from "./AuthContext";
-import toast from "react-hot-toast";
 
 const OrgContext = createContext();
 
 export function OrganizationProvider({ children }) {
   const { user } = useAuth();
   const [org, setOrg] = useState(null);
-  const [theme, setTheme] = useState(null);
   const [branch, setBranch] = useState(null);
   const [branches, setBranches] = useState([]);
   const [financialYears, setFinancialYears] = useState([]);
@@ -16,99 +15,32 @@ export function OrganizationProvider({ children }) {
   const [mediums, setMediums] = useState([]);
 
   useEffect(() => {
-    // ── LOGOUT ──
-    if (!user) {
-      setOrg(null);
-      setTheme(null);
-      setBranch(null);
-      setBranches([]);
-      setFinancialYears([]);
-      setSelectedFinancialYear(null);
-      setMediums([]);
+    let cancelled = false;
 
-      // Even when logged out, we still need to load the organisation
-      // for the login page (logo, branding, etc.). Because the entire
-      // app is built for organisation ID 3, we simply load that directly.
-      const hostname = window.location.hostname;
-      if (hostname !== "app.shreevidhyaerp.online" && hostname !== "localhost") {
-        (async () => {
-          try {
-            const { data: orgData } = await supabase
-              .from("organization")
-              .select("*")
-              .eq("id", 3)          // hardcoded – the only organisation used
-              .single();
-
-            if (orgData) {
-              setOrg(orgData);
-              const { data: branchList } = await supabase
-                .from("branches")
-                .select("*")
-                .eq("organization_id", orgData.id);
-              setBranches(branchList || []);
-              if (branchList?.length) setBranch(branchList[0]);
-            }
-          } catch {
-            // ignore – organisation may not be accessible yet
-          }
-        })();
-      }
-      return;
-    }
-
-    // ── LOGIN ──
-    async function loadOrganization() {
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("organization_id, selected_financial_year_id, role, branch_id")
-        .eq("id", user.id)
+    async function loadOrg() {
+      const { data: orgData } = await supabase
+        .from("organization")
+        .select("*")
+        .eq("id", 3)
         .single();
 
-      if (profileError) {
-        console.error("Error fetching profile:", profileError);
-        toast.error("Failed to load user profile.");
-        return;
-      }
-
-      if (!profile?.organization_id) {
-        toast.error("No organization assigned to this user.");
-        return;
-      }
-
-      // The entire application is built for organisation ID 3 – enforce it
-      if (profile.organization_id !== 3) {
-        toast.error("Access denied: this app only supports organisation ID 3.");
-        return;
-      }
-
-      // case‑insensitive admin check
-      const adminRoles = ["admin", "super_admin", "organization_admin", "org_admin", "Admin"];
-      const isAdmin = adminRoles.includes(profile.role?.toLowerCase());
-
-      const [
-        { data: orgData },
-        { data: themeData },
-        { data: branchList },
-        { data: fys },
-        { data: mediumRows },
-      ] = await Promise.all([
-        supabase.from("organization").select("*").eq("id", profile.organization_id).single(),
-        supabase.from("themes").select("*").eq("org_id", profile.organization_id).maybeSingle(),
-        supabase.from("branches").select("*").eq("organization_id", profile.organization_id),
-        supabase
-          .from("financial_years")
-          .select("*")
-          .eq("organization_id", profile.organization_id)
-          .order("start_date", { ascending: false }),
-        supabase
-          .from("organization_mediums")
-          .select("medium_id, mediums(name)")
-          .eq("org_id", profile.organization_id),
-      ]);
+      if (!orgData || cancelled) return;
 
       setOrg(orgData);
-      setTheme(themeData || null);
+
+      const [{ data: branchList }, { data: fys }, { data: mediumRows }] = await Promise.all([
+        supabase.from("branches").select("*").eq("organization_id", orgData.id),
+        supabase.from("financial_years").select("*").eq("organization_id", orgData.id).order("start_date", { ascending: false }),
+        supabase.from("organization_mediums").select("medium_id, mediums(name)").eq("org_id", orgData.id),
+      ]);
+
+      if (cancelled) return;
+
+      setBranches(branchList || []);
+      if (branchList?.length) setBranch(branchList[0]);
+
       setFinancialYears(fys || []);
+      if (fys?.length) setSelectedFinancialYear(fys[0]);
 
       const mediumList = (mediumRows || []).map((row) => ({
         id: row.medium_id,
@@ -116,30 +48,29 @@ export function OrganizationProvider({ children }) {
       }));
       setMediums(mediumList);
 
-      // Branch access
-      let accessibleBranches = branchList || [];
-      if (!isAdmin) {
-        accessibleBranches = accessibleBranches.filter(
-          (b) => b.id === profile.branch_id
-        );
-        if (accessibleBranches.length === 0) {
-          toast.error("No branch assigned to this user.");
+      // If user is logged in, silently fix missing org/branch/FY
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("organization_id, branch_id, selected_financial_year_id")
+          .eq("id", user.id)
+          .single();
+
+        if (profile && (!profile.organization_id || !profile.branch_id || !profile.selected_financial_year_id)) {
+          await supabase
+            .from("profiles")
+            .update({
+              organization_id: 3,
+              branch_id: branchList?.[0]?.id || null,
+              selected_financial_year_id: fys?.[0]?.id || null,
+            })
+            .eq("id", user.id);
         }
-      }
-
-      setBranches(accessibleBranches);
-      setBranch(accessibleBranches.length ? accessibleBranches[0] : null);
-
-      // Financial year
-      if (fys && fys.length > 0) {
-        const current = fys.find((fy) => fy.id === profile.selected_financial_year_id) || null;
-        setSelectedFinancialYear(current);
-      } else {
-        setSelectedFinancialYear(null);
       }
     }
 
-    loadOrganization();
+    loadOrg();
+    return () => { cancelled = true; };
   }, [user]);
 
   const switchFinancialYear = useCallback(
@@ -155,13 +86,10 @@ export function OrganizationProvider({ children }) {
     [financialYears, user]
   );
 
-  const organizationId = org?.id ?? null;
-
   return (
     <OrgContext.Provider
       value={{
         org,
-        theme,
         branch,
         setBranch,
         branches,
@@ -169,7 +97,7 @@ export function OrganizationProvider({ children }) {
         selectedFinancialYear,
         switchFinancialYear,
         mediums,
-        organizationId,
+        organizationId: org?.id ?? null,
       }}
     >
       {children}

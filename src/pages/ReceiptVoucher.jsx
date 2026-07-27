@@ -1,3 +1,4 @@
+// src/pages/ReceiptVoucher.jsx
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -40,12 +41,28 @@ export default function ReceiptVoucher() {
     mutationFn: async () => {
       const totalAmount = lines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
       const journalLines = [
-        { account_id: parseInt(cashBankAccount), debit: totalAmount, credit: 0, description: "Cash/Bank receipt" },
-        ...lines.map(l => ({ account_id: parseInt(l.account_id), debit: 0, credit: parseFloat(l.amount) || 0, description: l.description })),
+        {
+          account_id: parseInt(cashBankAccount),
+          debit: totalAmount,
+          credit: 0,
+          description: "Cash/Bank receipt",
+        },
+        ...lines.map((l) => ({
+          account_id: parseInt(l.account_id),
+          debit: 0,
+          credit: parseFloat(l.amount) || 0,
+          description: l.description,
+        })),
       ];
       await createVoucher(
-        { voucher_type_code: "receipt", entry_date: date, reference, description, lines: journalLines },
-        context   // pass branch & FY context
+        {
+          voucher_type_code: "receipt",
+          entry_date: date,
+          reference,
+          description,
+          lines: journalLines,
+        },
+        context
       );
     },
     onSuccess: () => {
@@ -58,47 +75,160 @@ export default function ReceiptVoucher() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!cashBankAccount) { toast.error("Select bank/cash account"); return; }
+    if (!cashBankAccount) {
+      toast.error("Select bank/cash account");
+      return;
+    }
     createMutation.mutate();
   };
 
   return (
-    < >
-      <h1 className="text-3xl font-righteous text-primary-dark mb-6">Receipt Voucher</h1>
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl p-6 shadow-sm space-y-4">
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+      <h1 className="text-3xl font-heading text-primary-dark mb-6">
+        Receipt Voucher
+      </h1>
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white dark:bg-accent rounded-xl p-6 shadow-sm space-y-4 border border-gray-200 dark:border-gray-700"
+      >
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div><label className="block text-sm mb-1">Date</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border rounded p-2.5 text-sm" /></div>
-          <div><label className="block text-sm mb-1">Reference</label><input type="text" value={reference} onChange={e => setReference(e.target.value)} className="w-full border rounded p-2.5 text-sm" /></div>
-          <div><label className="block text-sm mb-1">Description</label><input type="text" value={description} onChange={e => setDescription(e.target.value)} className="w-full border rounded p-2.5 text-sm" /></div>
+          <div>
+            <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
+              Date
+            </label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
+              Reference
+            </label>
+            <input
+              type="text"
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
+              Description
+            </label>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+            />
+          </div>
         </div>
+
         <div>
-          <label className="block text-sm mb-1">Bank / Cash Account (Debit)</label>
-          <select value={cashBankAccount} onChange={e => setCashBankAccount(e.target.value)} className="w-full border rounded p-2.5 text-sm" required>
+          <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
+            Bank / Cash Account (Debit)
+          </label>
+          <select
+            value={cashBankAccount}
+            onChange={(e) => setCashBankAccount(e.target.value)}
+            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+            required
+          >
             <option value="">Select account</option>
-            {accounts.filter(a => a.account_code === '1001' || a.account_code === '1002').map(a => <option key={a.id} value={a.id}>{a.account_name}</option>)}
+            {accounts
+              .filter((a) => a.account_code === "1001" || a.account_code === "1002")
+              .map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.account_name}
+                </option>
+              ))}
           </select>
         </div>
-        <table className="w-full">
-          <thead><tr>
-            <th className="p-2 text-left text-sm">Income Account (Credit)</th>
-            <th className="p-2 text-left text-sm">Amount</th>
-            <th className="p-2 text-left text-sm">Description</th>
-            <th></th>
-          </tr></thead>
-          <tbody>
-            {lines.map((line, idx) => (
-              <tr key={idx}>
-                <td className="p-1"><select value={line.account_id} onChange={e => updateLine(idx, "account_id", e.target.value)} className="w-full border rounded p-2 text-sm" required><option value="">Select</option>{accounts.filter(a => a.account_type === 'income').map(a => <option key={a.id} value={a.id}>{a.account_name}</option>)}</select></td>
-                <td className="p-1"><input type="number" value={line.amount} onChange={e => updateLine(idx, "amount", e.target.value)} className="w-full border rounded p-2 text-sm" required /></td>
-                <td className="p-1"><input type="text" value={line.description} onChange={e => updateLine(idx, "description", e.target.value)} className="w-full border rounded p-2 text-sm" /></td>
-                <td className="p-1"><button type="button" onClick={() => removeLine(idx)}><Trash2 size={16} className="text-red-600" /></button></td>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[600px]">
+            <thead>
+              <tr className="border-b border-gray-200 dark:border-gray-700">
+                <th className="p-2 text-left text-sm font-body text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Income Account (Credit)
+                </th>
+                <th className="p-2 text-left text-sm font-body text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Amount
+                </th>
+                <th className="p-2 text-left text-sm font-body text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Description
+                </th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        <button type="button" onClick={addLine} className="text-primary flex items-center gap-1 text-sm"><Plus size={16} /> Add Line</button>
-        <div className="flex justify-end"><button type="submit" className="bg-primary text-white px-6 py-2.5 rounded-lg">Save Voucher</button></div>
+            </thead>
+            <tbody>
+              {lines.map((line, idx) => (
+                <tr key={idx} className="border-b border-gray-200 dark:border-gray-700">
+                  <td className="p-1">
+                    <select
+                      value={line.account_id}
+                      onChange={(e) => updateLine(idx, "account_id", e.target.value)}
+                      className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm focus:ring-2 focus:ring-primary outline-none"
+                      required
+                    >
+                      <option value="">Select</option>
+                      {accounts
+                        .filter((a) => a.account_type === "income")
+                        .map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.account_name}
+                          </option>
+                        ))}
+                    </select>
+                  </td>
+                  <td className="p-1">
+                    <input
+                      type="number"
+                      value={line.amount}
+                      onChange={(e) => updateLine(idx, "amount", e.target.value)}
+                      className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm focus:ring-2 focus:ring-primary outline-none"
+                      required
+                    />
+                  </td>
+                  <td className="p-1">
+                    <input
+                      type="text"
+                      value={line.description}
+                      onChange={(e) => updateLine(idx, "description", e.target.value)}
+                      className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm focus:ring-2 focus:ring-primary outline-none"
+                    />
+                  </td>
+                  <td className="p-1">
+                    <button type="button" onClick={() => removeLine(idx)}>
+                      <Trash2 size={16} className="text-accent-dark dark:text-accent-light" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <button
+          type="button"
+          onClick={addLine}
+          className="text-primary hover:text-primary-light flex items-center gap-1 text-sm font-body"
+        >
+          <Plus size={16} /> Add Line
+        </button>
+
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-body text-sm transition"
+          >
+            Save Voucher
+          </button>
+        </div>
       </form>
-    </ >
+    </div>
   );
 }

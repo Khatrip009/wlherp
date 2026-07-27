@@ -14,10 +14,11 @@ import {
   deletePO,
 } from "../services/poService";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 import { supabase } from "../api/supabase";
 import { sendEmail, sendTemplateEmail } from "../services/emailService";
 
-/* ─── PDF helpers ──────────────────────────────────────────── */
+/* ─── PDF helpers (unchanged) ──────────────────────────────── */
 async function loadImageAsBase64(url) {
   if (!url) return null;
   try {
@@ -66,9 +67,13 @@ export default function PurchaseOrders() {
   const [statusFilter, setStatusFilter] = useState("");
 
   const { org, branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();                                     // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   // ─── Helper: get admin emails ────────────────────────────────
   const getAdminEmails = async () => {
@@ -324,15 +329,32 @@ export default function PurchaseOrders() {
     <>
       <BackButton to="/accounting" label="Finance & Accounting" />
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
-        <h1 className="text-3xl font-bold text-gray-900">Purchase Orders</h1>
+        <h1
+          className="text-3xl font-bold text-primary"
+          style={{ fontFamily: headingFont }}
+        >
+          Purchase Orders
+        </h1>
         <div className="flex gap-2">
-          <button onClick={sendReportEmail} className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition">
+          <button
+            onClick={sendReportEmail}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-dark text-white rounded-lg text-sm font-medium transition-colors"
+            style={{ fontFamily: bodyFont }}
+          >
             <Mail size={16} /> Send Report
           </button>
-          <button onClick={handlePrintPDF} className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg text-sm font-medium transition">
+          <button
+            onClick={handlePrintPDF}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg text-sm font-medium transition-colors"
+            style={{ fontFamily: bodyFont }}
+          >
             <Printer size={16} /> Print PDF
           </button>
-          <Link to="/purchase-orders/new" className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg text-sm font-medium transition">
+          <Link
+            to="/purchase-orders/new"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg text-sm font-medium transition-colors"
+            style={{ fontFamily: bodyFont }}
+          >
             <Plus size={16} /> New PO
           </Link>
         </div>
@@ -342,7 +364,8 @@ export default function PurchaseOrders() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="border border-gray-300 rounded-lg p-2.5 text-sm"
+          className="border border-primary-bg bg-white text-primary-dark rounded-lg p-2.5 text-sm"
+          style={{ fontFamily: bodyFont }}
         >
           <option value="">All Statuses</option>
           <option value="Draft">Draft</option>
@@ -353,60 +376,150 @@ export default function PurchaseOrders() {
         </select>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-primary-bg">
         <table className="w-full">
-          <thead className="bg-gray-50">
+          <thead className="bg-primary-bg">
             <tr>
-              <th className="p-3 text-left text-sm font-medium text-gray-700">PO Number</th>
-              <th className="p-3 text-left text-sm font-medium text-gray-700">Vendor</th>
-              <th className="p-3 text-left text-sm font-medium text-gray-700">Date</th>
-              <th className="p-3 text-left text-sm font-medium text-gray-700">Expected</th>
-              <th className="p-3 text-right text-sm font-medium text-gray-700">Items</th>
-              <th className="p-3 text-left text-sm font-medium text-gray-700">Status</th>
-              <th className="p-3 text-left text-sm font-medium text-gray-700">Actions</th>
+              <th
+                className="p-3 text-left text-sm font-medium text-primary-dark uppercase"
+                style={{ fontFamily: bodyFont }}
+              >
+                PO Number
+              </th>
+              <th
+                className="p-3 text-left text-sm font-medium text-primary-dark uppercase"
+                style={{ fontFamily: bodyFont }}
+              >
+                Vendor
+              </th>
+              <th
+                className="p-3 text-left text-sm font-medium text-primary-dark uppercase"
+                style={{ fontFamily: bodyFont }}
+              >
+                Date
+              </th>
+              <th
+                className="p-3 text-left text-sm font-medium text-primary-dark uppercase"
+                style={{ fontFamily: bodyFont }}
+              >
+                Expected
+              </th>
+              <th
+                className="p-3 text-right text-sm font-medium text-primary-dark uppercase"
+                style={{ fontFamily: bodyFont }}
+              >
+                Items
+              </th>
+              <th
+                className="p-3 text-left text-sm font-medium text-primary-dark uppercase"
+                style={{ fontFamily: bodyFont }}
+              >
+                Status
+              </th>
+              <th
+                className="p-3 text-left text-sm font-medium text-primary-dark uppercase"
+                style={{ fontFamily: bodyFont }}
+              >
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={7} className="p-6 text-center text-gray-500">Loading…</td></tr>
+              <tr>
+                <td
+                  colSpan={7}
+                  className="p-6 text-center text-primary-dark/60"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  Loading…
+                </td>
+              </tr>
             ) : pos.length === 0 ? (
-              <tr><td colSpan={7} className="p-6 text-center text-gray-500">No purchase orders.</td></tr>
+              <tr>
+                <td
+                  colSpan={7}
+                  className="p-6 text-center text-primary-dark/60"
+                  style={{ fontFamily: bodyFont }}
+                >
+                  No purchase orders.
+                </td>
+              </tr>
             ) : (
               pos.map((po) => (
-                <tr key={po.id} className="border-t hover:bg-gray-50 transition">
-                  <td className="p-3 text-sm font-medium text-gray-900">{po.po_number}</td>
-                  <td className="text-sm text-gray-900">{po.vendor}</td>
-                  <td className="text-sm text-gray-900">{po.order_date}</td>
-                  <td className="text-sm text-gray-900">{po.expected_date || "—"}</td>
-                  <td className="text-sm text-right text-gray-900">{po.purchase_order_items?.length || 0}</td>
+                <tr
+                  key={po.id}
+                  className="border-t border-primary-bg hover:bg-primary-bg transition-colors"
+                >
+                  <td className="p-3 text-sm font-medium text-primary" style={{ fontFamily: bodyFont }}>
+                    {po.po_number}
+                  </td>
+                  <td className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                    {po.vendor}
+                  </td>
+                  <td className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                    {po.order_date}
+                  </td>
+                  <td className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                    {po.expected_date || "—"}
+                  </td>
+                  <td className="text-sm text-right text-primary-dark" style={{ fontFamily: bodyFont }}>
+                    {po.purchase_order_items?.length || 0}
+                  </td>
                   <td className="text-sm">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                      po.status === "Received" ? "bg-green-100 text-green-700" :
-                      po.status === "Partially Received" ? "bg-yellow-100 text-yellow-700" :
-                      po.status === "Sent" ? "bg-blue-100 text-blue-700" :
-                      po.status === "Cancelled" ? "bg-red-100 text-red-700" :
-                      "bg-gray-100 text-gray-700"
-                    }`}>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        po.status === "Received"
+                          ? "bg-primary-bg text-primary-dark"
+                          : po.status === "Partially Received"
+                          ? "bg-accent-bg text-accent-dark"
+                          : po.status === "Sent"
+                          ? "bg-primary-bg/50 text-primary-dark"
+                          : po.status === "Cancelled"
+                          ? "bg-accent text-white"
+                          : "bg-primary-bg/50 text-primary-dark"
+                      }`}
+                    >
                       {po.status}
                     </span>
                   </td>
                   <td className="text-sm">
                     <div className="flex gap-2">
-                      <button onClick={() => sendPOEmail(po)} className="text-blue-600 hover:underline" title="Send PO to vendor" disabled={!po.vendor_email}>
+                      <button
+                        onClick={() => sendPOEmail(po)}
+                        className="text-primary hover:underline"
+                        title="Send PO to vendor"
+                        disabled={!po.vendor_email}
+                      >
                         <Mail size={15} />
                       </button>
-                      <Link to={`/purchase-orders/${po.id}/edit`} className="text-blue-600 hover:underline">
+                      <Link
+                        to={`/purchase-orders/${po.id}/edit`}
+                        className="text-primary hover:underline"
+                      >
                         <Edit3 size={15} />
                       </Link>
-                      <Link to={`/purchase-orders/${po.id}`} className="text-blue-600 hover:underline">
+                      <Link
+                        to={`/purchase-orders/${po.id}`}
+                        className="text-primary hover:underline"
+                      >
                         <Eye size={15} />
                       </Link>
                       {po.status !== "Received" && po.status !== "Cancelled" && (
-                        <button onClick={() => receiveMut.mutate(po.id)} className="text-green-600 hover:underline" title="Receive">
+                        <button
+                          onClick={() => receiveMut.mutate(po.id)}
+                          className="text-accent hover:underline"
+                          title="Receive"
+                        >
                           <Truck size={15} />
                         </button>
                       )}
-                      <button onClick={() => { if (window.confirm("Delete?")) deleteMut.mutate(po.id); }} className="text-red-600 hover:underline">
+                      <button
+                        onClick={() => {
+                          if (window.confirm("Delete?")) deleteMut.mutate(po.id);
+                        }}
+                        className="text-accent-dark hover:underline"
+                      >
                         <Trash2 size={15} />
                       </button>
                     </div>

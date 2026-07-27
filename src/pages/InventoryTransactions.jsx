@@ -6,6 +6,7 @@ import { Filter, Search, Box, Mail } from "lucide-react";
 import BackButton from "../components/BackButton";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 import { sendEmail } from "../services/emailService";
 
 export default function InventoryTransactions({ studentId: propStudentId = null, standalone = true }) {
@@ -16,8 +17,12 @@ export default function InventoryTransactions({ studentId: propStudentId = null,
   const [endDate, setEndDate] = useState("");
 
   const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme();                                     // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   // ─── Helper: get admin emails ──────────────────────────────────────
   const getAdminEmails = async () => {
@@ -124,7 +129,7 @@ export default function InventoryTransactions({ studentId: propStudentId = null,
         to: adminEmails,
         subject: `Inventory Transactions Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-       // from: org?.email || undefined,
+        // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");
@@ -190,13 +195,18 @@ export default function InventoryTransactions({ studentId: propStudentId = null,
       {standalone && (
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-righteous text-primary-dark">Stock Transactions</h1>
-            <p className="text-sm text-secondary-dark">Purchase, Issue & Adjustment history</p>
+            <h1 className="text-3xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+              Stock Transactions
+            </h1>
+            <p className="text-sm text-primary-dark mt-1" style={{ fontFamily: bodyFont }}>
+              Purchase, Issue & Adjustment history
+            </p>
           </div>
-          {/* 👇 Send Report button */}
+          {/* Send Report button */}
           <button
             onClick={sendReportEmail}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-dark text-white rounded-lg transition-colors text-sm font-medium"
+            style={{ fontFamily: bodyFont }}
           >
             <Mail size={18} /> Send Report
           </button>
@@ -206,77 +216,118 @@ export default function InventoryTransactions({ studentId: propStudentId = null,
       {/* Filters */}
       <div className="flex flex-wrap gap-4 mb-6">
         <div className="relative max-w-xs flex-1">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-dark/60" />
           <input
             type="text"
             placeholder="Search reference or notes..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border rounded-lg text-sm"
+            className="w-full pl-10 pr-4 py-2.5 border border-primary-bg bg-white text-primary-dark rounded-lg text-sm placeholder-primary-dark/40"
+            style={{ fontFamily: bodyFont }}
           />
         </div>
-        <select value={itemFilter} onChange={(e) => setItemFilter(e.target.value)} className="border rounded p-2 text-sm">
+        <select
+          value={itemFilter}
+          onChange={(e) => setItemFilter(e.target.value)}
+          className="border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm"
+          style={{ fontFamily: bodyFont }}
+        >
           <option value="">All Items</option>
           {items.map((item) => (
             <option key={item.id} value={item.id}>{item.item_name}</option>
           ))}
         </select>
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="border rounded p-2 text-sm">
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          className="border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm"
+          style={{ fontFamily: bodyFont }}
+        >
           <option value="">All Types</option>
           <option value="purchase">Purchase</option>
           <option value="issue">Issue</option>
           <option value="adjustment">Adjustment</option>
         </select>
-        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="border rounded p-2 text-sm" />
-        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="border rounded p-2 text-sm" />
+        <input
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm"
+        />
+        <input
+          type="date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          className="border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm"
+        />
       </div>
 
       {/* Transactions Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-primary-bg">
         <table className="w-full">
-          <thead className="bg-slate-100">
+          <thead className="bg-primary-bg">
             <tr>
-              <th className="p-3 text-left text-sm">Date</th>
-              <th className="p-3 text-left text-sm">Item</th>
-              <th className="p-3 text-left text-sm">Type</th>
-              <th className="p-3 text-center text-sm">Quantity</th>
-              <th className="p-3 text-right text-sm">Unit Price</th>
-              <th className="p-3 text-right text-sm">Total</th>
-              <th className="p-3 text-left text-sm">Reference</th>
-              <th className="p-3 text-left text-sm">Notes</th>
+              <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Date</th>
+              <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Item</th>
+              <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Type</th>
+              <th className="p-3 text-center text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Quantity</th>
+              <th className="p-3 text-right text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Unit Price</th>
+              <th className="p-3 text-right text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Total</th>
+              <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Reference</th>
+              <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Notes</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={8} className="p-6 text-center">Loading…</td></tr>
+              <tr>
+                <td colSpan={8} className="p-6 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+                  Loading…
+                </td>
+              </tr>
             ) : transactions.length === 0 ? (
-              <tr><td colSpan={8} className="p-6 text-center text-secondary">No transactions found.</td></tr>
+              <tr>
+                <td colSpan={8} className="p-6 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+                  No transactions found.
+                </td>
+              </tr>
             ) : (
               transactions.map((tx) => (
-                <tr key={tx.id} className="border-t hover:bg-gray-50">
-                  <td className="p-3 text-sm">{new Date(tx.created_at).toLocaleDateString("en-IN")}</td>
-                  <td className="p-3 text-sm font-medium">
+                <tr key={tx.id} className="border-t border-primary-bg hover:bg-primary-bg transition-colors">
+                  <td className="p-3 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                    {new Date(tx.created_at).toLocaleDateString("en-IN")}
+                  </td>
+                  <td className="p-3 text-sm font-medium text-primary" style={{ fontFamily: bodyFont }}>
                     {tx.inventory_items?.item_name || "—"}
                     {tx.inventory_items?.unit ? ` (${tx.inventory_items.unit})` : ""}
                   </td>
                   <td className="p-3 text-sm">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                      tx.transaction_type === "purchase" ? "bg-green-100 text-green-700" :
-                      tx.transaction_type === "issue" ? "bg-red-100 text-red-700" :
-                      "bg-blue-100 text-blue-700"
-                    }`}>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        tx.transaction_type === "purchase"
+                          ? "bg-primary-bg text-primary-dark"
+                          : tx.transaction_type === "issue"
+                          ? "bg-accent text-white"
+                          : "bg-accent-bg text-accent-dark"
+                      }`}
+                    >
                       {tx.transaction_type}
                     </span>
                   </td>
-                  <td className="p-3 text-sm text-center">{Math.abs(tx.quantity)}</td>
-                  <td className="p-3 text-sm text-right">
+                  <td className="p-3 text-sm text-center text-primary-dark" style={{ fontFamily: bodyFont }}>
+                    {Math.abs(tx.quantity)}
+                  </td>
+                  <td className="p-3 text-sm text-right text-primary-dark" style={{ fontFamily: bodyFont }}>
                     {tx.unit_price ? `₹ ${Number(tx.unit_price).toLocaleString("en-IN")}` : "—"}
                   </td>
-                  <td className="p-3 text-sm text-right">
+                  <td className="p-3 text-sm text-right text-primary" style={{ fontFamily: bodyFont }}>
                     {tx.unit_price ? `₹ ${(Math.abs(tx.quantity) * Number(tx.unit_price)).toLocaleString("en-IN")}` : "—"}
                   </td>
-                  <td className="p-3 text-sm">{tx.reference || "—"}</td>
-                  <td className="p-3 text-sm">{tx.notes || "—"}</td>
+                  <td className="p-3 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                    {tx.reference || "—"}
+                  </td>
+                  <td className="p-3 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                    {tx.notes || "—"}
+                  </td>
                 </tr>
               ))
             )}

@@ -18,7 +18,7 @@ import {
   BookOpen,
   Layers,
   Mail,
-} from "lucide-react"; // 👈 Added Mail
+} from "lucide-react";
 import Papa from "papaparse";
 
 import HomeworkForm from "../components/HomeworkForm";
@@ -36,11 +36,11 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
 import { supabase } from "../api/supabase";
-import { sendEmail, sendTemplateEmail } from "../services/emailService"; // 👈 Import
+import { sendEmail, sendTemplateEmail } from "../services/emailService";
 
 export default function Homework() {
   const { profile } = useAuth();
-  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 Added org
+  const { branch, selectedFinancialYear, org } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
@@ -90,7 +90,6 @@ export default function Homework() {
   // ─── Send homework reminder to students ─────────────────────────────
   const sendHomeworkReminder = async (homeworkId) => {
     try {
-      // 1. Fetch homework details with batch and subject
       const { data: homework, error: hwError } = await supabase
         .from("homework")
         .select(`
@@ -103,7 +102,6 @@ export default function Homework() {
         .single();
       if (hwError) throw hwError;
 
-      // 2. Fetch active students in the batch
       let studentQuery = supabase
         .from("student_batches")
         .select("student_id, students(first_name, last_name, email)")
@@ -120,13 +118,11 @@ export default function Homework() {
         return;
       }
 
-      // 3. Send email to each student (or parent)
       let sentCount = 0;
       for (const sb of studentBatches) {
         const student = sb.students;
         let recipientEmail = student.email;
 
-        // Try to find parent email
         const { data: parent, error: parentError } = await supabase
           .from("student_parents")
           .select("parents!inner(email)")
@@ -151,7 +147,7 @@ export default function Homework() {
         await sendTemplateEmail({
           to: recipientEmail,
           organizationId: org?.id,
-          slug: "new_homework", // re-use the same template
+          slug: "new_homework",
           context,
           branchId,
         });
@@ -178,7 +174,6 @@ export default function Homework() {
         return;
       }
 
-      // Build HTML table rows
       let tableRows = homeworks.map((h) => `
         <tr>
           <td style="padding:4px 8px;border:1px solid #ddd;">${h.title}</td>
@@ -221,7 +216,6 @@ export default function Homework() {
         to: adminEmails,
         subject: `Homework Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-       // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");
@@ -373,12 +367,14 @@ export default function Homework() {
 
   return (
     <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+      <BackButton to="/academics" label="Academics" />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1
-            className="text-2xl sm:text-3xl font-bold"
-            style={{ fontFamily: "var(--font-heading)", color: "var(--color-primary)" }}
+            className="text-2xl sm:text-3xl font-bold text-primary"
+            style={{ fontFamily: "var(--font-heading)" }}
           >
             Homework
           </h1>
@@ -399,10 +395,10 @@ export default function Homework() {
             >
               <BookOpen size={18} /> Add Homework
             </button>
-            {/* 👇 NEW Send Report button */}
+            {/* Send Report button – now uses primary theme */}
             <button
               onClick={sendReportEmail}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors text-sm font-medium"
               style={{ fontFamily: "var(--font-body)" }}
             >
               <Mail size={18} /> Send Report
@@ -432,7 +428,7 @@ export default function Homework() {
         )}
       </div>
 
-      {/* Search & Filter Toggle (unchanged) */}
+      {/* Search & Filter Toggle */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search
@@ -612,13 +608,7 @@ export default function Homework() {
                     </td>
                     <td className="text-sm">
                       {hw.medium_name ? (
-                        <span
-                          className="px-2 py-0.5 rounded-full text-xs"
-                          style={{
-                            backgroundColor: "var(--color-primary-light)",
-                            color: "var(--color-primary)",
-                          }}
-                        >
+                        <span className="px-2 py-0.5 rounded-full text-xs bg-primary-light text-primary">
                           {hw.medium_name}
                         </span>
                       ) : (
@@ -639,11 +629,10 @@ export default function Homework() {
                       <div className="flex gap-2 flex-wrap">
                         <button
                           onClick={() => setViewingSubmissions(hw)}
-                          className="text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1"
+                          className="text-accent dark:text-accent-light hover:underline flex items-center gap-1"
                         >
                           <Layers size={15} /> Submissions
                         </button>
-                        {/* 👇 Send Reminder button */}
                         <button
                           onClick={() => {
                             setSendingReminder(hw.id);
@@ -652,7 +641,7 @@ export default function Homework() {
                             );
                           }}
                           disabled={sendingReminder === hw.id}
-                          className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 disabled:opacity-50"
+                          className="text-primary dark:text-primary-light hover:underline flex items-center gap-1 disabled:opacity-50"
                           title="Send reminder to students"
                         >
                           <Mail size={15} />
@@ -662,13 +651,13 @@ export default function Homework() {
                           <>
                             <button
                               onClick={() => setEditing(hw)}
-                              className="text-yellow-600 dark:text-yellow-400 hover:underline"
+                              className="text-primary dark:text-primary-light hover:underline"
                             >
                               <Edit3 size={15} />
                             </button>
                             <button
                               onClick={() => handleDelete(hw.id)}
-                              className="text-red-600 dark:text-red-400 hover:underline"
+                              className="text-accent-dark dark:text-accent-light hover:underline"
                             >
                               <Trash2 size={15} />
                             </button>
