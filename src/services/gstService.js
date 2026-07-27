@@ -9,7 +9,6 @@ export async function getStudentDocuments(studentId, branchId, financialYearId) 
     .eq("student_id", studentId)
     .order("uploaded_at", { ascending: false });
 
-  // Scope to current branch and financial year
   if (branchId) query = query.eq("branch_id", branchId);
   if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
@@ -32,7 +31,13 @@ export async function uploadStudentDocument(studentId, file, documentType, conte
       upsert: false,
     });
 
-  if (uploadError) throw uploadError;
+  if (uploadError) {
+    console.error("Storage upload failed:", uploadError);
+    if (uploadError.message?.includes("bucket") || uploadError.message?.includes("not found")) {
+      throw new Error("The 'student-documents' storage bucket does not exist. Please create it in the Supabase dashboard.");
+    }
+    throw uploadError;
+  }
 
   // 2. Get public URL
   const { data: urlData } = supabase.storage
@@ -57,18 +62,25 @@ export async function uploadStudentDocument(studentId, file, documentType, conte
     .select()
     .single();
 
-  if (dbError) throw dbError;
+  if (dbError) {
+    console.error("Database insert failed:", dbError);
+    throw dbError;
+  }
+
   return data;
 }
 
 // Delete document (file + record) – now scoped to prevent cross‑branch deletion
 export async function deleteStudentDocument(documentId, filePath, branchId, financialYearId) {
-  // 1. Delete from storage (storage is not branch‑scoped, so we rely on record check)
+  // 1. Delete from storage
   const { error: storageError } = await supabase.storage
     .from("student-documents")
     .remove([filePath]);
 
-  if (storageError) throw storageError;
+  if (storageError) {
+    console.warn("Could not delete file from storage:", storageError);
+    // continue to delete the database record even if storage delete fails
+  }
 
   // 2. Delete record with branch & FY scope
   let query = supabase
@@ -80,5 +92,8 @@ export async function deleteStudentDocument(documentId, filePath, branchId, fina
   if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
   const { error } = await query;
-  if (error) throw error;
+  if (error) {
+    console.error("Database delete failed:", error);
+    throw error;
+  }
 }
