@@ -183,7 +183,7 @@ export default function GSTReport() {
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  // Fetch invoices (scoped)
+  // Fetch invoices – now includes both Final and Paid statuses
   const { data: invoices = [], isLoading, refetch } = useQuery({
     queryKey: ["gst-invoices", startDate, endDate, branchId, financialYearId],
     queryFn: async () => {
@@ -197,7 +197,7 @@ export default function GSTReport() {
         )
         .gte("invoice_date", startDate)
         .lte("invoice_date", endDate)
-        .eq("status", "Final")
+        .in("status", ["Final", "Paid"])   // ✅ FIXED: now includes paid invoices
         .eq("branch_id", branchId)
         .eq("financial_year_id", financialYearId);
 
