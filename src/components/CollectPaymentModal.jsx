@@ -58,7 +58,7 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
   const [paymentAmount, setPaymentAmount] = useState(0);
   const [studentName, setStudentName] = useState("");
 
-  // ── Fetch existing invoices for this student (just for info, not used for reuse)
+  // ── Fetch existing invoices for this student (info only) ──
   const { data: existingInvoices = [] } = useQuery({
     queryKey: ["student-invoices", fee.student_id, branchId, financialYearId],
     queryFn: () => getInvoices({ student_id: fee.student_id }, branchId, financialYearId),
@@ -107,7 +107,12 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
     loadComponents();
   }, [fee, branchId, financialYearId]);
 
-  // ── Compute totals (base, tax, total) ──
+  // ── Compute inclusive totals for the summary ──
+  const totalInclusiveFee = components.reduce((sum, c) => sum + Number(c.due_amount), 0);
+  const totalInclusivePaid = components.reduce((sum, c) => sum + Number(c.paid_amount), 0);
+  const inclusiveBalance = Math.max(totalInclusiveFee - totalInclusivePaid, 0);
+
+  // ── Compute totals (base, tax, total) for the current allocation ──
   const computeTotals = () => {
     let totalBase = 0;
     let totalTax = 0;
@@ -199,45 +204,43 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
   };
 
   const handlePrintInvoice = async () => {
-  if (!invoiceId) {
-    message.error("Invoice ID not available");
-    return;
-  }
-  try {
-    const { data: invoice, error } = await supabase
-      .from("invoices")
-      .select("*, invoice_items(*), students(*), receipt_id")   // ← added receipt_id
-      .eq("id", invoiceId)
-      .eq("branch_id", branchId)
-      .eq("financial_year_id", financialYearId)
-      .single();
-    if (error) throw error;
+    if (!invoiceId) {
+      message.error("Invoice ID not available");
+      return;
+    }
+    try {
+      const { data: invoice, error } = await supabase
+        .from("invoices")
+        .select("*, invoice_items(*), students(*), receipt_id")
+        .eq("id", invoiceId)
+        .eq("branch_id", branchId)
+        .eq("financial_year_id", financialYearId)
+        .single();
+      if (error) throw error;
 
-    // Pass receipt number to the PDF (optional – the PDF can also auto‑fetch it)
-    const doc = await generateInvoicePDF(invoice, org, 'sales', {
-      theme,
-      receiptNumber: receiptData?.receipt_no,   // already available from state
-    });
-    const pdfBlob = doc.output('blob');
-    const url = URL.createObjectURL(pdfBlob);
-    window.open(url, '_blank');
-    message.success("Invoice PDF opened in new tab");
-  } catch (err) {
-    console.error(err);
-    message.error("Failed to generate invoice PDF");
-  }
-};
+      const doc = await generateInvoicePDF(invoice, org, 'sales', {
+        theme,
+        receiptNumber: receiptData?.receipt_no,
+      });
+      const pdfBlob = doc.output('blob');
+      const url = URL.createObjectURL(pdfBlob);
+      window.open(url, '_blank');
+      message.success("Invoice PDF opened in new tab");
+    } catch (err) {
+      console.error(err);
+      message.error("Failed to generate invoice PDF");
+    }
+  };
 
   // ─── Create invoice from allocated amounts ──────────────────────────
   const createInvoiceFromAllocations = async (breakdown, totalPayable, receiptId = null) => {
-    // Build invoice items from breakdown
     const items = breakdown.map(b => ({
       item_type: "fee_component",
       description: b.componentName,
       quantity: 1,
-      unit_price: b.base,           // base amount (exclusive)
+      unit_price: b.base,           // base (exclusive) – correct for tax calculation
       tax_rate_id: b.taxRateId,
-      tax_inclusive: false,         // tax is added on top
+      tax_inclusive: false,
     }));
 
     if (items.length === 0) {
@@ -263,7 +266,7 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
       student_fee_id: fee.id,
       fee_installment_id: null,
       receipt_id: receiptId,
-      status: "Final", // always final
+      status: "Final",
     };
     const result = await createInvoice(payload, ctx);
     return result.id;
@@ -275,7 +278,7 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
       .filter(b => b.entered > 0)
       .map(b => ({
         studentFeeComponentId: b.componentId,
-        amount: b.total,
+        amount: b.total,          // total inclusive amount allocated
         baseAmount: b.base,
         taxAmount: b.tax,
         taxRateId: b.taxRateId,
@@ -293,12 +296,10 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
     }
 
     try {
-      // ── 1. Always create a new invoice from allocations ──
       setCreatingInvoice(true);
       const finalInvoiceId = await createInvoiceFromAllocations(totals.breakdown, payable);
       setCreatingInvoice(false);
 
-      // ── 2. Collect payment (this updates invoice paid_amount/balance) ──
       const payment = await collectPaymentWithAllocation({
         studentFeeId: fee.id,
         paymentDate: values.payment_date ? values.payment_date.format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"),
@@ -316,7 +317,6 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
         invoiceId: finalInvoiceId,
       }, ctx);
 
-      // ── 3. Fetch receipt ──
       const { data: receipt, error: receiptError } = await supabase
         .from("receipts")
         .select("*")
@@ -328,7 +328,6 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
         console.warn("Receipt not found for payment", payment.id);
       } else {
         setReceiptData(receipt);
-        // Link receipt to invoice
         if (finalInvoiceId && receipt) {
           await supabase
             .from("invoices")
@@ -406,16 +405,16 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
             <Descriptions.Item label="Course">
               {fee.fee_structures?.courses?.course_name || "N/A"}
             </Descriptions.Item>
-            <Descriptions.Item label="Total Fee">
-              ₹{Number(fee.final_fee).toLocaleString("en-IN")}
+            <Descriptions.Item label="Total Fee (incl. tax)">
+              ₹{totalInclusiveFee.toLocaleString("en-IN")}
             </Descriptions.Item>
-            {fee.total_paid > 0 && (
-              <Descriptions.Item label="Paid">
-                ₹{Number(fee.total_paid).toLocaleString("en-IN")}
+            {totalInclusivePaid > 0 && (
+              <Descriptions.Item label="Paid (incl. tax)">
+                ₹{totalInclusivePaid.toLocaleString("en-IN")}
               </Descriptions.Item>
             )}
-            <Descriptions.Item label="Balance">
-              ₹{Number(fee.pending).toLocaleString("en-IN")}
+            <Descriptions.Item label="Balance (incl. tax)">
+              ₹{inclusiveBalance.toLocaleString("en-IN")}
             </Descriptions.Item>
           </Descriptions>
 
@@ -542,7 +541,7 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
             </div>
           )}
 
-          {/* ── Invoice Info (read‑only) ── */}
+          {/* ── Invoice Info ── */}
           <div className="mb-4 p-3 bg-blue-50 rounded border border-blue-200">
             <Text strong>Invoice: </Text>
             <Text>A new invoice will be created for this payment based on the allocated amounts.</Text>
