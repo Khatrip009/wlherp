@@ -7,6 +7,7 @@ import BackButton from "../components/BackButton";
 import { useStudentId } from "../hooks/useStudentId";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // ✅ dynamic theme
 
 export default function StudentAttendancePage({ studentId: propStudentId = null, standalone = true }) {
   // ── Use provided studentId or resolve via hook ──
@@ -16,8 +17,12 @@ export default function StudentAttendancePage({ studentId: propStudentId = null,
 
   // ── Branch & Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();                                     // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const { data: sessions = [], isLoading } = useQuery({
     queryKey: ["student-attendance-detail", effectiveStudentId, branchId, financialYearId],
@@ -89,12 +94,12 @@ export default function StudentAttendancePage({ studentId: propStudentId = null,
   // ── Loading state ──
   if (idLoading || isLoading) {
     if (!standalone) {
-      return <div className="p-8 text-center">Loading...</div>;
+      return <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>Loading...</div>;
     }
     return (
       <>
         <BackButton to="/student" label="My Dashboard" />
-        <div className="p-8 text-center">Loading...</div>
+        <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>Loading...</div>
       </>
     );
   }
@@ -102,63 +107,65 @@ export default function StudentAttendancePage({ studentId: propStudentId = null,
   // ── Content ──
   const content = (
     <>
-      <h1 className="text-3xl font-righteous text-primary-dark mb-4">
+      <h1 className="text-3xl font-bold text-primary mb-4" style={{ fontFamily: headingFont }}>
         My Attendance
       </h1>
 
       {/* Summary card */}
-      <div className="bg-white rounded-xl p-5 shadow-sm border border-secondary-light mb-6 flex items-center justify-between">
+      <div className="bg-white rounded-xl p-5 shadow-sm border border-primary-bg mb-6 flex items-center justify-between">
         <div>
-          <p className="text-lg font-medium">Overall Attendance</p>
+          <p className="text-lg font-medium text-primary-dark" style={{ fontFamily: bodyFont }}>
+            Overall Attendance
+          </p>
           <div className="flex items-center gap-2 mt-1">
-            <div className="w-48 bg-gray-200 rounded-full h-3">
+            <div className="w-48 bg-primary-bg rounded-full h-3">
               <div
-                className="bg-green-500 h-3 rounded-full"
+                className="bg-primary h-3 rounded-full"
                 style={{ width: `${percentage}%` }}
               ></div>
             </div>
-            <span className="font-bold">{percentage}%</span>
+            <span className="font-bold text-primary" style={{ fontFamily: headingFont }}>{percentage}%</span>
           </div>
-          <p className="text-xs text-secondary mt-1">
+          <p className="text-xs text-primary-dark/60 mt-1" style={{ fontFamily: bodyFont }}>
             {presentCount} present / {total} sessions
           </p>
         </div>
       </div>
 
       {/* Attendance table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-primary-bg">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[600px]">
-            <thead className="bg-slate-100">
+            <thead className="bg-primary-bg">
               <tr>
-                <th className="p-3 text-left">Date</th>
-                <th className="text-left">Batch</th>
-                <th className="text-left">Medium</th>
-                <th className="text-left">Topic</th>
-                <th className="text-left">Status</th>
+                <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Date</th>
+                <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Batch</th>
+                <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Medium</th>
+                <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Topic</th>
+                <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Status</th>
               </tr>
             </thead>
             <tbody>
               {sessions.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-4 text-center text-secondary">
+                  <td colSpan={5} className="p-4 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
                     No attendance records found.
                   </td>
                 </tr>
               ) : (
                 sessions.map((s) => (
-                  <tr key={s.id} className="border-t">
-                    <td className="p-3">{s.attendance_date}</td>
-                    <td>{s.batch_name || "—"}</td>
-                    <td>{s.medium_name || "—"}</td>
-                    <td>{s.topic_covered || "—"}</td>
+                  <tr key={s.id} className="border-t border-primary-bg hover:bg-primary-bg">
+                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>{s.attendance_date}</td>
+                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>{s.batch_name || "—"}</td>
+                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>{s.medium_name || "—"}</td>
+                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>{s.topic_covered || "—"}</td>
                     <td>
                       {s.status === "Present" ? (
-                        <span className="text-green-600 flex items-center gap-1">
+                        <span className="text-primary flex items-center gap-1" style={{ fontFamily: bodyFont }}>
                           <CheckCircle size={16} /> Present
                         </span>
                       ) : (
-                        <span className="text-red-600 flex items-center gap-1">
+                        <span className="text-accent-dark flex items-center gap-1" style={{ fontFamily: bodyFont }}>
                           <XCircle size={16} /> Absent
                         </span>
                       )}
@@ -178,8 +185,6 @@ export default function StudentAttendancePage({ studentId: propStudentId = null,
   }
 
   return (
-    
-      <BackButton to="/student" label="My Dashboard" />
-      
+    <BackButton to="/student" label="My Dashboard" />
   );
 }

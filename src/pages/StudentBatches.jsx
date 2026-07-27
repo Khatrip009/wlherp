@@ -34,15 +34,20 @@ import {
   getCoursesForFilter,
 } from "../services/batchAssignmentService";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 import { sendEmail, sendTemplateEmail } from "../services/emailService";
 
 export default function StudentBatches({ studentId: propStudentId = null, standalone = true }) {
   const queryClient = useQueryClient();
 
   const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme();                                     // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   // ---- Filters ----
   const [search, setSearch] = useState("");
@@ -143,7 +148,7 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
         to: adminEmails,
         subject: `Student Batch Assignments - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-       // from: org?.email || undefined,
+        // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");
@@ -374,36 +379,40 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
-          <h1 className="text-3xl font-righteous text-primary-dark">
+          <h1 className="text-3xl font-bold text-primary" style={{ fontFamily: headingFont }}>
             Student Batches
           </h1>
-          <p className="text-sm text-secondary-dark font-montserrat mt-1">
+          <p className="text-sm text-primary-dark mt-1" style={{ fontFamily: bodyFont }}>
             Assign students to batches
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {/* 👇 Send Report button */}
+          {/* Send Report button */}
           <button
             onClick={sendReportEmail}
-            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+            className="bg-accent hover:bg-accent-dark text-white px-5 py-2.5 rounded-lg transition text-sm flex items-center gap-2"
+            style={{ fontFamily: bodyFont }}
           >
             <Mail size={18} /> Send Report
           </button>
           <button
             onClick={() => setShowModal(true)}
-            className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+            className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition text-sm flex items-center gap-2"
+            style={{ fontFamily: bodyFont }}
           >
             <UserPlus size={18} /> Assign to Batch
           </button>
           <button
             onClick={handleCSVExport}
-            className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+            className="border border-primary-bg px-4 py-2.5 rounded-lg text-primary-dark hover:bg-primary-bg text-sm flex items-center gap-2"
+            style={{ fontFamily: bodyFont }}
           >
             <Download size={18} /> Export
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+            className="border border-primary-bg px-4 py-2.5 rounded-lg text-primary-dark hover:bg-primary-bg text-sm flex items-center gap-2"
+            style={{ fontFamily: bodyFont }}
           >
             <Upload size={18} /> Import
           </button>
@@ -422,19 +431,21 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
         <div className="relative flex-1">
           <Search
             size={18}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-dark/60"
           />
           <input
             type="text"
             placeholder="Search by student name..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-secondary-light rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+            className="w-full border border-primary-bg bg-white text-primary-dark rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-primary-dark/40"
+            style={{ fontFamily: bodyFont }}
           />
         </div>
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2"
+          className="border border-primary-bg px-4 py-2.5 rounded-lg text-primary-dark hover:bg-primary-bg text-sm flex items-center gap-2"
+          style={{ fontFamily: bodyFont }}
         >
           <Filter size={18} /> Filters
           {showFilters && <X size={16} />}
@@ -443,9 +454,9 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
 
       {/* Advanced Filters Panel */}
       {showFilters && (
-        <div className="bg-white rounded-xl p-4 shadow-sm mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 border border-secondary-light">
+        <div className="bg-white rounded-xl p-4 shadow-sm mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 border border-primary-bg">
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">
+            <label className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
               Batch
             </label>
             <select
@@ -453,7 +464,7 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
               onChange={(e) =>
                 setFilters((prev) => ({ ...prev, batch_id: e.target.value }))
               }
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
             >
               <option value="">All Batches</option>
               {batches.map((b) => (
@@ -464,7 +475,7 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
             </select>
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">
+            <label className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
               Course
             </label>
             <select
@@ -472,7 +483,7 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
               onChange={(e) =>
                 setFilters((prev) => ({ ...prev, course_id: e.target.value }))
               }
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
             >
               <option value="">All Courses</option>
               {courses.map((c) => (
@@ -483,7 +494,7 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
             </select>
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">
+            <label className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
               Medium
             </label>
             <select
@@ -491,7 +502,7 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
               onChange={(e) =>
                 setFilters((prev) => ({ ...prev, medium_id: e.target.value }))
               }
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
             >
               <option value="">All Mediums</option>
               {mediums.map((m) => (
@@ -502,7 +513,7 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
             </select>
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">
+            <label className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
               Status
             </label>
             <select
@@ -510,7 +521,7 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
               onChange={(e) =>
                 setFilters((prev) => ({ ...prev, status: e.target.value }))
               }
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
             >
               <option value="">All Statuses</option>
               <option value="active">Active</option>
@@ -531,6 +542,7 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
                 });
               }}
               className="text-primary text-sm hover:underline"
+              style={{ fontFamily: bodyFont }}
             >
               Clear Filters
             </button>
@@ -539,30 +551,30 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
       )}
 
       {/* Assignments Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-primary-bg">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px]">
-            <thead className="bg-slate-100 border-b border-secondary-light">
+            <thead className="bg-primary-bg">
               <tr>
-                <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">
+                <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
                   Student
                 </th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">
+                <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
                   Batch
                 </th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">
+                <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
                   Medium
                 </th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">
+                <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
                   Course
                 </th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">
+                <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
                   Enrollment Date
                 </th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">
+                <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
                   Status
                 </th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">
+                <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
                   Actions
                 </th>
               </tr>
@@ -570,17 +582,17 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="p-6 text-center text-secondary">
+                  <td colSpan={7} className="p-6 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
                     Loading assignments…
                   </td>
                 </tr>
               ) : assignments.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-6 text-center text-secondary">
+                  <td colSpan={7} className="p-6 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
                     <div className="flex flex-col items-center gap-2">
-                      <UserPlus size={32} className="text-secondary-light" />
+                      <UserPlus size={32} className="text-primary-dark/40" />
                       <span>No assignments found</span>
-                      <span className="text-xs text-secondary-light">
+                      <span className="text-xs text-primary-dark/60">
                         {search || Object.values(filters).some(Boolean)
                           ? "Try adjusting your filters"
                           : "Assign a student to a batch to get started"}
@@ -592,33 +604,34 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
                 assignments.map((assignment) => (
                   <tr
                     key={assignment.id}
-                    className="border-b border-secondary-light hover:bg-primary-bg transition"
+                    className="border-b border-primary-bg hover:bg-primary-bg transition-colors"
                   >
                     <td className="p-3 text-sm">
-                      <div className="font-medium">
+                      <div className="font-medium text-primary" style={{ fontFamily: headingFont }}>
                         {assignment.students?.first_name}{" "}
                         {assignment.students?.last_name}
                       </div>
-                      <div className="text-xs text-secondary-light">
+                      <div className="text-xs text-primary-dark/60" style={{ fontFamily: bodyFont }}>
                         {assignment.students?.admission_no}
                       </div>
                     </td>
-                    <td className="text-sm">
+                    <td className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
                       {assignment.batches?.batch_name}
                     </td>
-                    <td className="text-sm">
+                    <td className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
                       {assignment.batches?.mediums?.name || "—"}
                     </td>
-                    <td className="text-sm">
+                    <td className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
                       {assignment.batches?.courses?.course_name || "-"}
                     </td>
-                    <td className="text-sm">{assignment.enrollment_date}</td>
+                    <td className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>{assignment.enrollment_date}</td>
                     <td className="text-sm">
                       {editingId === assignment.id ? (
                         <select
                           value={editStatus}
                           onChange={(e) => setEditStatus(e.target.value)}
-                          className="border border-secondary-light rounded p-1 text-sm"
+                          className="border border-primary-bg rounded p-1 text-sm bg-white text-primary-dark"
+                          style={{ fontFamily: bodyFont }}
                         >
                           <option value="active">Active</option>
                           <option value="completed">Completed</option>
@@ -628,10 +641,10 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
                         <span
                           className={`px-2 py-1 rounded-full text-xs font-medium ${
                             assignment.status === "active"
-                              ? "bg-green-100 text-green-700"
+                              ? "bg-primary-bg text-primary-dark"
                               : assignment.status === "completed"
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-gray-100 text-gray-700"
+                              ? "bg-accent-bg text-accent-dark"
+                              : "bg-accent text-white"
                           }`}
                         >
                           {assignment.status}
@@ -646,22 +659,24 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
                               handleStatusUpdate(assignment.id, editStatus)
                             }
                             className="bg-primary hover:bg-primary-light text-white px-3 py-1 rounded text-sm"
+                            style={{ fontFamily: bodyFont }}
                           >
                             Save
                           </button>
                           <button
                             onClick={() => setEditingId(null)}
-                            className="border border-secondary-light text-secondary-dark px-3 py-1 rounded text-sm"
+                            className="border border-primary-bg text-primary-dark px-3 py-1 rounded text-sm hover:bg-primary-bg"
+                            style={{ fontFamily: bodyFont }}
                           >
                             Cancel
                           </button>
                         </div>
                       ) : (
                         <div className="flex gap-2">
-                          {/* 👇 Resend Batch Change Email */}
+                          {/* Resend Batch Change Email */}
                           <button
                             onClick={() => sendBatchChangeEmail(assignment)}
-                            className="text-blue-600 hover:underline"
+                            className="text-primary hover:underline"
                             title="Resend batch change notification"
                           >
                             <Mail size={15} />
@@ -671,13 +686,13 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
                               setEditingId(assignment.id);
                               setEditStatus(assignment.status);
                             }}
-                            className="text-blue-600 hover:underline"
+                            className="text-primary hover:underline"
                           >
                             <Edit3 size={15} />
                           </button>
                           <button
                             onClick={() => handleDelete(assignment.id)}
-                            className="text-red-600 hover:underline"
+                            className="text-accent hover:underline"
                           >
                             <Trash2 size={15} />
                           </button>
@@ -698,7 +713,8 @@ export default function StudentBatches({ studentId: propStudentId = null, standa
           <button
             onClick={() => fetchNextPage()}
             disabled={isFetchingNextPage}
-            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat text-sm transition disabled:opacity-60"
+            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg text-sm font-medium transition disabled:opacity-60"
+            style={{ fontFamily: bodyFont }}
           >
             {isFetchingNextPage ? "Loading more…" : "Load More"}
           </button>

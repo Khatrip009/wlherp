@@ -1,16 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext"; // ✅ dynamic theme
 import {
   Layers, BookOpen, Clock, Calendar, User, Hash, AlertCircle,
 } from "lucide-react";
 
 import BackButton from "../components/BackButton";
-
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import { useOrg } from "../context/OrganizationContext";
 
 export default function StudentBatchPage() {
   const { user } = useAuth();
+  const theme = useTheme();
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   // ── Branch & Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();
@@ -88,8 +91,10 @@ export default function StudentBatchPage() {
   if (isLoading) {
     return (
       <>
-      <BackButton to="/student" label="My Dashboard" />
-        <div className="p-8 text-center text-secondary">Loading your batch…</div>
+        <BackButton to="/student" label="My Dashboard" />
+        <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+          Loading your batch…
+        </div>
       </>
     );
   }
@@ -97,7 +102,7 @@ export default function StudentBatchPage() {
   if (error) {
     return (
       <>
-        <div className="p-8 text-center text-red-600">
+        <div className="p-8 text-center text-accent-dark" style={{ fontFamily: bodyFont }}>
           <AlertCircle size={32} className="mx-auto mb-2" />
           <p>Failed to load batch data:</p>
           <p className="text-sm mt-1">{error.message}</p>
@@ -109,8 +114,8 @@ export default function StudentBatchPage() {
   if (!data || !data.batch) {
     return (
       <>
-        <div className="p-8 text-center text-secondary">
-          <BookOpen size={32} className="mx-auto mb-2 text-secondary-light" />
+        <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+          <BookOpen size={32} className="mx-auto mb-2 text-primary-dark/40" />
           <p>You are not enrolled in any active batch.</p>
         </div>
       </>
@@ -122,83 +127,114 @@ export default function StudentBatchPage() {
   return (
     <>
       <div className="mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">My Batch</h1>
-        <p className="text-sm text-secondary-dark font-montserrat mt-1">
+        <h1
+          className="text-3xl font-bold text-primary"
+          style={{ fontFamily: headingFont }}
+        >
+          My Batch
+        </h1>
+        <p
+          className="text-sm text-primary-dark mt-1"
+          style={{ fontFamily: bodyFont }}
+        >
           Your current batch and subject details
         </p>
       </div>
 
       {/* Batch Details */}
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-secondary-light mb-6">
+      <div className="bg-white rounded-xl p-6 shadow-sm border border-primary-bg mb-6">
         <div className="flex flex-wrap items-center gap-2 mb-4">
           <Layers size={20} className="text-primary" />
-          <h2 className="text-xl font-righteous text-primary-dark">{batch.batch_name}</h2>
-          <span className="bg-primary-bg text-primary px-2 py-0.5 rounded-full text-xs">
+          <h2
+            className="text-xl font-bold text-primary"
+            style={{ fontFamily: headingFont }}
+          >
+            {batch.batch_name}
+          </h2>
+          <span className="bg-primary-bg text-primary px-2 py-0.5 rounded-full text-xs" style={{ fontFamily: bodyFont }}>
             {batch.courses?.course_name}
           </span>
           {batch.medium_name && (
-            <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs">
+            <span className="bg-accent-bg text-accent-dark px-2 py-0.5 rounded-full text-xs" style={{ fontFamily: bodyFont }}>
               {batch.medium_name}
             </span>
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-secondary-dark">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
           <div className="flex items-center gap-2">
-            <Clock size={16} className="text-secondary" />
+            <Clock size={16} className="text-primary-dark/60" />
             <span>{batch.start_time} - {batch.end_time}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Calendar size={16} className="text-secondary" />
+            <Calendar size={16} className="text-primary-dark/60" />
             <span>{batch.days}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Hash size={16} className="text-secondary" />
+            <Hash size={16} className="text-primary-dark/60" />
             <span>Enrolled: {batch.enrollment_date}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Calendar size={16} className="text-secondary" />
+            <Calendar size={16} className="text-primary-dark/60" />
             <span>Period: {batch.start_date} → {batch.end_date}</span>
           </div>
         </div>
       </div>
 
       {/* Subjects */}
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-secondary-light mb-6">
-        <h2 className="text-lg font-righteous text-primary-dark mb-3 flex items-center gap-2">
+      <div className="bg-white rounded-xl p-6 shadow-sm border border-primary-bg mb-6">
+        <h2
+          className="text-lg font-bold text-primary mb-3 flex items-center gap-2"
+          style={{ fontFamily: headingFont }}
+        >
           <BookOpen size={18} /> Subjects
         </h2>
         {subjects.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {subjects.map((subj) => (
-              <span key={subj.id} className="bg-primary-bg text-primary px-3 py-1.5 rounded-full text-sm">
+              <span
+                key={subj.id}
+                className="bg-primary-bg text-primary px-3 py-1.5 rounded-full text-sm"
+                style={{ fontFamily: bodyFont }}
+              >
                 {subj.subject_name}
               </span>
             ))}
           </div>
         ) : (
-          <p className="text-sm text-secondary">No subjects listed for this course.</p>
+          <p className="text-sm text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+            No subjects listed for this course.
+          </p>
         )}
       </div>
 
       {/* Teacher Assignments */}
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-secondary-light">
-        <h2 className="text-lg font-righteous text-primary-dark mb-3 flex items-center gap-2">
+      <div className="bg-white rounded-xl p-6 shadow-sm border border-primary-bg">
+        <h2
+          className="text-lg font-bold text-primary mb-3 flex items-center gap-2"
+          style={{ fontFamily: headingFont }}
+        >
           <User size={18} /> Teacher Assignments
         </h2>
         {teachers.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {teachers.map((t, idx) => (
-              <div key={idx} className="flex items-center gap-2 text-sm">
+              <div
+                key={idx}
+                className="flex items-center gap-2 text-sm text-primary-dark"
+                style={{ fontFamily: bodyFont }}
+              >
                 <User size={16} className="text-primary" />
                 <span className="font-medium">{t.teacher_name}</span>
-                <span className="text-secondary">-</span>
-                <span className="text-secondary">{t.subject_name}</span>
+                <span className="text-primary-dark/60">-</span>
+                <span className="text-primary-dark/60">{t.subject_name}</span>
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-sm text-secondary">No teacher assignments yet.</p>
+          <p className="text-sm text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+            No teacher assignments yet.
+          </p>
         )}
       </div>
     </>

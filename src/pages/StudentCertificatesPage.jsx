@@ -1,4 +1,5 @@
 // src/pages/StudentCertificatesPage.jsx
+import { useState } from "react";  // ✅ added
 import { useQuery } from "@tanstack/react-query";
 import { FileText, Download, Mail } from "lucide-react";
 import toast from "react-hot-toast";
@@ -8,15 +9,20 @@ import { useStudentId } from "../hooks/useStudentId";
 import { supabase } from "../api/supabase";
 import { generateCertificatePdf } from "../utils/certificatePdf";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // ✅ dynamic theme
 import { sendEmail, sendTemplateEmail } from "../services/emailService";
 
 export default function StudentCertificatesPage() {
   const { studentId, isLoading: idLoading } = useStudentId();
   const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme(); // ✅ theme hook
   const [sendingEmailId, setSendingEmailId] = useState(null);
 
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   // ─── Helper: get student email (or parent email) ──────────────────────
   const getStudentParentEmail = async (studentId) => {
@@ -98,7 +104,7 @@ export default function StudentCertificatesPage() {
         to: recipient.email,
         subject: `My Certificates - ${org?.company_name || 'Academy'}`,
         html: htmlBody,
-       // from: org?.email || undefined,
+        // from: org?.email || undefined,
       });
 
       toast.success(`Report sent to ${recipient.email}`);
@@ -184,7 +190,9 @@ export default function StudentCertificatesPage() {
     return (
       <>
         <BackButton to="/student" label="My Dashboard" />
-        <div className="p-8 text-center">Loading...</div>
+        <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+          Loading...
+        </div>
       </>
     );
   }
@@ -194,12 +202,18 @@ export default function StudentCertificatesPage() {
       <BackButton to="/student" label="My Dashboard" />
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
-        <h1 className="text-3xl font-righteous text-primary-dark">My Certificates</h1>
-        {/* 👇 Send Report button */}
+        <h1
+          className="text-3xl font-bold text-primary"
+          style={{ fontFamily: headingFont }}
+        >
+          My Certificates
+        </h1>
+        {/* Send Report button */}
         {certificates.length > 0 && (
           <button
             onClick={sendReportEmail}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+            className="bg-accent hover:bg-accent-dark text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+            style={{ fontFamily: bodyFont }}
           >
             <Mail size={16} /> Send Report
           </button>
@@ -207,27 +221,27 @@ export default function StudentCertificatesPage() {
       </div>
 
       {certificates.length === 0 ? (
-        <p className="text-secondary">No certificates issued yet.</p>
+        <p className="text-primary-dark/60" style={{ fontFamily: bodyFont }}>No certificates issued yet.</p>
       ) : (
         <div className="space-y-4">
           {certificates.map((cert) => (
             <div
               key={cert.id}
-              className="bg-white rounded-xl p-4 shadow-sm border border-secondary-light flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3"
+              className="bg-white rounded-xl p-4 shadow-sm border border-primary-bg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3"
             >
               <div>
-                <p className="font-semibold">
+                <p className="font-semibold text-primary" style={{ fontFamily: headingFont }}>
                   {cert.courses?.course_name} - {cert.course_levels?.level_name}
                 </p>
-                <p className="text-sm text-secondary">Certificate No: {cert.certificate_no}</p>
-                <p className="text-xs text-secondary">Issued: {cert.issue_date}</p>
+                <p className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>Certificate No: {cert.certificate_no}</p>
+                <p className="text-xs text-primary-dark/60" style={{ fontFamily: bodyFont }}>Issued: {cert.issue_date}</p>
               </div>
               <div className="flex gap-2">
-                {/* 👇 Resend Certificate Email button */}
+                {/* Resend Certificate Email button */}
                 <button
                   onClick={() => sendCertificateEmail(cert)}
                   disabled={sendingEmailId === cert.id}
-                  className="text-blue-600 hover:text-blue-800 disabled:opacity-50 flex items-center gap-1"
+                  className="text-primary hover:underline disabled:opacity-50 flex items-center gap-1"
                   title="Resend certificate email"
                 >
                   <Mail size={16} />

@@ -1,5 +1,5 @@
-
 import HubCard from "../components/HubCard";
+import { useTheme } from "../context/ThemeContext";
 import {
   Settings, Building, Shield, Palette, Percent,
   FileText, UserCog,
@@ -30,16 +30,32 @@ const groups = [
 ];
 
 export default function SettingsHub() {
+  const theme = useTheme();
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
+
   return (
     <>
       <div className="mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">Settings Hub</h1>
-        <p className="text-sm text-secondary-dark mt-1">Organization, theme, tax, GST and user management</p>
+        <h1
+          className="text-3xl font-bold text-primary"
+          style={{ fontFamily: headingFont }}
+        >
+          Settings Hub
+        </h1>
+        <p
+          className="text-sm text-primary-dark mt-1"
+          style={{ fontFamily: bodyFont }}
+        >
+          Organization, theme, tax, GST and user management
+        </p>
       </div>
       <div className="space-y-8">
         {groups.map((g) => (
           <div key={g.label}>
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-secondary-light border-b pb-2 mb-4">{g.label}</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-primary-dark/60 border-b border-primary-bg pb-2 mb-4">
+              {g.label}
+            </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {g.items.map((m) => <HubCard key={m.to} {...m} />)}
             </div>

@@ -16,12 +16,18 @@ import {
 import BackButton from "../components/BackButton";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // ✅ dynamic theme
 import { supabase } from "../api/supabase";
 import { sendEmail } from "../services/emailService";
 
 export default function Settings() {
   const { user, profile, loadUser } = useAuth();
-  const { org } = useOrg(); // organization details
+  const { org } = useOrg();
+  const theme = useTheme(); // ✅ theme hook
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
+
   const fileInputRef = useRef(null);
   const [sendingReport, setSendingReport] = useState(false);
 
@@ -87,7 +93,6 @@ export default function Settings() {
         to: user.email,
         subject: `Your Profile Report - ${orgName}`,
         html: htmlBody,
-       //// from: org?.email || undefined,
       });
 
       toast.success("Profile report sent to your email.");
@@ -192,16 +197,25 @@ export default function Settings() {
       <BackButton to="/settings-hub" label="Settings" />
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-3">
         <div>
-          <h1 className="text-3xl font-righteous text-primary-dark">Settings</h1>
-          <p className="text-sm text-secondary-dark font-montserrat mt-1">
+          <h1
+            className="text-3xl text-primary"
+            style={{ fontFamily: headingFont }}
+          >
+            Settings
+          </h1>
+          <p
+            className="text-sm text-primary-dark mt-1"
+            style={{ fontFamily: bodyFont }}
+          >
             Manage your account
           </p>
         </div>
-        {/* 👇 Send Report button */}
+        {/* Send Report button */}
         <button
           onClick={sendProfileReport}
           disabled={sendingReport}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+          className="bg-accent hover:bg-accent-dark text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+          style={{ fontFamily: bodyFont }}
         >
           <MailIcon size={16} />
           {sendingReport ? "Sending..." : "Send My Profile Report"}
@@ -210,8 +224,11 @@ export default function Settings() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Profile Section */}
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-secondary-light">
-          <h2 className="text-xl font-righteous text-primary-dark mb-6 flex items-center gap-2">
+        <div className="bg-white rounded-xl shadow-sm p-6 border border-primary-bg">
+          <h2
+            className="text-xl text-primary mb-6 flex items-center gap-2"
+            style={{ fontFamily: headingFont }}
+          >
             <User size={20} /> Profile
           </h2>
 
@@ -239,10 +256,16 @@ export default function Settings() {
               </button>
             </div>
             <div>
-              <p className="font-medium text-secondary-dark text-sm">
+              <p
+                className="font-medium text-primary-dark text-sm"
+                style={{ fontFamily: bodyFont }}
+              >
                 Profile photo
               </p>
-              <p className="text-xs text-secondary-light mt-1">
+              <p
+                className="text-xs text-primary-dark/60 mt-1"
+                style={{ fontFamily: bodyFont }}
+              >
                 Click the icon to upload a new avatar
               </p>
               <button
@@ -250,6 +273,7 @@ export default function Settings() {
                 onClick={() => fileInputRef.current?.click()}
                 className="text-primary text-sm hover:underline mt-1 flex items-center gap-1"
                 disabled={avatarUploading}
+                style={{ fontFamily: bodyFont }}
               >
                 <Upload size={14} />
                 {avatarUploading ? "Uploading..." : "Choose image"}
@@ -266,7 +290,10 @@ export default function Settings() {
 
           <form onSubmit={handleProfileUpdate} className="space-y-4">
             <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              <label
+                className="block text-sm mb-1 text-primary-dark"
+                style={{ fontFamily: bodyFont }}
+              >
                 <Mail size={14} className="inline mr-1" />
                 Email
               </label>
@@ -274,11 +301,15 @@ export default function Settings() {
                 type="email"
                 value={user?.email}
                 disabled
-                className="w-full border border-secondary-light rounded p-2.5 bg-gray-100 text-secondary-dark cursor-not-allowed"
+                className="w-full border border-primary-bg rounded p-2.5 bg-primary-bg text-primary-dark cursor-not-allowed"
+                style={{ fontFamily: bodyFont }}
               />
             </div>
             <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              <label
+                className="block text-sm mb-1 text-primary-dark"
+                style={{ fontFamily: bodyFont }}
+              >
                 <Shield size={14} className="inline mr-1" />
                 Role
               </label>
@@ -286,11 +317,15 @@ export default function Settings() {
                 type="text"
                 value={profile?.role || ""}
                 disabled
-                className="w-full border border-secondary-light rounded p-2.5 bg-gray-100 text-secondary-dark cursor-not-allowed"
+                className="w-full border border-primary-bg rounded p-2.5 bg-primary-bg text-primary-dark cursor-not-allowed"
+                style={{ fontFamily: bodyFont }}
               />
             </div>
             <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              <label
+                className="block text-sm mb-1 text-primary-dark"
+                style={{ fontFamily: bodyFont }}
+              >
                 <User size={14} className="inline mr-1" />
                 Full Name
               </label>
@@ -300,11 +335,15 @@ export default function Settings() {
                 onChange={(e) =>
                   setProfileForm({ ...profileForm, full_name: e.target.value })
                 }
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                className="w-full border border-primary-bg rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none text-primary-dark bg-white"
+                style={{ fontFamily: bodyFont }}
               />
             </div>
             <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              <label
+                className="block text-sm mb-1 text-primary-dark"
+                style={{ fontFamily: bodyFont }}
+              >
                 <Phone size={14} className="inline mr-1" />
                 Mobile
               </label>
@@ -314,13 +353,15 @@ export default function Settings() {
                 onChange={(e) =>
                   setProfileForm({ ...profileForm, mobile: e.target.value })
                 }
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                className="w-full border border-primary-bg rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none text-primary-dark bg-white"
+                style={{ fontFamily: bodyFont }}
               />
             </div>
             <button
               type="submit"
               disabled={savingProfile}
-              className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg font-montserrat transition disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{ fontFamily: bodyFont }}
             >
               <Save size={16} />
               {savingProfile ? "Saving..." : "Save Changes"}
@@ -329,13 +370,19 @@ export default function Settings() {
         </div>
 
         {/* Password Section */}
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-secondary-light">
-          <h2 className="text-xl font-righteous text-primary-dark mb-6 flex items-center gap-2">
+        <div className="bg-white rounded-xl shadow-sm p-6 border border-primary-bg">
+          <h2
+            className="text-xl text-primary mb-6 flex items-center gap-2"
+            style={{ fontFamily: headingFont }}
+          >
             <Lock size={20} /> Change Password
           </h2>
           <form onSubmit={handlePasswordChange} className="space-y-4">
             <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              <label
+                className="block text-sm mb-1 text-primary-dark"
+                style={{ fontFamily: bodyFont }}
+              >
                 New Password
               </label>
               <input
@@ -347,13 +394,17 @@ export default function Settings() {
                     newPassword: e.target.value,
                   })
                 }
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                className="w-full border border-primary-bg rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none text-primary-dark bg-white"
+                style={{ fontFamily: bodyFont }}
                 required
                 minLength={6}
               />
             </div>
             <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              <label
+                className="block text-sm mb-1 text-primary-dark"
+                style={{ fontFamily: bodyFont }}
+              >
                 Confirm New Password
               </label>
               <input
@@ -365,7 +416,8 @@ export default function Settings() {
                     confirmPassword: e.target.value,
                   })
                 }
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                className="w-full border border-primary-bg rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none text-primary-dark bg-white"
+                style={{ fontFamily: bodyFont }}
                 required
                 minLength={6}
               />
@@ -373,7 +425,8 @@ export default function Settings() {
             <button
               type="submit"
               disabled={savingPassword}
-              className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg font-montserrat transition disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{ fontFamily: bodyFont }}
             >
               <Save size={16} />
               {savingPassword ? "Changing..." : "Change Password"}
