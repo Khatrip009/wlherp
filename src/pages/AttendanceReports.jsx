@@ -221,7 +221,7 @@ export default function AttendanceReports() {
       </div>
 
       {/* Filters Card */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-200 dark:border-gray-700">
+      <div className="bg-white dark:bg-accent rounded-xl p-5 shadow-sm border border-gray-200 dark:border-gray-700">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
           <div>
             <label className="block text-sm mb-1 text-gray-700 dark:text-gray-300" style={{ fontFamily: "var(--font-body)" }}>
@@ -320,7 +320,7 @@ export default function AttendanceReports() {
           </button>
           <button
             onClick={exportCSV}
-            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
             style={{ fontFamily: "var(--font-body)" }}
           >
             <Download size={18} /> Export CSV
@@ -329,7 +329,7 @@ export default function AttendanceReports() {
       )}
 
       {/* Results Table */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="bg-white dark:bg-accent rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         {reportLoading ? (
           <div className="p-8 text-center text-gray-500 dark:text-gray-400">
             <BarChart3 size={32} className="mx-auto mb-2 animate-pulse" />

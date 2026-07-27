@@ -14,16 +14,14 @@ export const reportTypes = {
   /* =============================================================
    * 1. STUDENT ENROLLMENT REPORT
    * ============================================================= */
-  student_enrollment: {
+ student_enrollment: {
     id: 'student_enrollment',
     title: 'Student Enrollment Report',
     description: 'Students enrolled within a date range, with course, batch & medium',
     useLetterhead: true,
     fields: ['start_date', 'end_date', 'course_id', 'batch_id', 'medium_id'],
-    defaultFilters: () => ({
-      start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
-      end_date: new Date().toISOString().slice(0, 10),
-    }),
+    // No default date filters – shows all enrollments until a date is picked
+    defaultFilters: () => ({}),
     queryBuilder: (filters, branchId, financialYearId) => {
       let q = supabase
         .from('student_batches')
@@ -36,12 +34,14 @@ export const reportTypes = {
             courses ( course_name ),
             mediums ( name )
           )
-        `)
-        .gte('enrollment_date', filters.start_date)
-        .lte('enrollment_date', filters.end_date);
+        `);
 
-      if (branchId) q = q.eq('branch_id', branchId);                // ← fixed
-      if (financialYearId) q = q.eq('financial_year_id', financialYearId); // ← fixed
+      // Apply date filters only when provided
+      if (filters.start_date) q = q.gte('enrollment_date', filters.start_date);
+      if (filters.end_date) q = q.lte('enrollment_date', filters.end_date);
+
+      if (branchId) q = q.eq('branch_id', branchId);
+      if (financialYearId) q = q.eq('financial_year_id', financialYearId);
 
       if (filters.batch_id) q = q.eq('batches.id', filters.batch_id);
       if (filters.course_id) q = q.eq('batches.course_id', filters.course_id);
@@ -50,7 +50,14 @@ export const reportTypes = {
       return q;
     },
     transform: (data) => data.map(r => ({
-      enrollment_date: r.enrollment_date,
+      // Format date to dd-mm-yyyy or show placeholder
+      enrollment_date: r.enrollment_date
+        ? new Date(r.enrollment_date).toLocaleDateString('en-IN', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+          }).replace(/\//g, '-')
+        : '—',
       admission_no: r.students.admission_no,
       name: `${r.students.first_name} ${r.students.last_name}`,
       mobile: r.students.mobile,
@@ -70,7 +77,6 @@ export const reportTypes = {
       { header: 'Status', accessor: 'status' },
     ],
   },
-
   /* =============================================================
    * 2. ACTIVE / INACTIVE STUDENT LIST
    * ============================================================= */
@@ -193,41 +199,55 @@ export const reportTypes = {
    * 5. INQUIRY CONVERSION REPORT
    * ============================================================= */
   inquiry_conversion: {
-    id: 'inquiry_conversion',
-    title: 'Inquiry Conversion Report',
-    description: 'Inquiries grouped by status or source',
-    useLetterhead: true,
-    fields: ['status', 'source', 'start_date', 'end_date'],
-    defaultFilters: () => ({
-      start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
-      end_date: new Date().toISOString().slice(0, 10),
-    }),
-    queryBuilder: (filters, branchId, financialYearId) => {
-      let q = supabase
-        .from('inquiries')
-        .select('*')
-        .gte('created_at', filters.start_date)
-        .lte('created_at', filters.end_date);
+  id: 'inquiry_conversion',
+  title: 'Inquiry Conversion Report',
+  description: 'Full inquiry list with conversion summary at top',
+  useLetterhead: true,
+  fields: ['status', 'source', 'start_date', 'end_date'],
+  defaultFilters: () => ({}),
+  queryBuilder: (filters, branchId, financialYearId) => {
+    let q = supabase
+      .from('inquiries')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-      if (branchId) q = q.eq('branch_id', branchId);
-      if (financialYearId) q = q.eq('financial_year_id', financialYearId);
-      if (filters.status) q = q.eq('status', filters.status);
-      if (filters.source) q = q.eq('source', filters.source);
+    if (filters.startDate) q = q.gte('created_at', filters.startDate + 'T00:00:00');
+    if (filters.endDate) q = q.lte('created_at', filters.endDate + 'T23:59:59');
 
-      return q;
-    },
-    columns: [
-      { header: 'Inquiry No', accessor: 'inquiry_no' },
-      { header: 'Student Name', accessor: 'student_name' },
-      { header: 'Parent', accessor: 'parent_name' },
-      { header: 'Mobile', accessor: 'mobile' },
-      { header: 'Course', accessor: 'interested_course_id' },
-      { header: 'Source', accessor: 'source' },
-      { header: 'Status', accessor: 'status' },
-      { header: 'Follow‑up', accessor: 'followup_date' },
-    ],
+    if (branchId) q = q.eq('branch_id', branchId);
+    if (financialYearId) q = q.eq('financial_year_id', financialYearId);
+    if (filters.status) q = q.eq('status', filters.status);
+    if (filters.source) q = q.eq('source', filters.source);
+
+    return q;
   },
-
+  transform: (data) => data.map(row => ({
+    inquiry_no: row.inquiry_no,
+    created: row.created_at
+      ? new Date(row.created_at).toLocaleDateString('en-IN')
+      : '—',
+    student: row.student_name || '',
+    parent: row.parent_name || '',
+    mobile: row.mobile || '',
+    course: row.interested_course_id,   // will be an ID – you may want to join courses later
+    source: row.source || '',
+    status: row.status || '',
+    followup: row.followup_date
+      ? new Date(row.followup_date).toLocaleDateString('en-IN')
+      : '—',
+  })),
+  columns: [
+    { header: 'Inquiry No', accessor: 'inquiry_no' },
+    { header: 'Created', accessor: 'created' },
+    { header: 'Student', accessor: 'student' },
+    { header: 'Parent', accessor: 'parent' },
+    { header: 'Mobile', accessor: 'mobile' },
+    { header: 'Course', accessor: 'course' },
+    { header: 'Source', accessor: 'source' },
+    { header: 'Status', accessor: 'status' },
+    { header: 'Follow‑up', accessor: 'followup' },
+  ],
+},
   /* =============================================================
    * 6. STUDENT DOCUMENTS REPORT
    * ============================================================= */
@@ -777,53 +797,46 @@ pending_fees: {
   /* =============================================================
    * 17. PROFIT & LOSS (summary)
    * ============================================================= */
-  profit_loss_summary: {
-    id: 'profit_loss_summary',
-    title: 'Profit & Loss Summary',
-    description: 'Total income vs expenses for a period',
-    useLetterhead: true,
-    fields: ['start_date', 'end_date'],
-    defaultFilters: () => ({
-      start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
-      end_date: new Date().toISOString().slice(0, 10),
-    }),
-    queryBuilder: (filters, branchId, financialYearId) =>
-      Promise.all([
-        supabase
-          .from('income')
-          .select('amount')
-          .gte('income_date', filters.start_date)
-          .lte('income_date', filters.end_date)
-          .then(({ data }) => {
-            let q = supabase.from('income').select('amount');
-            if (branchId) q = q.eq('branch_id', branchId);
-            if (financialYearId) q = q.eq('financial_year_id', financialYearId);
-            return q.gte('income_date', filters.start_date).lte('income_date', filters.end_date);
-          })
-          .then(({ data }) => data.reduce((s, r) => s + parseFloat(r.amount), 0)),
-        supabase
-          .from('expenses')
-          .select('amount')
-          .then(({ data }) => {
-            let q = supabase.from('expenses').select('amount');
-            if (branchId) q = q.eq('branch_id', branchId);
-            if (financialYearId) q = q.eq('financial_year_id', financialYearId);
-            return q.gte('expense_date', filters.start_date).lte('expense_date', filters.end_date);
-          })
-          .then(({ data }) => data.reduce((s, r) => s + parseFloat(r.amount), 0)),
-      ]).then(([income, expense]) => ({
-        income,
-        expense,
-        profit: income - expense,
-      })),
-    transform: (data) => [data],
-    columns: [
-      { header: 'Total Income', accessor: 'income' },
-      { header: 'Total Expenses', accessor: 'expense' },
-      { header: 'Profit', accessor: 'profit' },
-    ],
-  },
+profit_loss_summary: {
+  id: 'profit_loss_summary',
+  title: 'Profit & Loss Summary',
+  description: 'Total income vs expenses for a period',
+  useLetterhead: true,
+  fields: ['start_date', 'end_date'],
+  defaultFilters: () => ({
+    start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
+    end_date: new Date().toISOString().slice(0, 10),
+  }),
+  queryBuilder: async (filters, branchId, financialYearId) => {
+    // Helper to fetch the sum for a table and date column
+    const getSum = async (table, dateCol) => {
+      let query = supabase
+        .from(table)
+        .select('amount')
+        .gte(dateCol, filters.start_date)
+        .lte(dateCol, filters.end_date);
 
+      if (branchId) query = query.eq('branch_id', branchId);
+      if (financialYearId) query = query.eq('financial_year_id', financialYearId);
+
+      const { data } = await query;
+      return (data || []).reduce((sum, row) => sum + parseFloat(row.amount || 0), 0);
+    };
+
+    const [income, expense] = await Promise.all([
+      getSum('income', 'income_date'),
+      getSum('expenses', 'expense_date'),
+    ]);
+
+    return { income, expense, profit: income - expense };
+  },
+  transform: (data) => [data],
+  columns: [
+    { header: 'Total Income', accessor: 'income' },
+    { header: 'Total Expenses', accessor: 'expense' },
+    { header: 'Profit', accessor: 'profit' },
+  ],
+},
   /* =============================================================
    * 18. TAX COLLECTED REPORT
    * ============================================================= */
@@ -1229,8 +1242,6 @@ admission_pipeline: {
     end_date: new Date().toISOString().slice(0, 10),
   }),
   queryBuilder: (filters, branchId, financialYearId) => {
-    console.log('Pipeline Query - branchId:', branchId, 'FY:', financialYearId, 'filters:', filters);
-    
     let q = supabase
       .from('inquiries')
       .select(`
@@ -1238,10 +1249,9 @@ admission_pipeline: {
         followup_date, created_at,
         courses(course_name)
       `)
-      .is('deleted_at', null) // ✅ exclude deleted
+      .is('deleted_at', null)
       .order('followup_date', { ascending: true });
 
-    // ✅ Date filters with time range
     if (filters.start_date) {
       q = q.gte('created_at', filters.start_date + 'T00:00:00');
     }
@@ -1254,9 +1264,32 @@ admission_pipeline: {
     if (filters.status) q = q.eq('status', filters.status);
     if (filters.source) q = q.eq('source', filters.source);
 
-    console.log('Final query URL:', q.url.toString());
     return q;
   },
+  // ✅ Added transform to map raw fields to column accessors & format date
+  transform: (data) => data.map(row => {
+    // Format created_at to dd-mm-yyyy
+    let createdDate = '';
+    if (row.created_at) {
+      const date = new Date(row.created_at);
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      createdDate = `${day}-${month}-${year}`;
+    }
+
+    return {
+      inquiry_no: row.inquiry_no,
+      created: createdDate,                    // formatted date
+      student: row.student_name || '',
+      parent: row.parent_name || '',
+      mobile: row.mobile || '',
+      course: row.courses?.course_name || '',  // nested field
+      source: row.source || '',
+      status: row.status || '',
+      followup: row.followup_date || '',
+    };
+  }),
   columns: [
     { header: 'Inquiry No', accessor: 'inquiry_no' },
     { header: 'Created', accessor: 'created' },

@@ -6,9 +6,16 @@ import { useOrg } from "./OrganizationContext";
 
 const ThemeContext = createContext();
 
+// Helper: generate a light tint (adds 20% opacity white)
+function getLightTint(hex) {
+  // For background uses, a low‑opacity version is perfect
+  return hex + "20"; // ~12.5% opacity
+}
+
 export function ThemeProvider({ children }) {
   const { org } = useOrg();
 
+  // Fetch theme for the current organisation (now always org 3)
   const { data: theme, isLoading } = useQuery({
     queryKey: ["theme", org?.id],
     queryFn: async () => {
@@ -17,23 +24,31 @@ export function ThemeProvider({ children }) {
         .from("themes")
         .select("*")
         .eq("org_id", org.id)
-        .maybeSingle();       // ← returns null if no row
+        .maybeSingle();
       return data;
     },
     enabled: !!org?.id,
     staleTime: Infinity,
   });
 
-  // Apply theme CSS variables only if a theme was returned
+  // Apply all CSS variables as soon as the theme data arrives
   useEffect(() => {
     if (!theme) return;
     const root = document.documentElement;
-    root.style.setProperty("--color-primary", theme.primary_color);
-    root.style.setProperty("--color-primary-light", theme.primary_light_color);
-    root.style.setProperty("--color-primary-dark", theme.primary_dark_color);
-    root.style.setProperty("--color-accent", theme.accent_color);
-    root.style.setProperty("--color-accent-light", theme.accent_light_color);
-    root.style.setProperty("--color-accent-dark", theme.accent_dark_color);
+
+    // Main colours (from database)
+    root.style.setProperty("--theme-primary", theme.primary_color);
+    root.style.setProperty("--theme-primary-light", theme.primary_light_color);
+    root.style.setProperty("--theme-primary-dark", theme.primary_dark_color);
+    root.style.setProperty("--theme-accent", theme.accent_color);
+    root.style.setProperty("--theme-accent-light", theme.accent_light_color);
+    root.style.setProperty("--theme-accent-dark", theme.accent_dark_color);
+
+    // Computed light backgrounds (used by bg-primary-bg, etc.)
+    root.style.setProperty("--theme-primary-bg", getLightTint(theme.primary_color));
+    root.style.setProperty("--theme-accent-bg", getLightTint(theme.accent_color));
+
+    // Fonts
     root.style.setProperty("--font-heading", theme.font_heading);
     root.style.setProperty("--font-body", theme.font_body);
   }, [theme]);

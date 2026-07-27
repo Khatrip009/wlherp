@@ -140,7 +140,7 @@ export default function GSTSettings() {
       {/* Form */}
       <form
         onSubmit={handleSubmit}
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 max-w-3xl space-y-6"
+        className="bg-white dark:bg-accent rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 max-w-3xl space-y-6"
       >
         {/* GST Registered toggle */}
         <div className="flex items-center gap-3">

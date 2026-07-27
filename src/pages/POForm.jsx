@@ -288,7 +288,7 @@ export default function POForm() {
         {/* Totals */}
         <div className="border-t border-gray-200 pt-4 flex justify-between items-center">
           <span className="text-lg font-bold text-gray-900">Total: ₹ {subtotal.toLocaleString("en-IN")}</span>
-          <button type="submit" disabled={saveMutation.isPending} className="bg-gray-900 hover:bg-gray-800 text-white px-6 py-2.5 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50">
+          <button type="submit" disabled={saveMutation.isPending} className="bg-primary hover:bg-accent text-white px-6 py-2.5 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50">
             <Save size={16} /> {isEditing ? "Update PO" : "Save PO"}
           </button>
         </div>

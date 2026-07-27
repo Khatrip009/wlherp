@@ -337,7 +337,7 @@ export default function HRHub() {
         {statCards.map((card, idx) => (
           <div
             key={idx}
-            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5 border border-gray-200 dark:border-gray-700"
+            className="bg-white dark:bg-accent rounded-xl shadow-sm p-5 border border-gray-200 dark:border-gray-700"
           >
             <div className="flex items-center justify-between">
               <div>
@@ -373,7 +373,7 @@ export default function HRHub() {
             <Link
               key={action.title}
               to={action.link}
-              className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 hover:shadow-md transition-all hover:border-primary dark:hover:border-primary group"
+              className="bg-white dark:bg-accent rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 hover:shadow-md transition-all hover:border-primary dark:hover:border-primary group"
             >
               <div className="flex flex-col items-center text-center">
                 <div
@@ -396,7 +396,7 @@ export default function HRHub() {
       {/* Two-column: Recent Leaves + Recent Payments (unchanged) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Leave Requests */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="bg-white dark:bg-accent rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3
               className="font-semibold"
@@ -474,7 +474,7 @@ export default function HRHub() {
         </div>
 
         {/* Recent Salary Payments */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="bg-white dark:bg-accent rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3
               className="font-semibold"

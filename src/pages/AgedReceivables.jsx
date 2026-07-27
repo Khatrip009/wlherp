@@ -365,7 +365,7 @@ export default function AgedReceivables() {
           </button>
           <button
             onClick={handlePrintPDF}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg transition-colors text-sm font-medium"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg transition-colors text-sm font-medium"
           >
             <Printer size={16} /> Print PDF
           </button>

@@ -654,7 +654,7 @@ export default function GSTReport() {
           <button onClick={sendReportEmail} className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium">
             <Mail size={16} /> Send Report
           </button>
-          <button onClick={handlePrintPDF} className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg transition-colors text-sm font-medium">
+          <button onClick={handlePrintPDF} className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg transition-colors text-sm font-medium">
             <Printer size={16} /> Print PDF
           </button>
           <button onClick={handleDownloadJSON} className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm">
@@ -683,7 +683,7 @@ export default function GSTReport() {
             className="border border-gray-300 bg-white text-gray-900 rounded-lg p-2 text-sm"
           />
         </div>
-        <button onClick={() => refetch()} className="inline-flex items-center px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-sm font-medium transition-colors">
+        <button onClick={() => refetch()} className="inline-flex items-center px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg text-sm font-medium transition-colors">
           Refresh
         </button>
         {isLoading && <span className="text-sm text-gray-500 flex items-center">Loading...</span>}

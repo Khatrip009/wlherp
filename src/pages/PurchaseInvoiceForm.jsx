@@ -550,7 +550,7 @@ export default function PurchaseInvoiceForm() {
           <button
             type="submit"
             disabled={saving || createMutation.isPending || updateMutation.isPending}
-            className="bg-gray-900 hover:bg-gray-800 text-white px-6 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
+            className="bg-primary hover:bg-accent text-white px-6 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
           >
             {saving || createMutation.isPending || updateMutation.isPending ? (
               <Loader className="w-4 h-4 animate-spin" />

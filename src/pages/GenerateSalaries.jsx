@@ -398,7 +398,7 @@ export default function GenerateSalaries() {
             <select
               value={month}
               onChange={(e) => setMonth(Number(e.target.value))}
-              className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2 text-sm"
+              className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-900 dark:text-gray-100 rounded-lg p-2 text-sm"
             >
               {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
                 <option key={m} value={m}>
@@ -412,7 +412,7 @@ export default function GenerateSalaries() {
               max="2030"
               value={year}
               onChange={(e) => setYear(Number(e.target.value))}
-              className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg p-2 text-sm w-24"
+              className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-900 dark:text-gray-100 rounded-lg p-2 text-sm w-24"
             />
           </div>
           {/* 👇 Send Report button */}
@@ -445,7 +445,7 @@ export default function GenerateSalaries() {
       </div>
 
       {/* Teacher Table */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="bg-white dark:bg-accent rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px]">
             <thead className="bg-gray-50 dark:bg-gray-700">
@@ -613,7 +613,7 @@ export default function GenerateSalaries() {
 
       {/* Results summary */}
       {results && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+        <div className="bg-white dark:bg-accent rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700">
           <h3 className="font-medium mb-2" style={{ color: "var(--color-primary)" }}>
             Generation Results
           </h3>

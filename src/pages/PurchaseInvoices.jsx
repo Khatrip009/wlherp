@@ -332,10 +332,10 @@ export default function PurchaseInvoices() {
           <button onClick={sendReportEmail} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
             <Mail size={16} /> Send Report
           </button>
-          <button onClick={handlePrintPDF} className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+          <button onClick={handlePrintPDF} className="bg-primary hover:bg-accent text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
             <Printer size={16} /> Print PDF
           </button>
-          <Link to="/purchase-invoices/new" className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+          <Link to="/purchase-invoices/new" className="bg-primary hover:bg-accent text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
             <Plus size={16} /> New Invoice
           </Link>
         </div>

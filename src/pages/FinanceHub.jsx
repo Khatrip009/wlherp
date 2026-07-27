@@ -51,7 +51,7 @@ export default function FinanceHub() {
   return (
     // Remove fixed white background; allow Ant Design tokens to control color.
     // Use a wrapper with tailwind classes for dark mode fallback if needed.
-    <Layout style={{ minHeight: "100vh" }} className="bg-white dark:bg-gray-800">
+    <Layout style={{ minHeight: "100vh" }} className="bg-white dark:bg-accent">
       <Sider
         width={220}
         className="border-r border-gray-200 dark:border-gray-700"

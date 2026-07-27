@@ -183,7 +183,7 @@ export default function ProfitLoss() {
         <div className="flex gap-2">
           <button
             onClick={handlePrintPDF}
-            className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition"
+            className="bg-gray-900 hover:bg-accent text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition"
           >
             <Printer size={16} /> Print PDF
           </button>

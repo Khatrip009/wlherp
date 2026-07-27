@@ -329,10 +329,10 @@ export default function PurchaseOrders() {
           <button onClick={sendReportEmail} className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition">
             <Mail size={16} /> Send Report
           </button>
-          <button onClick={handlePrintPDF} className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-sm font-medium transition">
+          <button onClick={handlePrintPDF} className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg text-sm font-medium transition">
             <Printer size={16} /> Print PDF
           </button>
-          <Link to="/purchase-orders/new" className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-sm font-medium transition">
+          <Link to="/purchase-orders/new" className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-accent text-white rounded-lg text-sm font-medium transition">
             <Plus size={16} /> New PO
           </Link>
         </div>

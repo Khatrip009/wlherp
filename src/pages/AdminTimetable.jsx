@@ -5,6 +5,7 @@ import { supabase } from "../api/supabase";
 import BatchForm from "../components/BatchForm";
 import { updateBatch } from "../services/batchService";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";   // ✅ correct import
 import toast from "react-hot-toast";
 import { Clock, Layers } from "lucide-react";
 
@@ -17,7 +18,8 @@ export default function AdminTimetable() {
   const [selectedMediumId, setSelectedMediumId] = useState("");
 
   // ── Organization & Financial Year context ──
-  const { branch, selectedFinancialYear, theme } = useOrg();
+  const { branch, selectedFinancialYear } = useOrg();
+  const { theme } = useTheme();   // ✅ use correct context
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
