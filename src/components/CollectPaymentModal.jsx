@@ -241,6 +241,7 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
       unit_price: b.base,           // base (exclusive) – correct for tax calculation
       tax_rate_id: b.taxRateId,
       tax_inclusive: false,
+      hsn_sac_code: '999294',
     }));
 
     if (items.length === 0) {
@@ -259,7 +260,7 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
       invoice_date: new Date().toISOString().split("T")[0],
       due_date: null,
       payment_terms: "Immediate",
-      gst_applicable: false,
+      gst_applicable: totals.totalTax > 0,   // true if any tax is charged
       place_of_supply: fee.students?.state_code || "",
       reverse_charge: false,
       items,
