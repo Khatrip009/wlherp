@@ -81,9 +81,8 @@ async function loadImageAsBase64(url) {
 // ─── Main PDF generator ──────────────────────────────────
 export async function generateInvoicePDF(invoice, org, type = 'sales', options = {}) {
   let { receiptNumber = null, theme = {} } = options;
-  
 
-  const accentColor = '#000000';
+  const accentColor = theme.primary_color || '#000000';
   const headingFont = theme.font_heading || 'helvetica';
   const bodyFont = theme.font_body || 'helvetica';
 
@@ -99,29 +98,47 @@ export async function generateInvoicePDF(invoice, org, type = 'sales', options =
     logoBase64 = await loadImageAsBase64(org.logo_dark_url);
   }
 
-  // ── Fetch real student fee data ─────────────────────────
-  let totalCourseFee = 0;
-  let totalPaidOverall = 0;
-  let overallBalance = 0;
+  // ── Fetch real student fee components for accurate balance calculation ──
+  let totalCourseFee = 0;        // total due (inclusive) from components
+  let totalPaidOverall = 0;      // total paid (inclusive) across all payments
+  let overallBalance = 0;        // calculated correctly
 
   if (invoice.student_fee_id) {
-    const { data: studentFee } = await supabase
-      .from("student_fees")
-      .select("final_fee")
-      .eq("id", invoice.student_fee_id)
-      .single();
+    // Get the sum of all due amounts from student_fee_components
+    const { data: components, error: compError } = await supabase
+      .from("student_fee_components")
+      .select("due_amount, paid_amount")
+      .eq("student_fee_id", invoice.student_fee_id)
+      .eq("branch_id", invoice.branch_id)
+      .eq("financial_year_id", invoice.financial_year_id);
 
-    if (studentFee) {
-      totalCourseFee = Number(studentFee.final_fee);
+    if (compError) {
+      console.error("Failed to fetch fee components for balance:", compError);
+    } else if (components && components.length > 0) {
+      // Total original amount student must pay (sum of due_amounts = base + tax)
+      totalCourseFee = components.reduce((sum, c) => sum + Number(c.due_amount), 0);
+
+      // Total amount already paid (sum of paid_amounts = base + tax already collected)
+      totalPaidOverall = components.reduce((sum, c) => sum + Number(c.paid_amount), 0);
+
+      overallBalance = Math.max(totalCourseFee - totalPaidOverall, 0);
+    } else {
+      // Fallback (should not happen if fee structure exists)
+      const { data: studentFee } = await supabase
+        .from("student_fees")
+        .select("final_fee")
+        .eq("id", invoice.student_fee_id)
+        .single();
+      if (studentFee) {
+        totalCourseFee = Number(studentFee.final_fee);
+      }
+      const { data: payments } = await supabase
+        .from("fee_payments")
+        .select("amount")
+        .eq("student_fee_id", invoice.student_fee_id);
+      totalPaidOverall = (payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
+      overallBalance = Math.max(totalCourseFee - totalPaidOverall, 0);
     }
-
-    const { data: payments } = await supabase
-      .from("fee_payments")
-      .select("amount")
-      .eq("student_fee_id", invoice.student_fee_id);
-
-    totalPaidOverall = (payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
-    overallBalance = Math.max(totalCourseFee - totalPaidOverall, 0);
   } else {
     totalCourseFee = Number(invoice.grand_total) || 0;
     totalPaidOverall = Number(invoice.paid_amount) || 0;
@@ -378,15 +395,13 @@ export async function generateInvoicePDF(invoice, org, type = 'sales', options =
   const summaryX = margin;
   const summaryWidth = availableWidth;
 
-  // Calculate lines:
-  // Taxable, CGST, SGST, IGST, (optional Round Off), Total Amount, amount in words (2 lines: label + value)
   const wordLines = doc.splitTextToSize(
     `Amount in words: ${numberToWords(overallBalance > 0 ? overallBalance : fullGrandTotal)} Only`,
     summaryWidth - 8
   );
-  let linesCount = 5; // Taxable, CGST, SGST, IGST, Total
-  if (roundOff !== 0) linesCount++; // Round Off
-  const summaryHeight = linesCount * 6 + 6 + (wordLines.length * 5); // extra height for amount in words
+  let linesCount = 5;
+  if (roundOff !== 0) linesCount++;
+  const summaryHeight = linesCount * 6 + 6 + (wordLines.length * 5);
 
   doc.setDrawColor('#000');
   doc.setFillColor(255, 255, 255);
@@ -430,16 +445,14 @@ export async function generateInvoicePDF(invoice, org, type = 'sales', options =
   doc.setFont(bodyFont, 'italic');
   doc.setFontSize(8);
   doc.setTextColor('#000');
-  // Print the split lines
   for (const line of wordLines) {
     doc.text(line, summaryX + 4, sY);
     sY += 5;
   }
 
-  // Update Y to after the box
   currentY = summaryStartY + summaryHeight + 6;
 
-  // ── Course Fee Summary ──
+  // ── Course Fee Summary (now uses inclusive totals) ──
   doc.setFont(bodyFont, 'bold');
   doc.setFontSize(11);
   doc.setTextColor('#000');

@@ -63,12 +63,12 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
 
       // Tax rates – also scoped by organization (if the table supports it)
       let taxQuery = supabase
-        .from('tax_rates')
-        .select('id, name, rate')
-        .eq('is_active', true)
-        .eq('organization_id', organizationId);
+  .from('tax_rates')
+  .select('id, name, rate')
+  .eq('is_active', true)
+  .eq('organization_id', organizationId);   // ✅ now org‑scoped
 
-      if (financialYearId) taxQuery = taxQuery.eq('financial_year_id', financialYearId);
+if (financialYearId) taxQuery = taxQuery.eq('financial_year_id', financialYearId);
 
       const [coursesRes, taxRes] = await Promise.all([coursesQuery, taxQuery]);
       setCourses(coursesRes.data || []);
