@@ -2,12 +2,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 import { BookOpen, Calendar, Layers, FileText } from "lucide-react";
 
 export default function StudentHomeworkPage({ studentId: propStudentId = null, standalone = true }) {
   const { branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();                                     // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const effectiveStudentId = propStudentId;
 
@@ -77,11 +82,15 @@ export default function StudentHomeworkPage({ studentId: propStudentId = null, s
   const content = (
     <div>
       {isLoading ? (
-        <div className="p-4 text-center text-secondary">Loading homework…</div>
+        <div className="p-4 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+          Loading homework…
+        </div>
       ) : homeworks.length === 0 ? (
-        <div className="bg-white rounded-xl p-8 shadow-sm border border-secondary-light text-center">
-          <BookOpen size={32} className="text-secondary-light mx-auto mb-2" />
-          <p className="text-secondary">No homework assigned to this student.</p>
+        <div className="bg-white rounded-xl p-8 shadow-sm border border-primary-bg text-center">
+          <BookOpen size={32} className="text-primary-dark/40 mx-auto mb-2" />
+          <p className="text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+            No homework assigned to this student.
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -91,14 +100,18 @@ export default function StudentHomeworkPage({ studentId: propStudentId = null, s
             return (
               <div
                 key={hw.id}
-                className="bg-white rounded-xl p-4 shadow-sm border border-secondary-light"
+                className="bg-white rounded-xl p-4 shadow-sm border border-primary-bg"
               >
                 <div className="flex items-center gap-2 mb-1">
                   <BookOpen size={18} className="text-primary" />
-                  <h3 className="font-bold text-primary-dark">{hw.title}</h3>
+                  <h3 className="font-bold text-primary" style={{ fontFamily: headingFont }}>
+                    {hw.title}
+                  </h3>
                 </div>
-                <p className="text-sm text-secondary mt-1">{hw.description}</p>
-                <div className="flex flex-wrap gap-4 mt-2 text-xs text-secondary-dark">
+                <p className="text-sm text-primary-dark mt-1" style={{ fontFamily: bodyFont }}>
+                  {hw.description}
+                </p>
+                <div className="flex flex-wrap gap-4 mt-2 text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
                   <span className="flex items-center gap-1">
                     <Layers size={14} /> {hw.subjects?.subject_name}
                   </span>
@@ -114,21 +127,23 @@ export default function StudentHomeworkPage({ studentId: propStudentId = null, s
                     </span>
                   )}
                   {hw.batches?.mediums?.name && (
-                    <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                    <span className="bg-accent-bg text-accent-dark px-2 py-0.5 rounded-full">
                       {hw.batches.mediums.name}
                     </span>
                   )}
                 </div>
                 <div className="mt-2 text-sm">
                   {submitted ? (
-                    <span className="text-green-600 flex items-center gap-1">
+                    <span className="text-primary flex items-center gap-1" style={{ fontFamily: bodyFont }}>
                       <FileText size={14} /> Submitted ({subs.length} file(s))
                     </span>
                   ) : (
-                    <span className="text-amber-600">Not submitted</span>
+                    <span className="text-accent-dark" style={{ fontFamily: bodyFont }}>
+                      Not submitted
+                    </span>
                   )}
                   {subs.some((s) => s.marks !== null || s.remarks) && (
-                    <div className="text-xs text-secondary mt-1">
+                    <div className="text-xs text-primary-dark/80 mt-1" style={{ fontFamily: bodyFont }}>
                       {subs[0].marks !== null && <span>Marks: {subs[0].marks}</span>}
                       {subs[0].remarks && <span className="ml-2">Remarks: {subs[0].remarks}</span>}
                     </div>
@@ -145,7 +160,9 @@ export default function StudentHomeworkPage({ studentId: propStudentId = null, s
   if (!standalone) return <div>{content}</div>;
   return (
     <div className="p-6">
-      <h1 className="text-3xl font-righteous text-primary-dark mb-4">My Homework</h1>
+      <h1 className="text-3xl font-bold text-primary mb-4" style={{ fontFamily: headingFont }}>
+        My Homework
+      </h1>
       {content}
     </div>
   );

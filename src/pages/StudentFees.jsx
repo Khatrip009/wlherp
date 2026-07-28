@@ -46,6 +46,11 @@ export default function StudentFees() {
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
 
+  // ── Theme colors ──
+  const primaryColor = theme?.primary_color || "#0D47A1";
+  const primaryBg = theme?.primary_bg_color || "#E3F2FD";
+  const accentColor = theme?.accent_color || "#FF1070";
+
   // ── Tab state ──
   const [activeTab, setActiveTab] = useState("payments");
 
@@ -664,11 +669,11 @@ const handlePrintInvoice = async (invoiceId) => {
     },
     {
       title: "Receipt",
-      render: (_, p) => p.receipt ? <Tag color="green">{p.receipt.receipt_no}</Tag> : <Tag color="orange">No Receipt</Tag>,
+      render: (_, p) => p.receipt ? <Tag color={primaryColor}>{p.receipt.receipt_no}</Tag> : <Tag color="orange">No Receipt</Tag>,
     },
     {
       title: "Invoice",
-      render: (_, p) => p.invoice ? <Tag color="blue">{p.invoice.invoice_number}</Tag> : <Tag color="default">—</Tag>,
+      render: (_, p) => p.invoice ? <Tag color={primaryColor}>{p.invoice.invoice_number}</Tag> : <Tag color="default">—</Tag>,
     },
     {
       title: "Actions",
@@ -738,12 +743,12 @@ const handlePrintInvoice = async (invoiceId) => {
     {
       title: "Balance",
       dataIndex: "pending",
-      render: (val) => <Text style={{ color: val > 0 ? "#ff4d4f" : "#52c41a" }}>{formatCurrency(val)}</Text>,
+      render: (val) => <Text style={{ color: val > 0 ? accentColor : "#52c41a" }}>{formatCurrency(val)}</Text>,
     },
     {
       title: "Status",
       dataIndex: "status",
-      render: (status) => <Tag color={status === "Paid" ? "green" : "volcano"}>{status}</Tag>,
+      render: (status) => <Tag color={status === "Paid" ? primaryColor : accentColor}>{status}</Tag>,
       filters: [
         { text: "Paid", value: "Paid" },
         { text: "Pending", value: "Pending" },
@@ -906,7 +911,7 @@ const handlePrintInvoice = async (invoiceId) => {
           </Row>
 
           {selectedRowKeys.length > 0 && (
-            <div style={{ marginBottom: 16, background: "#e6f7ff", padding: "8px 16px", borderRadius: 8 }}>
+            <div style={{ marginBottom: 16, background: primaryBg, padding: "8px 16px", borderRadius: 8 }}>
               <Space>
                 <span>{selectedRowKeys.length} selected</span>
                 <Button icon={<DollarOutlined />} onClick={() => setBulkAssignOpen(true)}>Bulk Assign Fee</Button>
@@ -957,7 +962,7 @@ const handlePrintInvoice = async (invoiceId) => {
                             title: "Status",
                             dataIndex: "status",
                             render: (status) => (
-                              <Tag color={status === "Paid" ? "green" : status === "Partially Paid" ? "orange" : "volcano"}>
+                              <Tag color={status === "Paid" ? primaryColor : accentColor}>
                                 {status}
                               </Tag>
                             ),
@@ -1049,6 +1054,7 @@ const handlePrintInvoice = async (invoiceId) => {
           setEditingFee(null);
         }}
         loading={createMutation.isLoading || updateMutation.isLoading}
+        primaryColor={primaryColor}
       />
 
       {collectingFee && (
@@ -1142,7 +1148,7 @@ const handlePrintInvoice = async (invoiceId) => {
 
 // ─── Helper Components ────────────────────────────────────────────────
 
-function FeeAssignDrawer({ open, editingFee, students, feeStructures, onSubmit, onClose, loading }) {
+function FeeAssignDrawer({ open, editingFee, students, feeStructures, onSubmit, onClose, loading, primaryColor }) {
   const [form] = Form.useForm();
   const [enableInstallments, setEnableInstallments] = useState(false);
   const [installments, setInstallments] = useState([]);

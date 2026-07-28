@@ -19,6 +19,7 @@ export default function AdminTimetable() {
 
   // ── Organization & Financial Year context ──
   const { branch, selectedFinancialYear } = useOrg();
+
   const { theme } = useTheme();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;

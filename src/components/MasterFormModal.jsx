@@ -15,7 +15,7 @@ export default function MasterFormModal({
       open={open}
       onCancel={onClose}
       footer={null}
-      destroyOnHidden // ✅ fixed deprecation
+      destroyOnHidden
       width={640}
     >
       <FormComponent

@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // ✅ dynamic theme
 import GlobalSearch from "./GlobalSearch";
 import { useInstallPrompt } from "../hooks/useInstallPrompt";
 import toast from "react-hot-toast";
@@ -29,11 +30,10 @@ export default function Header({ onMenuClick }) {
     switchFinancialYear,
   } = useOrg();
 
-  // ─── DEBUG: log context values ──────────────────────────
-  console.log("🧪 Header: branches =", branches);
-  console.log("🧪 Header: branch =", branch);
-  console.log("🧪 Header: role =", profile?.role);
-  console.log("🧪 Header: isStudent =", isStudent);
+  // Theme
+  const theme = useTheme();
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const { isInstallable, promptInstall } = useInstallPrompt();
 
@@ -167,19 +167,19 @@ export default function Header({ onMenuClick }) {
   };
 
   return (
-    <header className="bg-white border-b border-secondary-light px-4 lg:px-6 py-3 lg:py-4 flex items-center justify-between">
+    <header className="bg-white border-b border-primary-bg px-4 lg:px-6 py-3 lg:py-4 flex items-center justify-between">
       {/* ── Left section ── */}
       <div className="flex items-center gap-3 flex-wrap">
         <button
           onClick={onMenuClick}
-          className="lg:hidden p-2 -ml-2 rounded-lg hover:bg-secondary-bg"
+          className="lg:hidden p-2 -ml-2 rounded-lg hover:bg-primary-bg"
           aria-label="Open menu"
         >
-          <Menu size={22} className="text-secondary-dark" />
+          <Menu size={22} className="text-primary-dark" />
         </button>
 
         <div className="hidden sm:block">
-          <p className="text-sm text-secondary-dark font-montserrat whitespace-nowrap">
+          <p className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
             {today.toLocaleDateString("en-IN", {
               weekday: "long",
               year: "numeric",
@@ -194,7 +194,8 @@ export default function Header({ onMenuClick }) {
           <select
             value={branch?.id || ""}
             onChange={handleBranchChange}
-            className="border border-secondary-light rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none bg-white"
+            className="border border-primary-bg bg-white text-primary-dark rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+            style={{ fontFamily: bodyFont }}
           >
             {branches.length === 0 ? (
               <option value="" disabled>Loading branches...</option>
@@ -213,7 +214,8 @@ export default function Header({ onMenuClick }) {
           <select
             value={selectedFinancialYear?.id || ""}
             onChange={handleFinancialYearChange}
-            className="border border-secondary-light rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none bg-white"
+            className="border border-primary-bg bg-white text-primary-dark rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+            style={{ fontFamily: bodyFont }}
           >
             {financialYears.length === 0 ? (
               <option value="" disabled>Loading FY...</option>
@@ -248,7 +250,7 @@ export default function Header({ onMenuClick }) {
             onClick={() => setDropdownOpen(!dropdownOpen)}
             className="relative p-1"
           >
-            <Bell size={22} className="text-secondary-dark hover:text-primary transition" />
+            <Bell size={22} className="text-primary-dark hover:text-primary transition" />
             {unreadCount > 0 && (
               <span className="absolute -top-1 -right-1 bg-accent text-white text-[10px] h-5 w-5 rounded-full flex items-center justify-center font-medium">
                 {unreadCount > 9 ? "9+" : unreadCount}
@@ -256,9 +258,9 @@ export default function Header({ onMenuClick }) {
             )}
           </button>
           {dropdownOpen && (
-            <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-xl border border-secondary-light z-50 overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-secondary-light">
-                <h4 className="font-semibold text-sm text-secondary-dark">Notifications</h4>
+            <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-xl border border-primary-bg z-50 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-primary-bg">
+                <h4 className="font-semibold text-sm text-primary-dark" style={{ fontFamily: headingFont }}>Notifications</h4>
                 <button
                   onClick={() => markAllReadMutation.mutate()}
                   className="text-xs text-primary hover:underline"
@@ -268,19 +270,19 @@ export default function Header({ onMenuClick }) {
               </div>
               <div className="max-h-64 overflow-y-auto">
                 {recentNotifications.length === 0 ? (
-                  <p className="p-4 text-sm text-center text-secondary">No notifications</p>
+                  <p className="p-4 text-sm text-center text-primary-dark/60">No notifications</p>
                 ) : (
                   recentNotifications.map((n) => (
                     <div
                       key={n.id}
-                      className={`flex items-start gap-3 px-4 py-3 border-b border-secondary-light hover:bg-gray-50 ${
-                        !n.is_read ? "bg-blue-50/50" : ""
+                      className={`flex items-start gap-3 px-4 py-3 border-b border-primary-bg hover:bg-primary-bg ${
+                        !n.is_read ? "bg-primary/5" : ""
                       }`}
                     >
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-secondary-dark">{n.title}</p>
-                        <p className="text-xs text-secondary mt-1 truncate">{n.message}</p>
-                        <span className="text-xs text-secondary-light mt-1 block">
+                        <p className="text-sm font-medium text-primary-dark" style={{ fontFamily: headingFont }}>{n.title}</p>
+                        <p className="text-xs text-primary-dark/60 mt-1 truncate">{n.message}</p>
+                        <span className="text-xs text-primary-dark/40 mt-1 block">
                           {new Date(n.created_at).toLocaleString()}
                         </span>
                       </div>
@@ -297,7 +299,7 @@ export default function Header({ onMenuClick }) {
                   ))
                 )}
               </div>
-              <div className="px-4 py-3 border-t border-secondary-light">
+              <div className="px-4 py-3 border-t border-primary-bg">
                 <button
                   onClick={() => {
                     setDropdownOpen(false);
@@ -318,23 +320,24 @@ export default function Header({ onMenuClick }) {
             <img
               src={userAvatar}
               alt="User avatar"
-              className="w-10 h-10 rounded-full object-cover border border-secondary-light"
+              className="w-10 h-10 rounded-full object-cover border border-primary-bg"
             />
           ) : (
             <UserCircle2 size={38} className="text-primary flex-shrink-0" />
           )}
           <div className="hidden sm:block">
-            <h3 className="font-semibold text-secondary-dark font-montserrat text-sm lg:text-base">
+            <h3 className="font-semibold text-primary-dark text-sm lg:text-base" style={{ fontFamily: headingFont }}>
               {profile?.full_name || "User"}
             </h3>
-            <p className="text-xs text-secondary">{profile?.role || "Admin"}</p>
+            <p className="text-xs text-primary-dark/60" style={{ fontFamily: bodyFont }}>{profile?.role || "Admin"}</p>
           </div>
         </div>
 
         {/* Install App button */}
         <button
           onClick={handleInstallClick}
-          className="flex items-center gap-1 bg-primary hover:bg-primary-light text-white px-3 py-2 rounded-lg transition font-montserrat text-sm"
+          className="flex items-center gap-1 bg-primary hover:bg-primary-light text-white px-3 py-2 rounded-lg transition text-sm"
+          style={{ fontFamily: bodyFont }}
           title="Install App"
         >
           <Download size={16} />
@@ -344,7 +347,8 @@ export default function Header({ onMenuClick }) {
         {/* Logout button */}
         <button
           onClick={handleLogout}
-          className="flex items-center gap-1 sm:gap-2 bg-accent hover:bg-accent-light text-white px-2 sm:px-4 py-2 rounded-lg transition font-montserrat text-sm"
+          className="flex items-center gap-1 sm:gap-2 bg-accent hover:bg-accent-dark text-white px-2 sm:px-4 py-2 rounded-lg transition text-sm"
+          style={{ fontFamily: bodyFont }}
           title="Logout"
         >
           <LogOut size={16} />

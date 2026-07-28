@@ -61,20 +61,20 @@ export default function GSTLookup({
           )}
         </button>
         {fetched && !error && (
-          <span className="text-green-600 text-sm flex items-center gap-1">
+          <span className="text-accent text-sm flex items-center gap-1">
             <CheckCircle className="w-4 h-4" />
             Fetched
           </span>
         )}
         {error && (
-          <span className="text-red-600 text-sm flex items-center gap-1">
+          <span className="text-accent-dark text-sm flex items-center gap-1">
             <AlertCircle className="w-4 h-4" />
             {error}
           </span>
         )}
       </div>
       {fetched && !error && (
-        <p className="text-xs text-green-600">
+        <p className="text-xs text-accent">
           ✓ Details loaded successfully. Please review and save.
         </p>
       )}

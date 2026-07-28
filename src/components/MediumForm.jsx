@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
 import { Form, Input, Button, Space, message } from "antd";
+import { useTheme } from "../context/ThemeContext"; // ✅ dynamic theme
 
 export default function MediumForm({ initialData = {}, onSubmit, onClose, loading = false }) {
+  const theme = useTheme();
+  const bodyFont = theme?.font_body || "Montserrat";
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -22,14 +25,22 @@ export default function MediumForm({ initialData = {}, onSubmit, onClose, loadin
   };
 
   return (
-    <Form form={form} layout="vertical" onFinish={handleFinish} initialValues={initialData}>
+    <Form
+      form={form}
+      layout="vertical"
+      onFinish={handleFinish}
+      initialValues={initialData}
+      style={{ fontFamily: bodyFont }}
+    >
       <Form.Item name="name" label="Medium Name" rules={[{ required: true }]}>
-        <Input placeholder="e.g., English, Gujarati" />
+        <Input placeholder="e.g., English, Gujarati" style={{ fontFamily: bodyFont }} />
       </Form.Item>
       <Form.Item>
         <Space style={{ float: "right" }}>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button type="primary" htmlType="submit" loading={loading}>
+          <Button onClick={onClose} style={{ fontFamily: bodyFont }}>
+            Cancel
+          </Button>
+          <Button type="primary" htmlType="submit" loading={loading} style={{ fontFamily: bodyFont }}>
             {initialData.id ? "Update" : "Create"}
           </Button>
         </Space>

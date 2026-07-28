@@ -131,16 +131,16 @@ export default function CalendarPage() {
 
   return (
     <AdminLayout>
-      <div className="p-4 bg-white rounded-xl shadow-sm">
+      <div className="p-4 bg-white dark:bg-accent rounded-xl shadow-sm">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
-          <h1 className="text-2xl font-righteous text-primary-dark">Class Calendar</h1>
+          <h1 className="text-2xl font-heading text-primary">Class Calendar</h1>
           {/* Medium Filter */}
           <div className="flex items-center gap-2">
-            <Layers size={18} className="text-secondary" />
+            <Layers size={18} className="text-gray-600 dark:text-gray-400" />
             <select
               value={selectedMediumId}
               onChange={(e) => setSelectedMediumId(e.target.value)}
-              className="border border-secondary-light rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-primary outline-none"
+              className="border border-gray-300 dark:border-gray-600 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
             >
               <option value="">All Mediums</option>
               {mediums.map((m) => (
@@ -153,7 +153,7 @@ export default function CalendarPage() {
         </div>
 
         {isLoading ? (
-          <div className="text-center py-10">Loading calendar...</div>
+          <div className="text-center py-10 text-gray-500 dark:text-gray-400">Loading calendar...</div>
         ) : (
           <FullCalendar
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}

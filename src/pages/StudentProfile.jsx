@@ -42,6 +42,7 @@ import StudentForm from "../components/StudentForm";
 import FeeManagement from "../components/FeeManagement";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // 👈 import theme
 import { assignStudentToBatch } from "../services/batchAssignmentService";
 import BackButton from "../components/BackButton";
 import { generateAdmissionPdf } from "../utils/admissionPdf";
@@ -56,6 +57,7 @@ export default function StudentProfile({ studentId: propStudentId = null, standa
   const queryClient = useQueryClient();
 
   const { branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme(); // 👈 get theme colours
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
@@ -272,93 +274,90 @@ export default function StudentProfile({ studentId: propStudentId = null, standa
     enabled: !!targetId && !!branchId && !!financialYearId,
   });
 
-  // ── Hook: recent activities (clean and fixed) ──
-// ── Hook: recent activities (fixed) ──
-const { data: recentActivities = [] } = useQuery({
-  queryKey: ["student-activities", targetId, branchId, financialYearId],
-  queryFn: async () => {
-    if (!targetId) return [];
+  // ── Hook: recent activities ──
+  const { data: recentActivities = [] } = useQuery({
+    queryKey: ["student-activities", targetId, branchId, financialYearId],
+    queryFn: async () => {
+      if (!targetId) return [];
 
-    // 1. Fetch recent payments
-    let payments = [];
-    const { data: feeIds } = await supabase
-      .from("student_fees")
-      .select("id")
-      .eq("student_id", targetId);
-    const feeIdList = feeIds?.map(f => f.id) || [];
+      // 1. Fetch recent payments
+      let payments = [];
+      const { data: feeIds } = await supabase
+        .from("student_fees")
+        .select("id")
+        .eq("student_id", targetId);
+      const feeIdList = feeIds?.map(f => f.id) || [];
 
-    if (feeIdList.length > 0) {
-      let paymentQuery = supabase
-        .from("fee_payments")
-        .select("payment_date, amount, receipt_number")  // ✅ removed created_at
-        .in("student_fee_id", feeIdList)
-        .order("payment_date", { ascending: false })
-        .limit(3);
-      if (branchId) paymentQuery = paymentQuery.eq("branch_id", branchId);
-      if (financialYearId) paymentQuery = paymentQuery.eq("financial_year_id", financialYearId);
-      const { data } = await paymentQuery;
-      payments = data || [];
-    }
+      if (feeIdList.length > 0) {
+        let paymentQuery = supabase
+          .from("fee_payments")
+          .select("payment_date, amount, receipt_number")
+          .in("student_fee_id", feeIdList)
+          .order("payment_date", { ascending: false })
+          .limit(3);
+        if (branchId) paymentQuery = paymentQuery.eq("branch_id", branchId);
+        if (financialYearId) paymentQuery = paymentQuery.eq("financial_year_id", financialYearId);
+        const { data } = await paymentQuery;
+        payments = data || [];
+      }
 
-    // 2. Fetch recent attendance
-    let attendance = [];
-    const { data: batchRows } = await supabase
-      .from("student_batches")
-      .select("batch_id")
-      .eq("student_id", targetId)
-      .eq("status", "active");
-    const batchIds = batchRows?.map(b => b.batch_id) || [];
-    let sessionIds = [];
-    if (batchIds.length > 0) {
-      let sessionQuery = supabase
-        .from("attendance_sessions")
-        .select("id, attendance_date")
-        .in("batch_id", batchIds);
-      if (branchId) sessionQuery = sessionQuery.eq("branch_id", branchId);
-      if (financialYearId) sessionQuery = sessionQuery.eq("financial_year_id", financialYearId);
-      const { data: sessions } = await sessionQuery;
-      // Store attendance_date by session_id for later
-      const sessionDateMap = {};
-      sessions?.forEach(s => { sessionDateMap[s.id] = s.attendance_date; });
-      sessionIds = sessions?.map(s => s.id) || [];
-    }
-
-    if (sessionIds.length > 0) {
-      let attendanceQuery = supabase
-        .from("student_attendance")
-        .select("session_id, status")  // ✅ removed created_at
+      // 2. Fetch recent attendance
+      let attendance = [];
+      const { data: batchRows } = await supabase
+        .from("student_batches")
+        .select("batch_id")
         .eq("student_id", targetId)
-        .in("session_id", sessionIds)
-        .limit(3);  // order by session date instead
-      if (branchId) attendanceQuery = attendanceQuery.eq("branch_id", branchId);
-      if (financialYearId) attendanceQuery = attendanceQuery.eq("financial_year_id", financialYearId);
-      const { data } = await attendanceQuery;
-      attendance = data || [];
-    }
+        .eq("status", "active");
+      const batchIds = batchRows?.map(b => b.batch_id) || [];
+      let sessionIds = [];
+      if (batchIds.length > 0) {
+        let sessionQuery = supabase
+          .from("attendance_sessions")
+          .select("id, attendance_date")
+          .in("batch_id", batchIds);
+        if (branchId) sessionQuery = sessionQuery.eq("branch_id", branchId);
+        if (financialYearId) sessionQuery = sessionQuery.eq("financial_year_id", financialYearId);
+        const { data: sessions } = await sessionQuery;
+        const sessionDateMap = {};
+        sessions?.forEach(s => { sessionDateMap[s.id] = s.attendance_date; });
+        sessionIds = sessions?.map(s => s.id) || [];
+      }
 
-    // Combine and format
-    const activities = [];
-    payments.forEach(p => {
-      activities.push({
-        date: p.payment_date,
-        description: `Fee payment of ${formatCurrency(p.amount)} received`,
-        icon: <DollarOutlined style={{ color: '#52c41a' }} />,
-      });
-    });
-    attendance?.forEach(a => {
-      const date = sessionDateMap?.[a.session_id] || null;
-      activities.push({
-        date: date || new Date().toISOString().split('T')[0],
-        description: `Attendance marked as ${a.status}`,
-        icon: a.status === 'Present' ? <CheckCircleOutlined style={{ color: '#52c41a' }} /> : <CloseCircleOutlined style={{ color: '#ff4d4f' }} />,
-      });
-    });
+      if (sessionIds.length > 0) {
+        let attendanceQuery = supabase
+          .from("student_attendance")
+          .select("session_id, status")
+          .eq("student_id", targetId)
+          .in("session_id", sessionIds)
+          .limit(3);
+        if (branchId) attendanceQuery = attendanceQuery.eq("branch_id", branchId);
+        if (financialYearId) attendanceQuery = attendanceQuery.eq("financial_year_id", financialYearId);
+        const { data } = await attendanceQuery;
+        attendance = data || [];
+      }
 
-    activities.sort((a, b) => new Date(b.date) - new Date(a.date));
-    return activities.slice(0, 5);
-  },
-  enabled: !!targetId && !!branchId && !!financialYearId,
-});
+      const activities = [];
+      payments.forEach(p => {
+        activities.push({
+          date: p.payment_date,
+          description: `Fee payment of ${formatCurrency(p.amount)} received`,
+          icon: <DollarOutlined style={{ color: theme.accent_color }} />,
+        });
+      });
+      attendance?.forEach(a => {
+        const date = sessionDateMap?.[a.session_id] || null;
+        activities.push({
+          date: date || new Date().toISOString().split('T')[0],
+          description: `Attendance marked as ${a.status}`,
+          icon: a.status === 'Present' ? <CheckCircleOutlined style={{ color: theme.accent_color }} /> : <CloseCircleOutlined style={{ color: theme.accent_dark_color }} />,
+        });
+      });
+
+      activities.sort((a, b) => new Date(b.date) - new Date(a.date));
+      return activities.slice(0, 5);
+    },
+    enabled: !!targetId && !!branchId && !!financialYearId,
+  });
 
   // ── Hook: available batches ──
   const { data: availableBatches = [] } = useQuery({
@@ -383,10 +382,10 @@ const { data: recentActivities = [] } = useQuery({
 
   if (standalone && !isLoading && !targetId && !urlId) {
     return (
-      <div style={{ textAlign: "center", padding: 40 }}>
-        <h2>No Student Selected</h2>
+      <div style={{ textAlign: "center", padding: 40 }} className="text-gray-700 dark:text-gray-300">
+        <h2 className="text-primary font-heading">No Student Selected</h2>
         <p>Please select a student from the list to view their profile.</p>
-        <Button type="primary" onClick={() => navigate("/students")}>
+        <Button type="primary" className="bg-primary hover:bg-primary-light" onClick={() => navigate("/students")}>
           Go to Students
         </Button>
       </div>
@@ -395,22 +394,24 @@ const { data: recentActivities = [] } = useQuery({
 
   if (!standalone && !targetId) {
     return (
-      <div style={{ textAlign: "center", padding: 40 }}>
-        <Text type="secondary">Select a student from the dropdown above.</Text>
+      <div style={{ textAlign: "center", padding: 40 }} className="text-gray-500 dark:text-gray-400">
+        <Text type="secondary" className="text-gray-500 dark:text-gray-400">
+          Select a student from the dropdown above.
+        </Text>
       </div>
     );
   }
 
   if (isLoading) {
-    return <div style={{ textAlign: "center", padding: 40 }}>Loading…</div>;
+    return <div style={{ textAlign: "center", padding: 40 }} className="text-gray-500 dark:text-gray-400">Loading…</div>;
   }
 
   if (isError) {
-    return <div style={{ textAlign: "center", padding: 40 }}>Error loading student: {studentError?.message}</div>;
+    return <div style={{ textAlign: "center", padding: 40 }} className="text-accent-dark">Error loading student: {studentError?.message}</div>;
   }
 
   if (!student) {
-    return <div style={{ textAlign: "center", padding: 40 }}>Student not found.</div>;
+    return <div style={{ textAlign: "center", padding: 40 }} className="text-gray-500 dark:text-gray-400">Student not found.</div>;
   }
 
   // ── Batch assignment handler ──
@@ -440,31 +441,31 @@ const { data: recentActivities = [] } = useQuery({
       label: "Collect Fee",
       icon: <DollarOutlined />,
       onClick: () => setFeeDrawerOpen(true),
-      color: "green",
+      className: "bg-accent hover:bg-accent-light",
     },
     {
       label: "Mark Attendance",
       icon: <CalendarOutlined />,
       onClick: () => navigate(`/attendance/mark?student=${targetId}`),
-      color: "blue",
+      className: "bg-primary hover:bg-primary-light",
     },
     {
       label: "Send Message",
       icon: <MessageOutlined />,
       onClick: () => message.info("Send message feature coming soon"),
-      color: "purple",
+      className: "bg-primary-dark hover:bg-primary-dark",
     },
     {
       label: "Edit Profile",
       icon: <EditOutlined />,
       onClick: () => setEditingStudent(student),
-      color: "orange",
+      className: "bg-accent-dark hover:bg-accent-dark",
     },
     {
       label: "Admission Form",
       icon: <FileTextOutlined />,
       onClick: () => generateAdmissionPdf(student.id),
-      color: "purple",
+      className: "bg-primary hover:bg-primary-light",
     },
   ];
 
@@ -477,7 +478,7 @@ const { data: recentActivities = [] } = useQuery({
         <div>
           <Row gutter={[16, 16]}>
             <Col span={24}>
-              <Card title="Basic Details" size="small">
+              <Card title="Basic Details" size="small" className="bg-white dark:bg-accent border-gray-200 dark:border-gray-700">
                 <Descriptions bordered column={{ xs: 1, sm: 2 }} size="small">
                   <Descriptions.Item label="Gender">{student.gender || "—"}</Descriptions.Item>
                   <Descriptions.Item label="Date of Birth">{student.dob || "—"}</Descriptions.Item>
@@ -494,7 +495,7 @@ const { data: recentActivities = [] } = useQuery({
               </Card>
             </Col>
             <Col span={24}>
-              <Card title="Parents / Guardians" size="small">
+              <Card title="Parents / Guardians" size="small" className="bg-white dark:bg-accent border-gray-200 dark:border-gray-700">
                 {parents.length ? (
                   <Descriptions bordered size="small">
                     {parents.map((p, idx) => (
@@ -505,21 +506,21 @@ const { data: recentActivities = [] } = useQuery({
                     ))}
                   </Descriptions>
                 ) : (
-                  <Text type="secondary">No parents linked</Text>
+                  <Text type="secondary" className="text-gray-500 dark:text-gray-400">No parents linked</Text>
                 )}
               </Card>
             </Col>
           </Row>
-          <Card title="Recent Activity" size="small" style={{ marginTop: 16 }}>
+          <Card title="Recent Activity" size="small" style={{ marginTop: 16 }} className="bg-white dark:bg-accent border-gray-200 dark:border-gray-700">
             {recentActivities.length ? (
               <Timeline
                 items={recentActivities.map((act) => ({
-                  dot: act.icon || <CalendarOutlined />,
+                  dot: act.icon || <CalendarOutlined style={{ color: theme.primary_color }} />,
                   children: (
                     <div>
                       <Text strong>{act.description}</Text>
                       <br />
-                      <Text type="secondary" style={{ fontSize: 12 }}>
+                      <Text type="secondary" style={{ fontSize: 12 }} className="text-gray-500 dark:text-gray-400">
                         {new Date(act.date).toLocaleDateString("en-IN", {
                           day: "numeric",
                           month: "short",
@@ -533,7 +534,7 @@ const { data: recentActivities = [] } = useQuery({
                 }))}
               />
             ) : (
-              <Text type="secondary">No recent activity</Text>
+              <Text type="secondary" className="text-gray-500 dark:text-gray-400">No recent activity</Text>
             )}
           </Card>
         </div>
@@ -548,10 +549,11 @@ const { data: recentActivities = [] } = useQuery({
             title="Current Batches"
             size="small"
             extra={
-              <Button type="link" icon={<SwapOutlined />} onClick={() => setBatchDrawerOpen(true)}>
+              <Button type="link" icon={<SwapOutlined />} onClick={() => setBatchDrawerOpen(true)} className="text-primary">
                 Change
               </Button>
             }
+            className="bg-white dark:bg-accent border-gray-200 dark:border-gray-700"
           >
             {batches.length ? (
               <ul style={{ paddingLeft: 18 }}>
@@ -562,20 +564,20 @@ const { data: recentActivities = [] } = useQuery({
                 ))}
               </ul>
             ) : (
-              <Text type="secondary">Not assigned</Text>
+              <Text type="secondary" className="text-gray-500 dark:text-gray-400">Not assigned</Text>
             )}
           </Card>
-          <Card title="Attendance" size="small">
+          <Card title="Attendance" size="small" className="bg-white dark:bg-accent border-gray-200 dark:border-gray-700">
             <Progress
               percent={Number(attendanceStats.percentage)}
               size="small"
               status={Number(attendanceStats.percentage) > 75 ? "active" : "exception"}
             />
-            <Text type="secondary">
+            <Text type="secondary" className="text-gray-500 dark:text-gray-400">
               {attendanceStats.presentCount} present / {attendanceStats.totalSessions} sessions
             </Text>
           </Card>
-          <Card title="Recent Results" size="small">
+          <Card title="Recent Results" size="small" className="bg-white dark:bg-accent border-gray-200 dark:border-gray-700">
             {recentResults.length ? (
               <Table
                 dataSource={recentResults}
@@ -589,9 +591,9 @@ const { data: recentActivities = [] } = useQuery({
                 pagination={false}
                 size="small"
               />
-            ) : <Text type="secondary">No exam results yet</Text>}
+            ) : <Text type="secondary" className="text-gray-500 dark:text-gray-400">No exam results yet</Text>}
           </Card>
-          <Card title="Progress Evaluations" size="small">
+          <Card title="Progress Evaluations" size="small" className="bg-white dark:bg-accent border-gray-200 dark:border-gray-700">
             {progressEvaluations.length ? (
               <Table
                 dataSource={progressEvaluations}
@@ -604,7 +606,7 @@ const { data: recentActivities = [] } = useQuery({
                 pagination={false}
                 size="small"
               />
-            ) : <Text type="secondary">No evaluations yet</Text>}
+            ) : <Text type="secondary" className="text-gray-500 dark:text-gray-400">No evaluations yet</Text>}
           </Card>
         </div>
       ),
@@ -618,24 +620,35 @@ const { data: recentActivities = [] } = useQuery({
             title="Fee Summary"
             size="small"
             extra={
-              <Button type="link" icon={<DollarOutlined />} onClick={() => setFeeDrawerOpen(true)}>
+              <Button type="link" icon={<DollarOutlined />} onClick={() => setFeeDrawerOpen(true)} className="text-primary">
                 Manage
               </Button>
             }
+            className="bg-white dark:bg-accent border-gray-200 dark:border-gray-700"
           >
             <Row gutter={16}>
               <Col span={8}>
                 <Statistic title="Total Fee" value={feeSummary.totalFee} prefix="₹" />
               </Col>
               <Col span={8}>
-                <Statistic title="Paid" value={feeSummary.totalPaid} prefix="₹" valueStyle={{ color: '#3f8600' }} />
+                <Statistic
+                  title="Paid"
+                  value={feeSummary.totalPaid}
+                  prefix="₹"
+                  valueStyle={{ color: theme.accent_color }}
+                />
               </Col>
               <Col span={8}>
-                <Statistic title="Pending" value={feeSummary.pending} prefix="₹" valueStyle={{ color: '#cf1322' }} />
+                <Statistic
+                  title="Pending"
+                  value={feeSummary.pending}
+                  prefix="₹"
+                  valueStyle={{ color: theme.accent_dark_color }}
+                />
               </Col>
             </Row>
             <div style={{ marginTop: 16 }}>
-              <Button type="primary" onClick={() => setFeeDrawerOpen(true)}>View Full Details</Button>
+              <Button type="primary" className="bg-primary hover:bg-primary-light" onClick={() => setFeeDrawerOpen(true)}>View Full Details</Button>
             </div>
           </Card>
         </div>
@@ -645,10 +658,10 @@ const { data: recentActivities = [] } = useQuery({
       key: "documents",
       label: "Documents",
       children: (
-        <div style={{ textAlign: "center", padding: 20 }}>
-          <FileTextOutlined style={{ fontSize: 48, color: '#1890ff' }} />
-          <p style={{ marginTop: 8 }}>{documentCount} files uploaded</p>
-          <Button type="primary" onClick={() => navigate(`/student-documents?student=${targetId}`)}>
+        <div style={{ textAlign: "center", padding: 20 }} className="bg-white dark:bg-accent border-gray-200 dark:border-gray-700 rounded-xl">
+          <FileTextOutlined style={{ fontSize: 48, color: theme.primary_color }} />
+          <p style={{ marginTop: 8 }} className="text-gray-700 dark:text-gray-300">{documentCount} files uploaded</p>
+          <Button type="primary" className="bg-primary hover:bg-primary-light" onClick={() => navigate(`/student-documents?student=${targetId}`)}>
             Manage Documents
           </Button>
         </div>
@@ -660,12 +673,14 @@ const { data: recentActivities = [] } = useQuery({
     <div>
       {standalone && <BackButton to="/students" label="Students" />}
 
-      <Card style={{ marginBottom: 16 }} bodyStyle={{ padding: 16 }}>
+      <Card style={{ marginBottom: 16 }} bodyStyle={{ padding: 16 }} className="bg-white dark:bg-accent border-gray-200 dark:border-gray-700">
         <Row align="middle" gutter={[16, 16]}>
           <Col>
             <Badge
               count={student.status === "active" ? "Active" : "Inactive"}
-              style={{ backgroundColor: student.status === "active" ? "#52c41a" : "#faad14" }}
+              style={{
+                backgroundColor: student.status === "active" ? theme.accent_color : theme.accent_dark_color,
+              }}
               offset={[-10, 80]}
             >
               <Avatar size={80} src={student.photo_url} icon={!student.photo_url && <UserOutlined />} />
@@ -673,7 +688,7 @@ const { data: recentActivities = [] } = useQuery({
           </Col>
           <Col flex="auto">
             <div>
-              <Title level={4} style={{ margin: 0 }}>
+              <Title level={4} style={{ margin: 0 }} className="text-primary font-heading">
                 {student.first_name} {student.last_name}
               </Title>
               <Space wrap style={{ marginTop: 4 }}>
@@ -695,13 +710,12 @@ const { data: recentActivities = [] } = useQuery({
             <Space wrap>
               {quickActions.map((action) => (
                 <Tooltip title={action.label} key={action.label}>
-                  <Button
-                    type="primary"
-                    shape="circle"
-                    icon={action.icon}
+                  <button
                     onClick={action.onClick}
-                    style={{ background: action.color || "#1890ff" }}
-                  />
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-white ${action.className}`}
+                  >
+                    {action.icon}
+                  </button>
                 </Tooltip>
               ))}
             </Space>
@@ -709,7 +723,7 @@ const { data: recentActivities = [] } = useQuery({
         </Row>
       </Card>
 
-      <Card>
+      <Card className="bg-white dark:bg-accent border-gray-200 dark:border-gray-700">
         <Tabs defaultActiveKey="personal" items={tabItems} />
       </Card>
 
@@ -727,7 +741,7 @@ const { data: recentActivities = [] } = useQuery({
         footer={
           <Space style={{ float: "right" }}>
             <Button onClick={() => setBatchDrawerOpen(false)}>Cancel</Button>
-            <Button type="primary" onClick={handleBatchAssign} loading={assigningBatch} disabled={!selectedBatchId}>
+            <Button type="primary" className="bg-primary hover:bg-primary-light" onClick={handleBatchAssign} loading={assigningBatch} disabled={!selectedBatchId}>
               Assign
             </Button>
           </Space>

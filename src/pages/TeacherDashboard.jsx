@@ -1,3 +1,4 @@
+// src/pages/TeacherDashboard.jsx
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
@@ -17,18 +18,18 @@ const { Title, Text } = Typography;
 
 export default function TeacherDashboard() {
   const { user, profile } = useAuth();
-  const { theme } = useOrg();
+  const { branch, selectedFinancialYear, theme } = useOrg();  // theme may be inside useOrg or separate – adjust if needed
 
+  // Fallback theme
   const primaryColor = theme?.primary_color || "#0D47A1";
-  const headingFont = theme?.font_heading || "Righteous";
-  const bodyFont = theme?.font_body || "Montserrat";
   const accentColor = theme?.accent_color || "#D15839";
+  const headingFont = theme?.font_heading || "var(--font-heading)";
+  const bodyFont = theme?.font_body || "var(--font-body)";
 
-  const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
-  // ── 1. Teacher ID ───────────────────────────────────────────
+  // ── 1. Teacher ID ────────────────────────────────────────
   const { data: teacherId, isLoading: teacherLoading } = useQuery({
     queryKey: ["teacher-id", user?.id, branchId, financialYearId],
     queryFn: async () => {
@@ -47,7 +48,7 @@ export default function TeacherDashboard() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // ── 2. Assigned batches ────────────────────────────────────
+  // ── 2. Assigned batches ──────────────────────────────────
   const { data: batches = [], isLoading: batchesLoading } = useQuery({
     queryKey: ["teacher-batches", teacherId, branchId, financialYearId],
     queryFn: async () => {
@@ -68,7 +69,7 @@ export default function TeacherDashboard() {
   const batchIds = batches.map((b) => b.batch_id);
   const today = new Date().toISOString().split("T")[0];
 
-  // ── 3. Today's sessions ────────────────────────────────────
+  // ── 3. Today's sessions ──────────────────────────────────
   const { data: todaySessions = [] } = useQuery({
     queryKey: ["teacher-today-sessions", batchIds, today, branchId, financialYearId],
     queryFn: async () => {
@@ -85,7 +86,7 @@ export default function TeacherDashboard() {
     enabled: batchIds.length > 0 && !!branchId && !!financialYearId,
   });
 
-  // ── 4. Upcoming homework ──────────────────────────────────
+  // ── 4. Upcoming homework ─────────────────────────────────
   const { data: homeworks = [] } = useQuery({
     queryKey: ["teacher-homeworks", batchIds, today, branchId, financialYearId],
     queryFn: async () => {
@@ -104,7 +105,7 @@ export default function TeacherDashboard() {
     enabled: batchIds.length > 0 && !!branchId && !!financialYearId,
   });
 
-  // ── 5. Upcoming exams ──────────────────────────────────────
+  // ── 5. Upcoming exams ────────────────────────────────────
   const { data: exams = [] } = useQuery({
     queryKey: ["teacher-exams", batchIds, today, branchId, financialYearId],
     queryFn: async () => {
@@ -123,7 +124,7 @@ export default function TeacherDashboard() {
     enabled: batchIds.length > 0 && !!branchId && !!financialYearId,
   });
 
-  // ── 6. Attendance trend (last 30 days) ──────────────────
+  // ── 6. Attendance trend (last 30 days) ────────────────────
   const { data: attendanceTrend = [] } = useQuery({
     queryKey: ["teacher-attendance-trend", batchIds, branchId, financialYearId],
     queryFn: async () => {
@@ -139,7 +140,6 @@ export default function TeacherDashboard() {
         .order("attendance_date", { ascending: true });
       if (branchId) sessionsQuery = sessionsQuery.eq("branch_id", branchId);
       if (financialYearId) sessionsQuery = sessionsQuery.eq("financial_year_id", financialYearId);
-
       const { data: sessions } = await sessionsQuery;
       if (!sessions?.length) return [];
 
@@ -150,7 +150,6 @@ export default function TeacherDashboard() {
         .in("session_id", sessionIds);
       if (branchId) marksQuery = marksQuery.eq("branch_id", branchId);
       if (financialYearId) marksQuery = marksQuery.eq("financial_year_id", financialYearId);
-
       const { data: marks } = await marksQuery;
 
       const byDate = {};
@@ -196,7 +195,6 @@ export default function TeacherDashboard() {
     queryKey: ["teacher-salary-info", teacherId, branchId, financialYearId],
     queryFn: async () => {
       if (!teacherId || !branchId || !financialYearId) return { lastSalary: null, lastSalaryDate: null, pendingLeaves: 0 };
-
       let paymentsQuery = supabase
         .from("salary_payments")
         .select("net_amount, payment_date")
@@ -227,29 +225,15 @@ export default function TeacherDashboard() {
 
   const isLoading = teacherLoading || batchesLoading;
 
-  const cardStyle = {
-    border: `1px solid ${primaryColor}20`,
-    borderRadius: 12,
-    height: '100%',
-  };
-
-  const statStyle = (color) => ({
-    color: color || primaryColor,
-    fontFamily: headingFont,
-  });
-
   return (
-    <div style={{ padding: '16px' }}>
+    <div className="p-4 space-y-6">
       {/* Header */}
       <Row gutter={[16, 16]} align="middle" justify="space-between">
         <Col>
-          <Title
-            level={2}
-            style={{ fontFamily: headingFont, color: primaryColor, marginBottom: 4 }}
-          >
-            Welcome, {profile?.full_name || "Teacher"}!
+          <Title level={2} className="font-heading text-primary !mb-1">
+            Welcome, {profile?.full_name || user?.email || "Teacher"}!
           </Title>
-          <Text type="secondary" style={{ fontFamily: bodyFont }}>
+          <Text className="text-gray-500 dark:text-gray-400 font-body">
             Your teaching dashboard
           </Text>
         </Col>
@@ -257,7 +241,7 @@ export default function TeacherDashboard() {
           <Col>
             <Badge count={unreadCount} offset={[10, 0]}>
               <Link to="/notifications">
-                <Button icon={<Bell size={16} />} style={{ borderColor: accentColor }}>
+                <Button icon={<Bell size={16} />} className="border-accent text-accent font-body">
                   Notifications
                 </Button>
               </Link>
@@ -270,163 +254,116 @@ export default function TeacherDashboard() {
       <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
         <Col xs={12} sm={6}>
           <Link to="/attendance">
-            <Card
-              variant="outlined"
-              style={cardStyle}
-              styles={{ body: { padding: '16px', display: 'flex', alignItems: 'center', gap: 12 } }}
-            >
-              <CalendarCheck size={24} style={{ color: primaryColor }} />
-              <span style={{ fontFamily: bodyFont, fontWeight: 500 }}>Mark Attendance</span>
+            <Card variant="outlined" className="border-primary/20 !p-4 flex items-center gap-3">
+              <CalendarCheck size={24} className="text-primary" />
+              <span className="font-body font-medium text-gray-700 dark:text-gray-200">Mark Attendance</span>
             </Card>
           </Link>
         </Col>
         <Col xs={12} sm={6}>
           <Link to="/homework">
-            <Card
-              variant="outlined"
-              style={cardStyle}
-              styles={{ body: { padding: '16px', display: 'flex', alignItems: 'center', gap: 12 } }}
-            >
-              <Plus size={24} style={{ color: primaryColor }} />
-              <span style={{ fontFamily: bodyFont, fontWeight: 500 }}>Add Homework</span>
+            <Card variant="outlined" className="border-primary/20 !p-4 flex items-center gap-3">
+              <Plus size={24} className="text-primary" />
+              <span className="font-body font-medium text-gray-700 dark:text-gray-200">Add Homework</span>
             </Card>
           </Link>
         </Col>
         <Col xs={12} sm={6}>
           <Link to="/exams">
-            <Card
-              variant="outlined"
-              style={cardStyle}
-              styles={{ body: { padding: '16px', display: 'flex', alignItems: 'center', gap: 12 } }}
-            >
-              <ClipboardCheck size={24} style={{ color: primaryColor }} />
-              <span style={{ fontFamily: bodyFont, fontWeight: 500 }}>Create Exam</span>
+            <Card variant="outlined" className="border-primary/20 !p-4 flex items-center gap-3">
+              <ClipboardCheck size={24} className="text-primary" />
+              <span className="font-body font-medium text-gray-700 dark:text-gray-200">Create Exam</span>
             </Card>
           </Link>
         </Col>
         <Col xs={12} sm={6}>
           <Link to="/online-classes">
-            <Card
-              variant="outlined"
-              style={cardStyle}
-              styles={{ body: { padding: '16px', display: 'flex', alignItems: 'center', gap: 12 } }}
-            >
-              <Video size={24} style={{ color: primaryColor }} />
-              <span style={{ fontFamily: bodyFont, fontWeight: 500 }}>Online Classes</span>
+            <Card variant="outlined" className="border-primary/20 !p-4 flex items-center gap-3">
+              <Video size={24} className="text-primary" />
+              <span className="font-body font-medium text-gray-700 dark:text-gray-200">Online Classes</span>
             </Card>
           </Link>
         </Col>
       </Row>
 
       {/* Stats */}
-      <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
+      <Row gutter={[16, 16]}>
         <Col xs={12} sm={6}>
-          <Card variant="outlined" style={cardStyle}>
+          <Card variant="outlined" className="border-primary/20">
             <Statistic
-              title={<span style={{ fontFamily: bodyFont }}>My Batches</span>}
+              title={<span className="font-body text-gray-500 dark:text-gray-400">My Batches</span>}
               value={isLoading ? '...' : batches.length}
-              prefix={<Layers size={20} style={{ color: primaryColor }} />}
-              styles={{ content: statStyle(primaryColor) }}
+              prefix={<Layers size={20} className="text-primary" />}
+              valueStyle={{ color: primaryColor, fontFamily: headingFont }}
             />
           </Card>
         </Col>
         <Col xs={12} sm={6}>
-          <Card variant="outlined" style={cardStyle}>
+          <Card variant="outlined" className="border-primary/20">
             <Statistic
-              title={<span style={{ fontFamily: bodyFont }}>Today's Sessions</span>}
+              title={<span className="font-body text-gray-500 dark:text-gray-400">Today's Sessions</span>}
               value={isLoading ? '...' : todaySessions.length}
-              prefix={<CalendarCheck size={20} style={{ color: primaryColor }} />}
-              styles={{ content: statStyle(primaryColor) }}
+              prefix={<CalendarCheck size={20} className="text-primary" />}
+              valueStyle={{ color: primaryColor, fontFamily: headingFont }}
             />
           </Card>
         </Col>
         <Col xs={12} sm={6}>
-          <Card variant="outlined" style={cardStyle}>
+          <Card variant="outlined" className="border-primary/20">
             <Statistic
-              title={<span style={{ fontFamily: bodyFont }}>Upcoming Homework</span>}
+              title={<span className="font-body text-gray-500 dark:text-gray-400">Upcoming Homework</span>}
               value={isLoading ? '...' : homeworks.length}
-              prefix={<BookOpen size={20} style={{ color: primaryColor }} />}
-              styles={{ content: statStyle(primaryColor) }}
+              prefix={<BookOpen size={20} className="text-primary" />}
+              valueStyle={{ color: primaryColor, fontFamily: headingFont }}
             />
           </Card>
         </Col>
         <Col xs={12} sm={6}>
-          <Card variant="outlined" style={cardStyle}>
+          <Card variant="outlined" className="border-primary/20">
             <Statistic
-              title={<span style={{ fontFamily: bodyFont }}>Upcoming Exams</span>}
+              title={<span className="font-body text-gray-500 dark:text-gray-400">Upcoming Exams</span>}
               value={isLoading ? '...' : exams.length}
-              prefix={<Award size={20} style={{ color: primaryColor }} />}
-              styles={{ content: statStyle(primaryColor) }}
+              prefix={<Award size={20} className="text-primary" />}
+              valueStyle={{ color: primaryColor, fontFamily: headingFont }}
             />
           </Card>
         </Col>
       </Row>
 
       {/* Salary & Leave + Chart */}
-      <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
+      <Row gutter={[16, 16]}>
         <Col xs={24} lg={8}>
-          <Card
-            variant="outlined"
-            title={
-              <span style={{ fontFamily: headingFont, color: primaryColor }}>
-                <Wallet size={18} style={{ marginRight: 8 }} /> Salary & Leave
-              </span>
-            }
-            style={cardStyle}
-          >
-            <div style={{ fontFamily: bodyFont }}>
+          <Card variant="outlined" className="border-primary/20" title={<span className="font-heading text-primary"><Wallet size={18} className="inline mr-2" /> Salary & Leave</span>}>
+            <div className="font-body space-y-2">
               {salaryInfo?.lastSalary ? (
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ color: '#888' }}>Last Salary</span>
-                  <span style={{ fontWeight: 600, color: '#2E7D32' }}>
-                    ₹{Number(salaryInfo.lastSalary).toLocaleString()}
-                  </span>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">Last Salary</span>
+                  <span className="font-semibold text-accent">₹{Number(salaryInfo.lastSalary).toLocaleString()}</span>
                 </div>
               ) : (
-                <p style={{ color: '#888', fontSize: 14 }}>No salary records yet.</p>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">No salary records yet.</p>
               )}
               {salaryInfo?.lastSalaryDate && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ color: '#888' }}>Paid On</span>
-                  <span style={{ fontWeight: 500 }}>{salaryInfo.lastSalaryDate}</span>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">Paid On</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-200">{salaryInfo.lastSalaryDate}</span>
                 </div>
               )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ color: '#888' }}>Pending Leaves</span>
-                <span style={{ fontWeight: 600, color: salaryInfo?.pendingLeaves > 0 ? '#ED6C02' : '#2E7D32' }}>
-                  {salaryInfo?.pendingLeaves ?? 0}
-                </span>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Pending Leaves</span>
+                <span className={`font-semibold ${salaryInfo?.pendingLeaves > 0 ? 'text-accent' : 'text-accent'}`}>{salaryInfo?.pendingLeaves ?? 0}</span>
               </div>
-              <Space orientation="horizontal" style={{ marginTop: 12 }}>
-                <Link to="/teacher/salary">
-                  <Button size="small" style={{ borderColor: primaryColor, color: primaryColor }}>
-                    My Salary
-                  </Button>
-                </Link>
-                <Link to="/teacher/leaves">
-                  <Button size="small" style={{ borderColor: primaryColor, color: primaryColor }}>
-                    My Leaves
-                  </Button>
-                </Link>
+              <Space className="mt-3">
+                <Link to="/teacher/salary"><Button size="small" className="border-primary text-primary font-body">My Salary</Button></Link>
+                <Link to="/teacher/leaves"><Button size="small" className="border-primary text-primary font-body">My Leaves</Button></Link>
               </Space>
             </div>
           </Card>
         </Col>
-
         <Col xs={24} lg={16}>
-          <Card
-            variant="outlined"
-            title={
-              <span style={{ fontFamily: headingFont, color: primaryColor }}>
-                <TrendingUp size={18} style={{ marginRight: 8 }} /> Attendance Trend (Last 30 Days)
-              </span>
-            }
-            style={cardStyle}
-          >
+          <Card variant="outlined" className="border-primary/20" title={<span className="font-heading text-primary"><TrendingUp size={18} className="inline mr-2" /> Attendance Trend (Last 30 Days)</span>}>
             {attendanceTrend.length === 0 ? (
-              <p style={{ textAlign: 'center', padding: '20px 0', color: '#888', fontFamily: bodyFont }}>
-                No attendance data yet.
-              </p>
+              <p className="text-center py-5 text-gray-500 dark:text-gray-400 font-body">No attendance data yet.</p>
             ) : (
               <ResponsiveContainer width="100%" height={200}>
                 <LineChart data={attendanceTrend}>
@@ -434,14 +371,7 @@ export default function TeacherDashboard() {
                   <XAxis dataKey="date" fontSize={11} />
                   <YAxis domain={[0, 100]} fontSize={11} unit="%" />
                   <Tooltip formatter={(value) => `${value}%`} />
-                  <Line
-                    type="monotone"
-                    dataKey="attendance"
-                    stroke={primaryColor}
-                    strokeWidth={2}
-                    dot={false}
-                    name="Attendance %"
-                  />
+                  <Line type="monotone" dataKey="attendance" stroke={primaryColor} strokeWidth={2} dot={false} name="Attendance %" />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -449,143 +379,68 @@ export default function TeacherDashboard() {
         </Col>
       </Row>
 
-      {/* Lists Section */}
-      <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
+      {/* Lists */}
+      <Row gutter={[16, 16]}>
         <Col xs={24} lg={12}>
-          <Card
-            variant="outlined"
-            title={
-              <span style={{ fontFamily: headingFont, color: primaryColor }}>
-                <Layers size={18} style={{ marginRight: 8 }} /> My Batches
-              </span>
-            }
-            style={cardStyle}
-          >
+          <Card variant="outlined" className="border-primary/20" title={<span className="font-heading text-primary"><Layers size={18} className="inline mr-2" /> My Batches</span>}>
             {isLoading ? (
-              <p style={{ fontFamily: bodyFont, color: '#888' }}>Loading...</p>
+              <p className="font-body text-gray-500 dark:text-gray-400">Loading...</p>
             ) : batches.length === 0 ? (
-              <p style={{ fontFamily: bodyFont, color: '#888' }}>No batches assigned.</p>
+              <p className="font-body text-gray-500 dark:text-gray-400">No batches assigned.</p>
             ) : (
-              <List
-                dataSource={batches}
-                renderItem={(item) => (
-                  <List.Item>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontFamily: bodyFont }}>
-                      <span>
-                        {item.batches?.batch_name} ({item.batches?.courses?.course_name})
-                      </span>
-                      <span style={{ color: '#888' }}>
-                        {item.batches?.start_time} – {item.batches?.end_time}
-                      </span>
-                    </div>
-                  </List.Item>
-                )}
-              />
+              <List dataSource={batches} renderItem={(item) => (
+                <List.Item>
+                  <div className="flex justify-between w-full font-body text-sm text-gray-700 dark:text-gray-200">
+                    <span>{item.batches?.batch_name} ({item.batches?.courses?.course_name})</span>
+                    <span className="text-gray-500 dark:text-gray-400">{item.batches?.start_time} – {item.batches?.end_time}</span>
+                  </div>
+                </List.Item>
+              )} />
             )}
           </Card>
         </Col>
-
         <Col xs={24} lg={12}>
-          <Card
-            variant="outlined"
-            title={
-              <span style={{ fontFamily: headingFont, color: primaryColor }}>
-                <CalendarCheck size={18} style={{ marginRight: 8 }} /> Today's Sessions
-              </span>
-            }
-            style={cardStyle}
-          >
+          <Card variant="outlined" className="border-primary/20" title={<span className="font-heading text-primary"><CalendarCheck size={18} className="inline mr-2" /> Today's Sessions</span>}>
             {todaySessions.length === 0 ? (
-              <p style={{ fontFamily: bodyFont, color: '#888' }}>No sessions today.</p>
+              <p className="font-body text-gray-500 dark:text-gray-400">No sessions today.</p>
             ) : (
-              <List
-                dataSource={todaySessions}
-                renderItem={(item) => (
-                  <List.Item
-                    actions={[
-                      <Link to={`/attendance/mark/${item.id}`} style={{ color: primaryColor }}>
-                        Mark
-                      </Link>
-                    ]}
-                  >
-                    <div style={{ fontFamily: bodyFont }}>
-                      {item.batches?.batch_name} – {item.topic_covered || "No topic"}
-                    </div>
-                  </List.Item>
-                )}
-              />
+              <List dataSource={todaySessions} renderItem={(item) => (
+                <List.Item actions={[<Link to={`/attendance/mark/${item.id}`} className="text-primary font-body">Mark</Link>]}>
+                  <div className="font-body text-sm text-gray-700 dark:text-gray-200">{item.batches?.batch_name} – {item.topic_covered || "No topic"}</div>
+                </List.Item>
+              )} />
             )}
           </Card>
         </Col>
-
         <Col xs={24} lg={12}>
-          <Card
-            variant="outlined"
-            title={
-              <span style={{ fontFamily: headingFont, color: primaryColor }}>
-                <BookOpen size={18} style={{ marginRight: 8 }} /> Upcoming Homework
-              </span>
-            }
-            extra={
-              <Link to="/homework" style={{ color: primaryColor, fontSize: 12 }}>
-                View all →
-              </Link>
-            }
-            style={cardStyle}
-          >
+          <Card variant="outlined" className="border-primary/20" title={<span className="font-heading text-primary"><BookOpen size={18} className="inline mr-2" /> Upcoming Homework</span>} extra={<Link to="/homework" className="text-primary font-body text-xs">View all →</Link>}>
             {homeworks.length === 0 ? (
-              <p style={{ fontFamily: bodyFont, color: '#888' }}>No upcoming homework.</p>
+              <p className="font-body text-gray-500 dark:text-gray-400">No upcoming homework.</p>
             ) : (
-              <List
-                dataSource={homeworks}
-                renderItem={(item) => (
-                  <List.Item>
-                    <div style={{ fontFamily: bodyFont }}>
-                      <div>
-                        <strong>{item.title}</strong> – {item.subjects?.subject_name} ({item.batches?.batch_name})
-                      </div>
-                      <div style={{ color: '#888', fontSize: 12 }}>Due: {item.due_date}</div>
-                    </div>
-                  </List.Item>
-                )}
-              />
+              <List dataSource={homeworks} renderItem={(item) => (
+                <List.Item>
+                  <div className="font-body text-sm">
+                    <div className="text-gray-800 dark:text-gray-100"><strong>{item.title}</strong> – {item.subjects?.subject_name} ({item.batches?.batch_name})</div>
+                    <div className="text-gray-500 dark:text-gray-400 text-xs">Due: {item.due_date}</div>
+                  </div>
+                </List.Item>
+              )} />
             )}
           </Card>
         </Col>
-
         <Col xs={24} lg={12}>
-          <Card
-            variant="outlined"
-            title={
-              <span style={{ fontFamily: headingFont, color: primaryColor }}>
-                <Award size={18} style={{ marginRight: 8 }} /> Upcoming Exams
-              </span>
-            }
-            extra={
-              <Link to="/exams" style={{ color: primaryColor, fontSize: 12 }}>
-                View all →
-              </Link>
-            }
-            style={cardStyle}
-          >
+          <Card variant="outlined" className="border-primary/20" title={<span className="font-heading text-primary"><Award size={18} className="inline mr-2" /> Upcoming Exams</span>} extra={<Link to="/exams" className="text-primary font-body text-xs">View all →</Link>}>
             {exams.length === 0 ? (
-              <p style={{ fontFamily: bodyFont, color: '#888' }}>No upcoming exams.</p>
+              <p className="font-body text-gray-500 dark:text-gray-400">No upcoming exams.</p>
             ) : (
-              <List
-                dataSource={exams}
-                renderItem={(item) => (
-                  <List.Item>
-                    <div style={{ fontFamily: bodyFont }}>
-                      <div>
-                        <strong>{item.exam_name}</strong> – {item.batches?.batch_name}
-                      </div>
-                      <div style={{ color: '#888', fontSize: 12 }}>
-                        {item.exam_date} | Total: {item.total_marks}
-                      </div>
-                    </div>
-                  </List.Item>
-                )}
-              />
+              <List dataSource={exams} renderItem={(item) => (
+                <List.Item>
+                  <div className="font-body text-sm">
+                    <div className="text-gray-800 dark:text-gray-100"><strong>{item.exam_name}</strong> – {item.batches?.batch_name}</div>
+                    <div className="text-gray-500 dark:text-gray-400 text-xs">{item.exam_date} | Total: {item.total_marks}</div>
+                  </div>
+                </List.Item>
+              )} />
             )}
           </Card>
         </Col>

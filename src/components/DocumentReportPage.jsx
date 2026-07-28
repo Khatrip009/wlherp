@@ -39,6 +39,8 @@ const ORG_SCOPED_TABLES = ['courses'];
 /* ------------------------------------------------------------------ */
 function FilterDropdown({ field, filters, onChange, branchId, financialYearId, organizationId }) {
   const table = DROPDOWN_TABLES[field];
+  const theme = useTheme();
+  const bodyFont = theme?.font_body || 'Montserrat';
 
   const shouldScopeBranch = table && BRANCH_SCOPED_TABLES.includes(table);
   const shouldScopeOrg = table && ORG_SCOPED_TABLES.includes(table);
@@ -64,13 +66,14 @@ function FilterDropdown({ field, filters, onChange, branchId, financialYearId, o
     enabled: !!table,
   });
 
-  if (!table) return null; // now safe – hooks already called
+  if (!table) return null;
 
   return (
     <select
       value={filters[field] || ''}
       onChange={(e) => onChange(field, e.target.value)}
-      className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+      className="border border-primary-bg bg-white text-primary-dark rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+      style={{ fontFamily: bodyFont }}
     >
       <option value="">All</option>
       {isLoading ? (
@@ -93,10 +96,13 @@ export default function DocumentReportPage({ reportId }) {
   const config = useMemo(() => getReportConfig(reportId), [reportId]);
 
   const { org, branch, selectedFinancialYear } = useOrg();
-  const { theme } = useTheme();
+  const theme = useTheme();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const organizationId = org?.id;
+
+  const headingFont = theme?.font_heading || 'Righteous';
+  const bodyFont = theme?.font_body || 'Montserrat';
 
   const [records, setRecords] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -152,7 +158,7 @@ export default function DocumentReportPage({ reportId }) {
         <head>
           <title>${config.title}</title>
           <style>
-            body { font-family: Montserrat, sans-serif; margin: 20px; color: #333; }
+            body { font-family: ${bodyFont}, sans-serif; margin: 20px; color: #333; }
             @media print { body { margin: 0; } }
           </style>
         </head>
@@ -183,7 +189,11 @@ export default function DocumentReportPage({ reportId }) {
   const resetFilters = () => setFilters({});
 
   if (!config)
-    return <div className="p-6 text-center text-red-600">Report not found.</div>;
+    return (
+      <div className="p-6 text-center text-accent-dark" style={{ fontFamily: bodyFont }}>
+        Report not found.
+      </div>
+    );
 
   const DocumentComponent = config.documentComponent;
 
@@ -191,29 +201,46 @@ export default function DocumentReportPage({ reportId }) {
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
       <Link
         to="/reports"
-        className="inline-flex items-center gap-2 text-secondary hover:text-primary-dark mb-4 font-montserrat text-sm"
+        className="inline-flex items-center gap-2 text-primary-dark hover:text-primary mb-4 text-sm"
+        style={{ fontFamily: bodyFont }}
       >
         <ArrowLeft size={18} /> Back to Reports
       </Link>
 
       <div className="flex flex-col sm:flex-row items-center justify-between mb-6 print:hidden gap-4">
-        <h2 className="text-2xl font-righteous text-primary">{config.title}</h2>
+        <h2
+          className="text-2xl font-bold text-primary"
+          style={{ fontFamily: headingFont }}
+        >
+          {config.title}
+        </h2>
         <div className="flex items-center gap-3">
-          <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg">
+          <button
+            onClick={handlePrint}
+            className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent-dark text-white rounded-lg transition-colors"
+            style={{ fontFamily: bodyFont }}
+          >
             <Printer size={16} /> Print
           </button>
-          <button onClick={handlePDF} className="flex items-center gap-2 px-4 py-2 bg-primary-light text-white rounded-lg">
+          <button
+            onClick={handlePDF}
+            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-light text-white rounded-lg transition-colors"
+            style={{ fontFamily: bodyFont }}
+          >
             <Download size={16} /> PDF
           </button>
         </div>
       </div>
 
       {config.fields && config.fields.length > 0 && (
-        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 mb-6 print:hidden">
+        <div className="bg-primary-bg p-4 rounded-xl border border-primary-bg mb-6 print:hidden">
           <div className="flex flex-wrap items-end gap-4">
             {config.fields.map((field) => (
               <div key={field} className="flex flex-col min-w-[160px]">
-                <label className="text-sm font-medium text-secondary-dark mb-1 capitalize">
+                <label
+                  className="text-sm font-medium text-primary-dark mb-1 capitalize"
+                  style={{ fontFamily: bodyFont }}
+                >
                   {field.replace(/_/g, ' ')}
                 </label>
                 {DROPDOWN_TABLES[field] ? (
@@ -231,14 +258,16 @@ export default function DocumentReportPage({ reportId }) {
                     placeholder={`Search ${field}`}
                     value={filters[field] || ''}
                     onChange={(e) => handleFilterChange(field, e.target.value)}
-                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    className="border border-primary-bg bg-white text-primary-dark rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 placeholder-primary-dark/40"
+                    style={{ fontFamily: bodyFont }}
                   />
                 )}
               </div>
             ))}
             <button
               onClick={resetFilters}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-100 self-end"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-white border border-primary-bg text-primary-dark rounded-lg hover:bg-primary-bg transition-colors self-end"
+              style={{ fontFamily: bodyFont }}
             >
               <RotateCcw size={14} /> Reset
             </button>
@@ -247,9 +276,13 @@ export default function DocumentReportPage({ reportId }) {
       )}
 
       {loading ? (
-        <div className="text-center py-20">Loading records…</div>
+        <div className="text-center py-20 text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+          Loading records…
+        </div>
       ) : records.length === 0 ? (
-        <div className="text-center py-20 text-secondary">No records found.</div>
+        <div className="text-center py-20 text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+          No records found.
+        </div>
       ) : (
         <>
           <div className="flex items-center justify-between mb-4 print:hidden">
@@ -258,7 +291,8 @@ export default function DocumentReportPage({ reportId }) {
                 <select
                   value={currentIndex}
                   onChange={(e) => goTo(Number(e.target.value))}
-                  className="appearance-none bg-white border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  className="appearance-none bg-white border border-primary-bg rounded-lg pl-3 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 text-primary-dark"
+                  style={{ fontFamily: bodyFont }}
                 >
                   {records.map((rec, idx) => (
                     <option key={idx} value={idx}>
@@ -272,22 +306,32 @@ export default function DocumentReportPage({ reportId }) {
                     </option>
                   ))}
                 </select>
-                <List className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                <List className="absolute right-2 top-1/2 -translate-y-1/2 text-primary-dark/40" size={16} />
               </div>
 
               <div className="flex items-center gap-1">
-                <button onClick={handlePrev} disabled={currentIndex === 0} className="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-50">
+                <button
+                  onClick={handlePrev}
+                  disabled={currentIndex === 0}
+                  className="p-2 rounded-lg hover:bg-primary-bg text-primary-dark disabled:opacity-50 transition-colors"
+                >
                   <ArrowLeft size={18} />
                 </button>
-                <span className="text-sm font-medium w-16 text-center">{currentIndex + 1} / {records.length}</span>
-                <button onClick={handleNext} disabled={currentIndex === records.length - 1} className="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-50">
+                <span className="text-sm font-medium w-16 text-center text-primary-dark" style={{ fontFamily: bodyFont }}>
+                  {currentIndex + 1} / {records.length}
+                </span>
+                <button
+                  onClick={handleNext}
+                  disabled={currentIndex === records.length - 1}
+                  className="p-2 rounded-lg hover:bg-primary-bg text-primary-dark disabled:opacity-50 transition-colors"
+                >
                   <ArrowRight size={18} />
                 </button>
               </div>
             </div>
           </div>
 
-          <div className="document-preview bg-white shadow-xl rounded-2xl p-6 md:p-10 border">
+          <div className="document-preview bg-white shadow-xl rounded-2xl p-6 md:p-10 border border-primary-bg">
             {currentRecord && <DocumentComponent data={currentRecord} org={org} />}
           </div>
         </>

@@ -36,7 +36,6 @@ const JitsiMeeting = ({ roomName, displayName, onMeetingEnd, onParticipantJoined
           SHOW_BRAND_WATERMARK: false,
           SHOW_POWERED_BY: false,
         },
-        // jwt: null // Not required for basic meetings with 8x8.vc
       };
 
       try {

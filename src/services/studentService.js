@@ -1,6 +1,6 @@
 // src/services/studentService.js
 import { supabase } from "../api/supabase";
-import { sendTemplateEmail } from "./emailService"; // 👈 Added
+import { sendTemplateEmail } from "./emailService";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -21,9 +21,6 @@ async function getOrganizationFromBranch(branchId) {
   return org;
 }
 
-/**
- * Send a welcome email to the student.
- */
 async function sendStudentWelcomeEmail(student, context) {
   const { branchId, financialYearId } = context;
   try {
@@ -39,13 +36,13 @@ async function sendStudentWelcomeEmail(student, context) {
       academyName: org.company_name,
       full_name: fullName || 'Student',
       role: 'Student',
-      login_link: `${window.location.origin}/login`, // adjust to your app's login URL
+      login_link: `${window.location.origin}/login`,
     };
 
     await sendTemplateEmail({
       to: student.email,
       organizationId: org.id,
-      slug: "account_welcome", // or "system_announcement" if you prefer
+      slug: "account_welcome",
       context: contextEmail,
       branchId,
     });
@@ -83,16 +80,18 @@ export async function getStudents({ pageParam = 0, filters = {}, branchId, finan
   const from = pageParam * limit;
   const to = from + limit - 1;
 
+  // 1. Fetch students without the mediums join
   let query = supabase
     .from("students")
-    .select("*, mediums(name)", { count: "exact" })
+    .select("*", { count: "exact" })
     .order("id", { ascending: false })
     .range(from, to);
 
-  // Scope students table
+  // Scope
   if (branchId) query = query.eq("branch_id", branchId);
   if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
+  // Apply filters
   if (filters.search) {
     query = query.or(
       `first_name.ilike.%${filters.search}%,last_name.ilike.%${filters.search}%`
@@ -118,7 +117,6 @@ export async function getStudents({ pageParam = 0, filters = {}, branchId, finan
   }
 
   if (filters.course_id) {
-    // Scope batches query
     let batchSub = supabase
       .from("batches")
       .select("id")
@@ -127,7 +125,7 @@ export async function getStudents({ pageParam = 0, filters = {}, branchId, finan
     if (financialYearId) batchSub = batchSub.eq("financial_year_id", financialYearId);
     const { data: courseBatches } = await batchSub;
     const batchIds = courseBatches?.map((b) => b.id) || [];
-    // Scope student_batches query
+
     let studentSub = supabase
       .from("student_batches")
       .select("student_id")
@@ -144,9 +142,20 @@ export async function getStudents({ pageParam = 0, filters = {}, branchId, finan
   const { data, error, count } = await query;
   if (error) throw error;
 
+  // 2. Fetch medium names separately (safer, avoids crashing join)
+  const mediumIds = [...new Set((data || []).map(s => s.medium_id).filter(Boolean))];
+  let mediumMap = {};
+  if (mediumIds.length > 0) {
+    const { data: mediums } = await supabase
+      .from("mediums")
+      .select("id, name")
+      .in("id", mediumIds);
+    (mediums || []).forEach(m => { mediumMap[m.id] = m.name; });
+  }
+
   const enriched = (data || []).map((student) => ({
     ...student,
-    medium_name: student.mediums?.name || "",
+    medium_name: mediumMap[student.medium_id] || "",
   }));
 
   return { data: enriched, count };
@@ -174,12 +183,13 @@ export async function createStudent(payload, context) {
   const { _parent_ids, email, password, batch_id, ...studentData } = payload;
   const { branchId, financialYearId } = context;
 
-  // Clean the payload to avoid empty string integers/dates
+  // ✅ Include linked account fields
   const cleanData = cleanStudentPayload({
     ...studentData,
     email,
     batch_id,
-    user_id: null,
+    user_id: payload.user_id ?? null,
+    linked_email: payload.linked_email ?? null,
     branch_id: branchId,
     financial_year_id: financialYearId,
   });
@@ -216,7 +226,7 @@ export async function createStudent(payload, context) {
     if (batchError) throw batchError;
   }
 
-  // ─── Send welcome email to student ──────────────────────
+  // Send welcome email
   if (email) {
     await sendStudentWelcomeEmail({ ...student, email }, context);
   }
@@ -228,15 +238,17 @@ export async function updateStudent(id, payload, context) {
   const { _parent_ids, email, password, batch_id, ...studentData } = payload;
   const { branchId, financialYearId } = context;
 
+  // ✅ Include linked account fields
   const cleanData = cleanStudentPayload({
     ...studentData,
     email,
     batch_id,
+    user_id: payload.user_id ?? null,
+    linked_email: payload.linked_email ?? null,
     branch_id: branchId,
     financial_year_id: financialYearId,
   });
 
-  // Build update query and scope it
   let updateQuery = supabase
     .from("students")
     .update(cleanData)
@@ -248,7 +260,7 @@ export async function updateStudent(id, payload, context) {
   const { data: student, error } = await updateQuery.select().single();
   if (error) throw error;
 
-  // Update parent links (scoped deletion and insertion)
+  // Update parent links
   if (_parent_ids !== undefined) {
     let deleteParentsQuery = supabase
       .from("student_parents")
@@ -271,7 +283,7 @@ export async function updateStudent(id, payload, context) {
     }
   }
 
-  // Update batch assignment (scoped)
+  // Update batch assignment
   if (batch_id !== undefined) {
     let deleteBatchQuery = supabase
       .from("student_batches")
@@ -320,7 +332,6 @@ export async function getAllStudentsForExport(filters = {}, branchId, financialY
     .select("*, mediums(name)")
     .order("id", { ascending: false });
 
-  // Scope
   if (branchId) query = query.eq("branch_id", branchId);
   if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 

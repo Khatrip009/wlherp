@@ -238,7 +238,7 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
       item_type: "fee_component",
       description: b.componentName,
       quantity: 1,
-      unit_price: b.base,           // base (exclusive) – correct for tax calculation
+      unit_price: b.base,
       tax_rate_id: b.taxRateId,
       tax_inclusive: false,
       hsn_sac_code: '999294',
@@ -260,7 +260,7 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
       invoice_date: new Date().toISOString().split("T")[0],
       due_date: null,
       payment_terms: "Immediate",
-      gst_applicable: totals.totalTax > 0,   // true if any tax is charged
+      gst_applicable: totals.totalTax > 0,
       place_of_supply: fee.students?.state_code || "",
       reverse_charge: false,
       items,
@@ -279,7 +279,7 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
       .filter(b => b.entered > 0)
       .map(b => ({
         studentFeeComponentId: b.componentId,
-        amount: b.total,          // total inclusive amount allocated
+        amount: b.total,
         baseAmount: b.base,
         taxAmount: b.tax,
         taxRateId: b.taxRateId,
@@ -422,8 +422,8 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
           <Divider />
 
           {/* ── Fee Components Allocation ── */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div className="mb-4">
+            <div className="flex justify-between items-center mb-2">
               <Text strong>Allocate Payment to Components</Text>
               <Button size="small" onClick={handlePayAll}>Pay All</Button>
             </div>
@@ -487,7 +487,7 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
 
           {/* ── Tax Breakdown ── */}
           {totals.breakdown.length > 0 && (
-            <div style={{ background: "#fafafa", borderRadius: 6, padding: 12, marginBottom: 16 }}>
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-md p-3 mb-4">
               <Text strong>Tax Breakdown</Text>
               <Table
                 dataSource={totals.breakdown}
@@ -532,7 +532,7 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
                   },
                 ]}
               />
-              <div style={{ marginTop: 8, textAlign: "right" }}>
+              <div className="mt-2 text-right">
                 <Text strong>Total Payable: </Text>
                 <Text strong>₹{totals.totalPayable.toFixed(2)}</Text>
                 <br />
@@ -543,7 +543,7 @@ export default function CollectPaymentModal({ fee, onClose, onSuccess }) {
           )}
 
           {/* ── Invoice Info ── */}
-          <div className="mb-4 p-3 bg-blue-50 rounded border border-blue-200">
+          <div className="mb-4 p-3 bg-primary-bg rounded border border-primary">
             <Text strong>Invoice: </Text>
             <Text>A new invoice will be created for this payment based on the allocated amounts.</Text>
           </div>

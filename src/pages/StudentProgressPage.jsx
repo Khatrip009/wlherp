@@ -3,11 +3,13 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // 👈 import theme
 import { TrendingUp, Calendar, Layers, User, Mail } from "lucide-react";
 import { sendEmail, sendTemplateEmail } from "../services/emailService";
 
 export default function StudentProgressPage({ studentId: propStudentId = null, standalone = true }) {
   const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme(); // 👈 get theme colours
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const [sendingEmailId, setSendingEmailId] = useState(null);
@@ -17,7 +19,6 @@ export default function StudentProgressPage({ studentId: propStudentId = null, s
   // ─── Helper: get student/parent email ──────────────────────────────
   const getStudentParentEmail = async (studentId) => {
     if (!studentId) return null;
-    // Fetch student email
     const { data: student, error: studentError } = await supabase
       .from("students")
       .select("email, first_name, last_name")
@@ -25,7 +26,6 @@ export default function StudentProgressPage({ studentId: propStudentId = null, s
       .single();
     if (studentError) return null;
 
-    // Try to find parent email
     const { data: parent, error: parentError } = await supabase
       .from("student_parents")
       .select("parents!inner(email, father_name, mother_name)")
@@ -58,26 +58,42 @@ export default function StudentProgressPage({ studentId: propStudentId = null, s
         return;
       }
 
-      // Build HTML table rows
-      let tableRows = evaluations.map((evalItem) => `
+      // Build HTML table rows (dynamic theme colours)
+      let tableRows = evaluations
+        .map(
+          (evalItem) => `
         <tr>
           <td style="padding:4px 8px;border:1px solid #ddd;">${evalItem.evaluation_date}</td>
-          <td style="padding:4px 8px;border:1px solid #ddd;">${evalItem.batches?.batch_name || '—'}</td>
-          <td style="padding:4px 8px;border:1px solid #ddd;">${evalItem.batches?.courses?.course_name || '—'}</td>
-          <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${evalItem.attendance_percentage !== null ? evalItem.attendance_percentage + '%' : '—'}</td>
-          <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${evalItem.performance_score !== null ? evalItem.performance_score : '—'}</td>
-          <td style="padding:4px 8px;border:1px solid #ddd;">${evalItem.teacher_remarks || '—'}</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${
+            evalItem.batches?.batch_name || "—"
+          }</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${
+            evalItem.batches?.courses?.course_name || "—"
+          }</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${
+            evalItem.attendance_percentage !== null
+              ? evalItem.attendance_percentage + "%"
+              : "—"
+          }</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${
+            evalItem.performance_score !== null ? evalItem.performance_score : "—"
+          }</td>
+          <td style="padding:4px 8px;border:1px solid #ddd;">${
+            evalItem.teacher_remarks || "—"
+          }</td>
         </tr>
-      `).join('');
+      `
+        )
+        .join("");
 
       const htmlBody = `
         <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
-          <h2 style="color:#0D47A1;">Student Progress Report</h2>
+          <h2 style="color:${theme.primary_color};">Student Progress Report</h2>
           <p><strong>Student:</strong> ${recipient.name}</p>
           <p><strong>Total Evaluations:</strong> ${evaluations.length}</p>
           <hr />
           <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
-            <thead style="background:#e3f2fd;">
+            <thead style="background:${theme.primary_light_color || "#e3f2fd"};">
               <tr>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Date</th>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Batch</th>
@@ -91,7 +107,9 @@ export default function StudentProgressPage({ studentId: propStudentId = null, s
               ${tableRows}
             </tbody>
           </table>
-          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${org?.company_name || 'Academy'}</p>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated report from ${
+            org?.company_name || "Academy"
+          }</p>
         </div>
       `;
 
@@ -99,7 +117,6 @@ export default function StudentProgressPage({ studentId: propStudentId = null, s
         to: recipient.email,
         subject: `Progress Report - ${recipient.name}`,
         html: htmlBody,
-       // from: org?.email || undefined,
       });
 
       toast.success(`Report sent to ${recipient.email}`);
@@ -120,16 +137,17 @@ export default function StudentProgressPage({ studentId: propStudentId = null, s
         return;
       }
 
-      const batchName = evalItem.batches?.batch_name || 'N/A';
-      const courseName = evalItem.batches?.courses?.course_name || 'N/A';
+      const batchName = evalItem.batches?.batch_name || "N/A";
+      const courseName = evalItem.batches?.courses?.course_name || "N/A";
 
-      const message = `A new progress evaluation has been recorded for ${recipient.name}:\n` +
+      const message =
+        `A new progress evaluation has been recorded for ${recipient.name}:\n` +
         `Batch: ${batchName}\n` +
         `Course: ${courseName}\n` +
         `Evaluation Date: ${evalItem.evaluation_date}\n` +
-        `Attendance Percentage: ${evalItem.attendance_percentage ?? 'N/A'}%\n` +
-        `Performance Score: ${evalItem.performance_score ?? 'N/A'}\n` +
-        `Teacher Remarks: ${evalItem.teacher_remarks || 'No remarks'}\n\n` +
+        `Attendance Percentage: ${evalItem.attendance_percentage ?? "N/A"}%\n` +
+        `Performance Score: ${evalItem.performance_score ?? "N/A"}\n` +
+        `Teacher Remarks: ${evalItem.teacher_remarks || "No remarks"}\n\n` +
         `Please log in for more details.`;
 
       await sendTemplateEmail({
@@ -161,13 +179,13 @@ export default function StudentProgressPage({ studentId: propStudentId = null, s
       if (!effectiveStudentId || !branchId || !financialYearId) return [];
       let query = supabase
         .from("student_progress")
-        .select(`
-          evaluation_date,
+        .select(
+          `evaluation_date,
           attendance_percentage,
           performance_score,
           teacher_remarks,
-          batches ( batch_name, courses ( course_name ) )
-        `)
+          batches ( batch_name, courses ( course_name ) )`
+        )
         .eq("student_id", effectiveStudentId);
       if (branchId) query = query.eq("branch_id", branchId);
       if (financialYearId) query = query.eq("financial_year_id", financialYearId);
@@ -181,27 +199,27 @@ export default function StudentProgressPage({ studentId: propStudentId = null, s
   const content = (
     <div>
       {isLoading ? (
-        <div className="p-4 text-center text-secondary">Loading progress…</div>
+        <div className="p-4 text-center text-gray-500 dark:text-gray-400">Loading progress…</div>
       ) : evaluations.length === 0 ? (
-        <div className="bg-white rounded-xl p-8 shadow-sm border border-secondary-light text-center">
-          <TrendingUp size={32} className="text-secondary-light mx-auto mb-2" />
-          <p className="text-secondary">No progress evaluations found.</p>
+        <div className="bg-white dark:bg-accent rounded-xl p-8 shadow-sm border border-gray-200 dark:border-gray-700 text-center">
+          <TrendingUp size={32} className="text-gray-400 dark:text-gray-500 mx-auto mb-2" />
+          <p className="text-gray-600 dark:text-gray-400">No progress evaluations found.</p>
         </div>
       ) : (
         <div className="space-y-3">
           {evaluations.map((evalItem, idx) => (
             <div
               key={idx}
-              className="bg-white rounded-xl p-4 shadow-sm border border-secondary-light"
+              className="bg-white dark:bg-accent rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 mb-1">
                   <TrendingUp size={18} className="text-primary" />
-                  <span className="font-bold text-primary-dark">
+                  <span className="font-bold text-primary">
                     {evalItem.batches?.batch_name}
                   </span>
                   {evalItem.batches?.courses?.course_name && (
-                    <span className="text-sm text-secondary-dark">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">
                       ({evalItem.batches.courses.course_name})
                     </span>
                   )}
@@ -210,33 +228,37 @@ export default function StudentProgressPage({ studentId: propStudentId = null, s
                 <button
                   onClick={() => sendEvaluationEmail(evalItem, idx)}
                   disabled={sendingEmailId === idx}
-                  className="text-blue-600 hover:text-blue-800 disabled:opacity-50 flex items-center gap-1"
+                  className="text-primary dark:text-primary-light hover:underline disabled:opacity-50 flex items-center gap-1"
                   title="Resend evaluation email"
                 >
                   <Mail size={16} />
-                  {sendingEmailId === idx ? '...' : ''}
+                  {sendingEmailId === idx ? "..." : ""}
                 </button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
                 <div className="flex items-center gap-1">
-                  <Calendar size={16} className="text-secondary" />
-                  <span>{evalItem.evaluation_date}</span>
+                  <Calendar size={16} className="text-gray-500 dark:text-gray-400" />
+                  <span className="text-gray-700 dark:text-gray-200">{evalItem.evaluation_date}</span>
                 </div>
                 {evalItem.attendance_percentage !== null && (
                   <div className="flex items-center gap-1">
-                    <User size={16} className="text-secondary" />
-                    <span>Attendance: {evalItem.attendance_percentage}%</span>
+                    <User size={16} className="text-gray-500 dark:text-gray-400" />
+                    <span className="text-gray-700 dark:text-gray-200">
+                      Attendance: {evalItem.attendance_percentage}%
+                    </span>
                   </div>
                 )}
                 {evalItem.performance_score !== null && (
                   <div className="flex items-center gap-1">
-                    <TrendingUp size={16} className="text-secondary" />
-                    <span>Score: {evalItem.performance_score}</span>
+                    <TrendingUp size={16} className="text-gray-500 dark:text-gray-400" />
+                    <span className="text-gray-700 dark:text-gray-200">
+                      Score: {evalItem.performance_score}
+                    </span>
                   </div>
                 )}
               </div>
               {evalItem.teacher_remarks && (
-                <div className="mt-2 text-sm text-secondary-dark border-t pt-2">
+                <div className="mt-2 text-sm text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-2">
                   Remarks: {evalItem.teacher_remarks}
                 </div>
               )}
@@ -252,12 +274,11 @@ export default function StudentProgressPage({ studentId: propStudentId = null, s
   return (
     <div className="p-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
-        <h1 className="text-3xl font-righteous text-primary-dark">My Progress</h1>
-        {/* 👇 Send Report button */}
+        <h1 className="text-3xl font-heading text-primary">My Progress</h1>
         {evaluations.length > 0 && (
           <button
             onClick={sendReportEmail}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+            className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
           >
             <Mail size={16} /> Send Report
           </button>

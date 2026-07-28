@@ -164,12 +164,12 @@ export default function Vendors() {
   };
 
   return (
-    <>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">Vendors</h1>
+        <h1 className="text-3xl font-heading text-primary-dark">Vendors</h1>
         <button
           onClick={openCreate}
-          className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors"
         >
           <Plus size={16} /> Add Vendor
         </button>
@@ -177,58 +177,60 @@ export default function Vendors() {
 
       {/* Search */}
       <div className="relative mb-4 max-w-md">
-        <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+        <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
         <input
           type="text"
           placeholder="Search vendors..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 border rounded-lg text-sm"
+          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-primary outline-none placeholder-gray-400 dark:placeholder-gray-500"
         />
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-accent rounded-xl shadow-sm overflow-hidden border border-gray-200 dark:border-gray-700">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[700px]">
-            <thead className="bg-slate-100">
+            <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
-                <th className="p-3 text-left text-sm">Vendor Name</th>
-                <th className="p-3 text-left text-sm">GSTIN</th>
-                <th className="p-3 text-left text-sm">Contact</th>
-                <th className="p-3 text-left text-sm">Phone</th>
-                <th className="p-3 text-left text-sm">State</th>
-                <th className="p-3 text-left text-sm">Actions</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Vendor Name</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">GSTIN</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Contact</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Phone</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">State</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-secondary">Loading vendors…</td>
+                  <td colSpan={6} className="p-6 text-center text-gray-500 dark:text-gray-400">Loading vendors…</td>
                 </tr>
               ) : vendors.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-secondary">No vendors found.</td>
+                  <td colSpan={6} className="p-6 text-center text-gray-500 dark:text-gray-400">No vendors found.</td>
                 </tr>
               ) : (
                 vendors.map((vendor) => (
-                  <tr key={vendor.id} className="border-t hover:bg-gray-50 transition">
-                    <td className="p-3 text-sm font-medium">{vendor.vendor_name}</td>
-                    <td className="p-3 text-sm">{vendor.gstin || "—"}</td>
-                    <td className="p-3 text-sm">{vendor.contact_person || "—"}</td>
-                    <td className="p-3 text-sm">{vendor.phone || "—"}</td>
-                    <td className="p-3 text-sm">{vendor.state_code || "—"}</td>
+                  <tr key={vendor.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    <td className="p-3 text-sm font-medium text-gray-800 dark:text-gray-100">{vendor.vendor_name}</td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{vendor.gstin || "—"}</td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{vendor.contact_person || "—"}</td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{vendor.phone || "—"}</td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{vendor.state_code || "—"}</td>
                     <td className="p-3 text-sm">
                       <div className="flex gap-2">
                         <button
                           onClick={() => openEdit(vendor)}
-                          className="text-blue-600 hover:underline"
+                          className="text-primary dark:text-primary-light hover:underline"
+                          title="Edit"
                         >
                           <Edit3 size={15} />
                         </button>
                         <button
                           onClick={() => handleDelete(vendor.id)}
-                          className="text-red-600 hover:underline"
+                          className="text-accent-dark dark:text-accent-light hover:underline"
+                          title="Delete"
                         >
                           <Trash2 size={15} />
                         </button>
@@ -245,19 +247,19 @@ export default function Vendors() {
       {/* Modal for Create/Edit */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-xl">
-            <div className="sticky top-0 bg-white px-6 py-4 border-b flex items-center justify-between rounded-t-xl">
-              <h2 className="text-xl font-righteous text-primary-dark">
+          <div className="bg-white dark:bg-accent rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-xl border border-gray-200 dark:border-gray-700">
+            <div className="sticky top-0 bg-white dark:bg-accent px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between rounded-t-xl">
+              <h2 className="text-xl font-heading text-primary-dark">
                 {editing ? "Edit Vendor" : "Add Vendor"}
               </h2>
-              <button onClick={closeModal} className="p-2 hover:bg-secondary-bg rounded-lg">
-                <X size={20} className="text-secondary-dark" />
+              <button onClick={closeModal} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                <X size={20} className="text-gray-600 dark:text-gray-400" />
               </button>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+                <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
                   Vendor Name *
                 </label>
                 <input
@@ -265,13 +267,13 @@ export default function Vendors() {
                   name="vendor_name"
                   value={form.vendor_name}
                   onChange={handleChange}
-                  className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary outline-none"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+                <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
                   GSTIN
                 </label>
                 <div className="flex flex-col sm:flex-row gap-2">
@@ -280,7 +282,7 @@ export default function Vendors() {
                     name="gstin"
                     value={form.gstin}
                     onChange={handleChange}
-                    className="flex-1 border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary uppercase"
+                    className="flex-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary outline-none uppercase"
                     placeholder="22AAAAA0000A1Z5"
                     maxLength={15}
                   />
@@ -291,14 +293,14 @@ export default function Vendors() {
                     className="flex-shrink-0"
                   />
                 </div>
-                <p className="text-xs text-secondary-light mt-1">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   Enter 15‑character GSTIN and click "Fetch GST Details" to auto‑fill name, address, and state.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+                  <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
                     PAN
                   </label>
                   <input
@@ -306,20 +308,20 @@ export default function Vendors() {
                     name="pan"
                     value={form.pan}
                     onChange={handleChange}
-                    className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary uppercase"
+                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary outline-none uppercase"
                     placeholder="ABCDE1234F"
                     maxLength={10}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+                  <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
                     State
                   </label>
                   <select
                     name="state_code"
                     value={form.state_code}
                     onChange={handleChange}
-                    className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary outline-none"
                   >
                     <option value="">Select State</option>
                     {states.map((state) => (
@@ -332,7 +334,7 @@ export default function Vendors() {
               </div>
 
               <div>
-                <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+                <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
                   Address
                 </label>
                 <textarea
@@ -340,14 +342,14 @@ export default function Vendors() {
                   value={form.address}
                   onChange={handleChange}
                   rows={2}
-                  className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary outline-none"
                   placeholder="Full address"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+                  <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
                     Contact Person
                   </label>
                   <input
@@ -355,11 +357,11 @@ export default function Vendors() {
                     name="contact_person"
                     value={form.contact_person}
                     onChange={handleChange}
-                    className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+                  <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
                     Phone
                   </label>
                   <input
@@ -367,13 +369,13 @@ export default function Vendors() {
                     name="phone"
                     value={form.phone}
                     onChange={handleChange}
-                    className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+                <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
                   Email
                 </label>
                 <input
@@ -381,13 +383,13 @@ export default function Vendors() {
                   name="email"
                   value={form.email}
                   onChange={handleChange}
-                  className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+                  <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
                     Bank Name
                   </label>
                   <input
@@ -395,11 +397,11 @@ export default function Vendors() {
                     name="bank_name"
                     value={form.bank_name}
                     onChange={handleChange}
-                    className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+                  <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
                     Account Number
                   </label>
                   <input
@@ -407,11 +409,11 @@ export default function Vendors() {
                     name="account_number"
                     value={form.account_number}
                     onChange={handleChange}
-                    className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary"
+                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+                  <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
                     IFSC Code
                   </label>
                   <input
@@ -419,24 +421,24 @@ export default function Vendors() {
                     name="ifsc_code"
                     value={form.ifsc_code}
                     onChange={handleChange}
-                    className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary uppercase"
+                    className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary outline-none uppercase"
                     placeholder="SBIN0001234"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-2 border-t">
+              <div className="flex justify-end gap-3 pt-2 border-t border-gray-200 dark:border-gray-700">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="border border-secondary-light px-4 py-2 rounded-lg text-sm hover:bg-secondary-bg transition"
+                  className="border border-gray-300 dark:border-gray-600 px-4 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={createMutation.isPending || updateMutation.isPending}
-                  className="bg-primary hover:bg-primary-light text-white px-6 py-2 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
+                  className="bg-primary hover:bg-primary-light text-white px-6 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors disabled:opacity-50"
                 >
                   {(createMutation.isPending || updateMutation.isPending) ? (
                     <>
@@ -455,6 +457,6 @@ export default function Vendors() {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

@@ -5,6 +5,7 @@ import { Bell, Check } from "lucide-react";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";            // ✅ dynamic theme
 import toast from "react-hot-toast";
 
 export default function NotificationBell() {
@@ -16,6 +17,9 @@ export default function NotificationBell() {
 
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const theme = useTheme();
+  const bodyFont = theme?.font_body || "Montserrat";
 
   // ── Helper: build base query with scope and role‑based filtering ──
   const getBaseQuery = (select = "*") => {
@@ -154,27 +158,28 @@ export default function NotificationBell() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={handleToggle}
-        className="relative p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+        className="relative p-1 rounded-lg hover:bg-primary-bg transition"
         aria-label="Notifications"
       >
-        <Bell size={20} className="text-secondary-dark" />
+        <Bell size={20} className="text-primary-dark" />
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] h-5 w-5 rounded-full flex items-center justify-center font-medium">
+          <span className="absolute -top-1 -right-1 bg-accent text-white text-[10px] h-5 w-5 rounded-full flex items-center justify-center font-medium">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}
       </button>
 
       {dropdownOpen && (
-        <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-50 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-            <h4 className="font-semibold text-sm text-gray-800 dark:text-gray-100">
+        <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-xl border border-primary-bg z-50 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-primary-bg">
+            <h4 className="font-semibold text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
               Notifications
             </h4>
             <button
               onClick={() => markAllReadMutation.mutate()}
               disabled={unreadCount === 0}
               className="text-xs text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ fontFamily: bodyFont }}
             >
               Mark all read
             </button>
@@ -182,25 +187,25 @@ export default function NotificationBell() {
 
           <div className="max-h-64 overflow-y-auto">
             {recentNotifications.length === 0 ? (
-              <p className="p-4 text-sm text-center text-gray-500 dark:text-gray-400">
+              <p className="p-4 text-sm text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
                 No notifications
               </p>
             ) : (
               recentNotifications.map((n) => (
                 <div
                   key={n.id}
-                  className={`flex items-start gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition ${
-                    !n.is_read ? "bg-blue-50/50 dark:bg-blue-900/10" : ""
+                  className={`flex items-start gap-3 px-4 py-3 border-b border-primary-bg hover:bg-primary-bg transition ${
+                    !n.is_read ? "bg-primary-bg/50" : ""
                   }`}
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                    <p className="text-sm font-medium text-primary-dark" style={{ fontFamily: bodyFont }}>
                       {n.title}
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                    <p className="text-xs text-primary-dark/60 mt-1 line-clamp-2" style={{ fontFamily: bodyFont }}>
                       {n.message}
                     </p>
-                    <span className="text-xs text-gray-400 dark:text-gray-500 mt-1 block">
+                    <span className="text-xs text-primary-dark/40 mt-1 block" style={{ fontFamily: bodyFont }}>
                       {new Date(n.created_at).toLocaleString()}
                     </span>
                   </div>
@@ -218,11 +223,12 @@ export default function NotificationBell() {
             )}
           </div>
 
-          <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+          <div className="px-4 py-3 border-t border-primary-bg">
             <Link
               to="/notifications"
               onClick={() => setDropdownOpen(false)}
               className="w-full text-center text-sm text-primary hover:underline font-medium block"
+              style={{ fontFamily: bodyFont }}
             >
               View all notifications
             </Link>

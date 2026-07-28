@@ -25,15 +25,16 @@ import { getSalaryPayments } from "../services/salaryService";
 import { getLeaves, updateLeaveStatus } from "../services/leaveService";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 
 export default function HRHub() {
   const queryClient = useQueryClient();
-  const { branch, selectedFinancialYear, theme } = useOrg();
+  const { branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
 
-  const primaryColor = theme?.primary_color || "#0D47A1";
   const headingFont = theme?.font_heading || "Righteous";
   const bodyFont = theme?.font_body || "Montserrat";
 
@@ -122,43 +123,37 @@ export default function HRHub() {
     onError: (err) => toast.error(err.message || "Failed to create employee"),
   });
 
-  // ─── Quick action cards ──────────────────────────────────
+  // ─── Quick action cards (colours replaced with theme classes) ──
   const quickActions = [
     {
       title: "Employees",
       icon: Users,
       link: "/employees",
-      color: "bg-blue-100 text-blue-700",
     },
     {
       title: "Attendance",
       icon: Clock,
       link: "/teacher-attendance",
-      color: "bg-green-100 text-green-700",
     },
     {
       title: "Leave Management",
       icon: Calendar,
       link: "/leave-management",
-      color: "bg-purple-100 text-purple-700",
     },
     {
       title: "Salary Setup",
       icon: Settings,
       link: "/salary-setup",
-      color: "bg-orange-100 text-orange-700",
     },
     {
       title: "Salary Payments",
       icon: CreditCard,
       link: "/salary-payments",
-      color: "bg-indigo-100 text-indigo-700",
     },
     {
       title: "Salary Report",
       icon: BarChart2,
       link: "/salary-report",
-      color: "bg-pink-100 text-pink-700",
     },
   ];
 
@@ -178,13 +173,13 @@ export default function HRHub() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
         <div>
           <h1
-            className="text-3xl"
-            style={{ fontFamily: headingFont, color: primaryColor }}
+            className="text-3xl text-primary"
+            style={{ fontFamily: headingFont }}
           >
             HR Management
           </h1>
           <p
-            className="text-sm text-secondary-dark mt-1"
+            className="text-sm text-primary-dark mt-1"
             style={{ fontFamily: bodyFont }}
           >
             Dashboard for all HR activities
@@ -203,59 +198,56 @@ export default function HRHub() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-xl shadow-sm p-5 border border-secondary-light">
+        <div className="bg-white rounded-xl shadow-sm p-5 border border-primary-bg">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-secondary-light" style={{ fontFamily: bodyFont }}>
+              <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
                 Total Employees
               </p>
-              <p
-                className="text-2xl font-bold mt-1"
-                style={{ fontFamily: headingFont, color: primaryColor }}
-              >
+              <p className="text-2xl font-bold mt-1 text-primary" style={{ fontFamily: headingFont }}>
                 {teachersLoading ? "..." : teachers.length}
               </p>
             </div>
-            <Users size={32} className="text-primary opacity-60" />
+            <Users size={32} className="text-primary/60" />
           </div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-5 border border-secondary-light">
+        <div className="bg-white rounded-xl shadow-sm p-5 border border-primary-bg">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-secondary-light" style={{ fontFamily: bodyFont }}>
+              <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
                 Present Today
               </p>
-              <p className="text-2xl font-bold mt-1 text-green-600">
+              <p className="text-2xl font-bold mt-1 text-primary">
                 {attendanceLoading ? "..." : presentToday}
               </p>
             </div>
-            <UserCheck size={32} className="text-green-600 opacity-60" />
+            <UserCheck size={32} className="text-primary/60" />
           </div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-5 border border-secondary-light">
+        <div className="bg-white rounded-xl shadow-sm p-5 border border-primary-bg">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-secondary-light" style={{ fontFamily: bodyFont }}>
+              <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
                 On Leave Today
               </p>
-              <p className="text-2xl font-bold mt-1 text-yellow-600">
+              <p className="text-2xl font-bold mt-1 text-accent">
                 {attendanceLoading ? "..." : onLeaveToday}
               </p>
             </div>
-            <UserX size={32} className="text-yellow-600 opacity-60" />
+            <UserX size={32} className="text-accent/60" />
           </div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-5 border border-secondary-light">
+        <div className="bg-white rounded-xl shadow-sm p-5 border border-primary-bg">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-secondary-light" style={{ fontFamily: bodyFont }}>
+              <p className="text-xs text-primary-dark" style={{ fontFamily: bodyFont }}>
                 Pending Leaves
               </p>
-              <p className="text-2xl font-bold mt-1 text-red-500">
+              <p className="text-2xl font-bold mt-1 text-accent-dark">
                 {leavesLoading ? "..." : pendingLeaves.length}
               </p>
             </div>
-            <AlertCircle size={32} className="text-red-500 opacity-60" />
+            <AlertCircle size={32} className="text-accent-dark/60" />
           </div>
         </div>
       </div>
@@ -263,8 +255,8 @@ export default function HRHub() {
       {/* Quick Actions Grid */}
       <div className="mb-6">
         <h2
-          className="text-lg font-semibold mb-3"
-          style={{ fontFamily: headingFont, color: primaryColor }}
+          className="text-lg font-semibold mb-3 text-primary"
+          style={{ fontFamily: headingFont }}
         >
           Quick Actions
         </h2>
@@ -273,16 +265,14 @@ export default function HRHub() {
             <Link
               key={action.title}
               to={action.link}
-              className="bg-white rounded-xl shadow-sm border border-secondary-light p-4 hover:shadow-md transition hover:border-primary group"
+              className="bg-white rounded-xl shadow-sm border border-primary-bg p-4 hover:shadow-md transition hover:border-primary group"
             >
               <div className="flex flex-col items-center text-center">
-                <div
-                  className={`p-3 rounded-full ${action.color} mb-2 group-hover:scale-105 transition`}
-                >
+                <div className="p-3 rounded-full bg-primary-bg text-primary mb-2 group-hover:scale-105 transition">
                   <action.icon size={20} />
                 </div>
                 <span
-                  className="text-sm font-medium text-secondary-dark"
+                  className="text-sm font-medium text-primary-dark"
                   style={{ fontFamily: bodyFont }}
                 >
                   {action.title}
@@ -296,11 +286,11 @@ export default function HRHub() {
       {/* Two-column: Recent Leaves + Recent Payments */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Leave Requests */}
-        <div className="bg-white rounded-xl shadow-sm border border-secondary-light overflow-hidden">
-          <div className="px-5 py-3 border-b border-secondary-light flex items-center justify-between">
+        <div className="bg-white rounded-xl shadow-sm border border-primary-bg overflow-hidden">
+          <div className="px-5 py-3 border-b border-primary-bg flex items-center justify-between">
             <h3
-              className="font-semibold"
-              style={{ fontFamily: headingFont, color: primaryColor }}
+              className="font-semibold text-primary"
+              style={{ fontFamily: headingFont }}
             >
               Recent Leave Requests
             </h3>
@@ -313,24 +303,24 @@ export default function HRHub() {
           </div>
           <div className="p-3 max-h-72 overflow-y-auto">
             {leavesLoading ? (
-              <div className="text-center py-4 text-secondary">Loading...</div>
+              <div className="text-center py-4 text-primary-dark/60" style={{ fontFamily: bodyFont }}>Loading...</div>
             ) : pendingLeaves.length === 0 ? (
-              <div className="text-center py-4 text-secondary">No pending requests.</div>
+              <div className="text-center py-4 text-primary-dark/60" style={{ fontFamily: bodyFont }}>No pending requests.</div>
             ) : (
               <div className="space-y-3">
                 {pendingLeaves.slice(0, 5).map((leave) => (
                   <div
                     key={leave.id}
-                    className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                    className="flex items-center justify-between p-2 bg-primary-bg rounded-lg"
                   >
                     <div className="flex-1">
-                      <p className="text-sm font-medium">
+                      <p className="text-sm font-medium text-primary-dark" style={{ fontFamily: bodyFont }}>
                         {leave.teachers?.first_name} {leave.teachers?.last_name}
                       </p>
-                      <p className="text-xs text-secondary">
+                      <p className="text-xs text-primary-dark/60" style={{ fontFamily: bodyFont }}>
                         {leave.start_date} → {leave.end_date}
                       </p>
-                      <p className="text-xs text-secondary truncate max-w-[150px]">
+                      <p className="text-xs text-primary-dark/60 truncate max-w-[150px]" style={{ fontFamily: bodyFont }}>
                         {leave.reason || "No reason"}
                       </p>
                     </div>
@@ -342,7 +332,7 @@ export default function HRHub() {
                             status: "Approved",
                           })
                         }
-                        className="p-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200 transition"
+                        className="p-1.5 bg-primary-bg text-primary-dark rounded hover:bg-primary/10 transition"
                         title="Approve"
                       >
                         <Check size={16} />
@@ -356,7 +346,7 @@ export default function HRHub() {
                             adminRemarks: remark || "",
                           });
                         }}
-                        className="p-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 transition"
+                        className="p-1.5 bg-accent-bg text-accent-dark rounded hover:bg-accent/10 transition"
                         title="Reject"
                       >
                         <X size={16} />
@@ -370,11 +360,11 @@ export default function HRHub() {
         </div>
 
         {/* Recent Salary Payments */}
-        <div className="bg-white rounded-xl shadow-sm border border-secondary-light overflow-hidden">
-          <div className="px-5 py-3 border-b border-secondary-light flex items-center justify-between">
+        <div className="bg-white rounded-xl shadow-sm border border-primary-bg overflow-hidden">
+          <div className="px-5 py-3 border-b border-primary-bg flex items-center justify-between">
             <h3
-              className="font-semibold"
-              style={{ fontFamily: headingFont, color: primaryColor }}
+              className="font-semibold text-primary"
+              style={{ fontFamily: headingFont }}
             >
               Recent Salary Payments
             </h3>
@@ -387,29 +377,29 @@ export default function HRHub() {
           </div>
           <div className="p-3 max-h-72 overflow-y-auto">
             {paymentsLoading ? (
-              <div className="text-center py-4 text-secondary">Loading...</div>
+              <div className="text-center py-4 text-primary-dark/60" style={{ fontFamily: bodyFont }}>Loading...</div>
             ) : recentPayments.length === 0 ? (
-              <div className="text-center py-4 text-secondary">No payments yet.</div>
+              <div className="text-center py-4 text-primary-dark/60" style={{ fontFamily: bodyFont }}>No payments yet.</div>
             ) : (
               <div className="space-y-3">
                 {recentPayments.map((payment) => (
                   <div
                     key={payment.id}
-                    className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                    className="flex items-center justify-between p-2 bg-primary-bg rounded-lg"
                   >
                     <div className="flex-1">
-                      <p className="text-sm font-medium">
+                      <p className="text-sm font-medium text-primary-dark" style={{ fontFamily: bodyFont }}>
                         {payment.teachers?.first_name} {payment.teachers?.last_name}
                       </p>
-                      <p className="text-xs text-secondary">
+                      <p className="text-xs text-primary-dark/60" style={{ fontFamily: bodyFont }}>
                         {payment.payment_date}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-semibold text-green-700">
+                      <p className="text-sm font-semibold text-primary">
                         {formatCurrency(payment.net_amount)}
                       </p>
-                      <p className="text-xs text-secondary">
+                      <p className="text-xs text-primary-dark/60" style={{ fontFamily: bodyFont }}>
                         Gross: {formatCurrency(payment.amount)}
                       </p>
                     </div>

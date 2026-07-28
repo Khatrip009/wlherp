@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { Tabs, Card, Row, Col, Select, message, Button } from "antd";
 import { MailOutlined } from "@ant-design/icons";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // 👈 import theme
 import { supabase } from "../api/supabase";
 import { sendEmail } from "../services/emailService";
 
@@ -23,6 +24,7 @@ const { TabPane } = Tabs;
 
 export default function StudentManagement() {
   const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme(); // 👈 get theme colours
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -34,7 +36,6 @@ export default function StudentManagement() {
 
   // ─── Helper: get student/parent email ──────────────────────────────
   const getStudentParentEmail = async (studentId) => {
-    // Fetch student email
     const { data: student, error: studentError } = await supabase
       .from("students")
       .select("email, first_name, last_name")
@@ -42,7 +43,6 @@ export default function StudentManagement() {
       .single();
     if (studentError) return null;
 
-    // Try to find parent email
     const { data: parent, error: parentError } = await supabase
       .from("student_parents")
       .select("parents!inner(email, father_name, mother_name)")
@@ -52,7 +52,10 @@ export default function StudentManagement() {
     if (!parentError && parent && parent.parents?.email) {
       return {
         email: parent.parents.email,
-        name: parent.parents.father_name || parent.parents.mother_name || `${student.first_name} ${student.last_name}`,
+        name:
+          parent.parents.father_name ||
+          parent.parents.mother_name ||
+          `${student.first_name} ${student.last_name}`,
       };
     }
     return {
@@ -88,10 +91,10 @@ export default function StudentManagement() {
       // 2. Fetch fee records
       const { data: fees, error: feesError } = await supabase
         .from("student_fees")
-        .select(`
-          *,
-          fee_structures(courses(course_name))
-        `)
+        .select(
+          `*,
+          fee_structures(courses(course_name))`
+        )
         .eq("student_id", selectedStudentId)
         .eq("branch_id", branchId)
         .eq("financial_year_id", financialYearId);
@@ -100,37 +103,42 @@ export default function StudentManagement() {
       // 3. Fetch batch assignments
       const { data: batches, error: batchesError } = await supabase
         .from("student_batches")
-        .select(`
-          *,
-          batches(batch_name, mediums(name), courses(course_name))
-        `)
+        .select(
+          `*,
+          batches(batch_name, mediums(name), courses(course_name))`
+        )
         .eq("student_id", selectedStudentId)
         .eq("branch_id", branchId)
         .eq("financial_year_id", financialYearId);
       if (batchesError) throw batchesError;
 
-      // 4. Fetch attendance summary (compute from student_attendance)
+      // 4. Fetch attendance summary
       const { data: attendanceData, error: attError } = await supabase
         .from("student_attendance")
-        .select(`
-          status,
-          attendance_sessions(attendance_date)
-        `)
+        .select(
+          `status,
+          attendance_sessions(attendance_date)`
+        )
         .eq("student_id", selectedStudentId)
         .eq("branch_id", branchId)
         .eq("financial_year_id", financialYearId);
       if (attError) throw attError;
       const totalSessions = attendanceData.length;
-      const presentCount = attendanceData.filter(a => a.status === "Present").length;
-      const attendancePct = totalSessions > 0 ? ((presentCount / totalSessions) * 100).toFixed(1) : 0;
+      const presentCount = attendanceData.filter(
+        (a) => a.status === "Present"
+      ).length;
+      const attendancePct =
+        totalSessions > 0
+          ? ((presentCount / totalSessions) * 100).toFixed(1)
+          : 0;
 
       // 5. Fetch exam results
       const { data: results, error: resultsError } = await supabase
         .from("student_results")
-        .select(`
-          marks_obtained,
-          exams(exam_name, exam_date, total_marks, subjects(subject_name))
-        `)
+        .select(
+          `marks_obtained,
+          exams(exam_name, exam_date, total_marks, subjects(subject_name))`
+        )
         .eq("student_id", selectedStudentId)
         .eq("branch_id", branchId)
         .eq("financial_year_id", financialYearId);
@@ -139,11 +147,11 @@ export default function StudentManagement() {
       // 6. Fetch homework submissions
       const { data: homeworkSubs, error: hwError } = await supabase
         .from("homework_submissions")
-        .select(`
-          homework_id,
+        .select(
+          `homework_id,
           status,
-          homework(title, assigned_date, due_date)
-        `)
+          homework(title, assigned_date, due_date)`
+        )
         .eq("student_id", selectedStudentId)
         .eq("branch_id", branchId)
         .eq("financial_year_id", financialYearId);
@@ -152,13 +160,13 @@ export default function StudentManagement() {
       // 7. Fetch progress evaluations
       const { data: progress, error: progError } = await supabase
         .from("student_progress")
-        .select(`
-          evaluation_date,
+        .select(
+          `evaluation_date,
           attendance_percentage,
           performance_score,
           teacher_remarks,
-          batches(batch_name)
-        `)
+          batches(batch_name)`
+        )
         .eq("student_id", selectedStudentId)
         .eq("branch_id", branchId)
         .eq("financial_year_id", financialYearId);
@@ -173,25 +181,37 @@ export default function StudentManagement() {
         .eq("financial_year_id", financialYearId);
       if (docError) throw docError;
 
-      // ─── Build HTML Report ──────────────────────────────────────────
-
+      // ─── Build HTML Report (dynamic theme colours) ──────────────────
       const orgName = org?.company_name || "Academy";
+      const primaryColor = theme.primary_color || "#0D47A1";
 
       // Fee summary
-      let feeHtml = '';
+      let feeHtml = "";
       if (fees && fees.length) {
         const totalFee = fees.reduce((s, f) => s + Number(f.final_fee), 0);
-        const totalPaid = fees.reduce((s, f) => s + Number(f.total_paid || 0), 0);
-        const totalPending = fees.reduce((s, f) => s + Number(f.pending || 0), 0);
+        const totalPaid = fees.reduce(
+          (s, f) => s + Number(f.total_paid || 0),
+          0
+        );
+        const totalPending = fees.reduce(
+          (s, f) => s + Number(f.pending || 0),
+          0
+        );
         feeHtml = `
           <h4 style="margin:8px 0 2px;">Fee Summary</h4>
           <div style="display:flex;gap:16px;font-size:12px;flex-wrap:wrap;">
-            <span><strong>Total Fee:</strong> ₹ ${totalFee.toLocaleString('en-IN')}</span>
-            <span><strong>Total Paid:</strong> ₹ ${totalPaid.toLocaleString('en-IN')}</span>
-            <span><strong>Total Pending:</strong> ₹ ${totalPending.toLocaleString('en-IN')}</span>
+            <span><strong>Total Fee:</strong> ₹ ${totalFee.toLocaleString(
+              "en-IN"
+            )}</span>
+            <span><strong>Total Paid:</strong> ₹ ${totalPaid.toLocaleString(
+              "en-IN"
+            )}</span>
+            <span><strong>Total Pending:</strong> ₹ ${totalPending.toLocaleString(
+              "en-IN"
+            )}</span>
           </div>
           <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px;">
-            <thead><tr style="background:#f0f0f0;">
+            <thead><tr style="background:${theme.primary_light_color || "#f0f0f0"};">
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Course</th>
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Final Fee</th>
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Paid</th>
@@ -199,27 +219,41 @@ export default function StudentManagement() {
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Status</th>
             </tr></thead>
             <tbody>
-              ${fees.map(f => `
+              ${fees
+                .map(
+                  (f) => `
                 <tr>
-                  <td style="padding:4px 8px;border:1px solid #ddd;">${f.fee_structures?.courses?.course_name || 'N/A'}</td>
-                  <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(f.final_fee).toLocaleString('en-IN')}</td>
-                  <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(f.total_paid || 0).toLocaleString('en-IN')}</td>
-                  <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(f.pending || 0).toLocaleString('en-IN')}</td>
-                  <td style="padding:4px 8px;border:1px solid #ddd;">${f.status}</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;">${
+                    f.fee_structures?.courses?.course_name || "N/A"
+                  }</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(
+                    f.final_fee
+                  ).toLocaleString("en-IN")}</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(
+                    f.total_paid || 0
+                  ).toLocaleString("en-IN")}</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">₹ ${Number(
+                    f.pending || 0
+                  ).toLocaleString("en-IN")}</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;">${
+                    f.status
+                  }</td>
                 </tr>
-              `).join('')}
+              `
+                )
+                .join("")}
             </tbody>
           </table>
         `;
       }
 
       // Batches
-      let batchHtml = '';
+      let batchHtml = "";
       if (batches && batches.length) {
         batchHtml = `
           <h4 style="margin:8px 0 2px;">Batch Assignments</h4>
           <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px;">
-            <thead><tr style="background:#f0f0f0;">
+            <thead><tr style="background:${theme.primary_light_color || "#f0f0f0"};">
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Batch</th>
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Medium</th>
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Course</th>
@@ -227,15 +261,29 @@ export default function StudentManagement() {
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Status</th>
             </tr></thead>
             <tbody>
-              ${batches.map(b => `
+              ${batches
+                .map(
+                  (b) => `
                 <tr>
-                  <td style="padding:4px 8px;border:1px solid #ddd;">${b.batches?.batch_name || '—'}</td>
-                  <td style="padding:4px 8px;border:1px solid #ddd;">${b.batches?.mediums?.name || '—'}</td>
-                  <td style="padding:4px 8px;border:1px solid #ddd;">${b.batches?.courses?.course_name || '—'}</td>
-                  <td style="padding:4px 8px;border:1px solid #ddd;">${b.enrollment_date || '—'}</td>
-                  <td style="padding:4px 8px;border:1px solid #ddd;">${b.status}</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;">${
+                    b.batches?.batch_name || "—"
+                  }</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;">${
+                    b.batches?.mediums?.name || "—"
+                  }</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;">${
+                    b.batches?.courses?.course_name || "—"
+                  }</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;">${
+                    b.enrollment_date || "—"
+                  }</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;">${
+                    b.status
+                  }</td>
                 </tr>
-              `).join('')}
+              `
+                )
+                .join("")}
             </tbody>
           </table>
         `;
@@ -252,12 +300,12 @@ export default function StudentManagement() {
       `;
 
       // Exam Results
-      let examHtml = '';
+      let examHtml = "";
       if (results && results.length) {
         examHtml = `
           <h4 style="margin:8px 0 2px;">Exam Results</h4>
           <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px;">
-            <thead><tr style="background:#f0f0f0;">
+            <thead><tr style="background:${theme.primary_light_color || "#f0f0f0"};">
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Exam</th>
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Subject</th>
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Marks</th>
@@ -265,25 +313,43 @@ export default function StudentManagement() {
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Date</th>
             </tr></thead>
             <tbody>
-              ${results.map(r => `
+              ${results
+                .map(
+                  (r) => `
                 <tr>
-                  <td style="padding:4px 8px;border:1px solid #ddd;">${r.exams?.exam_name || '—'}</td>
-                  <td style="padding:4px 8px;border:1px solid #ddd;">${r.exams?.subjects?.subject_name || '—'}</td>
-                  <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${r.marks_obtained}</td>
-                  <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${r.exams?.total_marks || '—'}</td>
-                  <td style="padding:4px 8px;border:1px solid #ddd;">${r.exams?.exam_date || '—'}</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;">${
+                    r.exams?.exam_name || "—"
+                  }</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;">${
+                    r.exams?.subjects?.subject_name || "—"
+                  }</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${
+                    r.marks_obtained
+                  }</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${
+                    r.exams?.total_marks || "—"
+                  }</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;">${
+                    r.exams?.exam_date || "—"
+                  }</td>
                 </tr>
-              `).join('')}
+              `
+                )
+                .join("")}
             </tbody>
           </table>
         `;
       }
 
       // Homework
-      let hwHtml = '';
+      let hwHtml = "";
       if (homeworkSubs && homeworkSubs.length) {
-        const pending = homeworkSubs.filter(h => h.status === "Pending").length;
-        const submitted = homeworkSubs.filter(h => h.status !== "Pending").length;
+        const pending = homeworkSubs.filter(
+          (h) => h.status === "Pending"
+        ).length;
+        const submitted = homeworkSubs.filter(
+          (h) => h.status !== "Pending"
+        ).length;
         hwHtml = `
           <h4 style="margin:8px 0 2px;">Homework</h4>
           <div style="display:flex;gap:16px;font-size:12px;">
@@ -295,12 +361,12 @@ export default function StudentManagement() {
       }
 
       // Progress
-      let progHtml = '';
+      let progHtml = "";
       if (progress && progress.length) {
         progHtml = `
           <h4 style="margin:8px 0 2px;">Progress Evaluations</h4>
           <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px;">
-            <thead><tr style="background:#f0f0f0;">
+            <thead><tr style="background:${theme.primary_light_color || "#f0f0f0"};">
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Date</th>
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Batch</th>
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:center;">Attendance %</th>
@@ -308,40 +374,63 @@ export default function StudentManagement() {
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Remarks</th>
             </tr></thead>
             <tbody>
-              ${progress.map(p => `
+              ${progress
+                .map(
+                  (p) => `
                 <tr>
-                  <td style="padding:4px 8px;border:1px solid #ddd;">${p.evaluation_date}</td>
-                  <td style="padding:4px 8px;border:1px solid #ddd;">${p.batches?.batch_name || '—'}</td>
-                  <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${p.attendance_percentage || '—'}</td>
-                  <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${p.performance_score || '—'}</td>
-                  <td style="padding:4px 8px;border:1px solid #ddd;">${p.teacher_remarks || '—'}</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;">${
+                    p.evaluation_date
+                  }</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;">${
+                    p.batches?.batch_name || "—"
+                  }</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${
+                    p.attendance_percentage || "—"
+                  }</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${
+                    p.performance_score || "—"
+                  }</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;">${
+                    p.teacher_remarks || "—"
+                  }</td>
                 </tr>
-              `).join('')}
+              `
+                )
+                .join("")}
             </tbody>
           </table>
         `;
       }
 
       // Documents
-      let docHtml = '';
+      let docHtml = "";
       if (documents && documents.length) {
         docHtml = `
           <h4 style="margin:8px 0 2px;">Documents</h4>
           <ul style="margin:0;padding-left:20px;font-size:12px;">
-            ${documents.map(d => `<li>${d.document_type || 'Document'} – ${d.file_name} (${d.uploaded_at || '—'})</li>`).join('')}
+            ${documents
+              .map(
+                (d) =>
+                  `<li>${d.document_type || "Document"} – ${d.file_name} (${
+                    d.uploaded_at || "—"
+                  })</li>`
+              )
+              .join("")}
           </ul>
         `;
       }
 
       const htmlBody = `
         <div style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;">
-          <h2 style="color:#0D47A1;">Student Report</h2>
+          <h2 style="color:${primaryColor};">Student Report</h2>
           <p><strong>Student:</strong> ${recipient.name}</p>
-          <p><strong>Admission No:</strong> ${profile.admission_no || 'N/A'}</p>
+          <p><strong>Admission No:</strong> ${
+            profile.admission_no || "N/A"
+          }</p>
           <p><strong>Organization:</strong> ${orgName}</p>
-          <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
-          <p><strong>Email:</strong> ${profile.email || 'N/A'}</p>
-          <p><strong>Mobile:</strong> ${profile.mobile || 'N/A'}</p>
+          <p><strong>Branch:</strong> ${branch?.branch_name || "N/A"}</p>
+          <p><strong>Email:</strong> ${profile.email || "N/A"}</p>
+          <p><strong>Mobile:</strong> ${profile.mobile || "N/A"}</p>
           <hr />
           ${feeHtml}
           ${batchHtml}
@@ -396,11 +485,13 @@ export default function StudentManagement() {
     setSelectedStudentId(value);
   };
 
-  const selectedStudent = students.find(s => s.id === selectedStudentId);
-  const studentFullName = selectedStudent ? `${selectedStudent.first_name} ${selectedStudent.last_name}` : "";
+  const selectedStudent = students.find((s) => s.id === selectedStudentId);
+  const studentFullName = selectedStudent
+    ? `${selectedStudent.first_name} ${selectedStudent.last_name}`
+    : "";
 
   return (
-    <div style={{ padding: 16 }}>
+    <div className="bg-primary-bg dark:bg-accent min-h-screen p-4">
       <Row gutter={[16, 16]} align="middle">
         <Col>
           <Select
@@ -418,18 +509,22 @@ export default function StudentManagement() {
         </Col>
         <Col>
           <Button
-            type="primary"
             icon={<MailOutlined />}
             onClick={sendStudentReport}
             loading={sendingReport}
             disabled={!selectedStudentId}
+            className="bg-primary hover:bg-primary-dark text-white border-0 font-body"
           >
             Send Student Report
           </Button>
         </Col>
       </Row>
 
-      <Card style={{ marginTop: 16 }}>
+      <Card
+        style={{ marginTop: 16 }}
+        className="bg-white dark:bg-accent shadow-sm border border-gray-200 dark:border-gray-700"
+        bodyStyle={{ padding: 16 }}
+      >
         <Tabs activeKey={activeTab} onChange={setActiveTab} type="card">
           <TabPane tab="Profile" key="profile">
             <StudentProfile studentId={selectedStudentId} standalone={false} />
@@ -460,11 +555,18 @@ export default function StudentManagement() {
           </TabPane>
           <TabPane tab="Inventory" key="inventory">
             <div className="mb-4">
-              <Button type="primary" onClick={() => setInventoryModalOpen(true)}>
+              <Button
+                type="primary"
+                onClick={() => setInventoryModalOpen(true)}
+                className="bg-primary hover:bg-primary-light"
+              >
                 Issue Item to Student
               </Button>
             </div>
-            <InventoryTransactions studentId={selectedStudentId} standalone={false} />
+            <InventoryTransactions
+              studentId={selectedStudentId}
+              standalone={false}
+            />
           </TabPane>
         </Tabs>
       </Card>

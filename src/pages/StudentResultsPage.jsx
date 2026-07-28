@@ -3,11 +3,14 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // 👈 import theme
 import { Award, Calendar, Layers, BookOpen, Mail } from "lucide-react";
+import toast from "react-hot-toast";
 import { sendEmail, sendTemplateEmail } from "../services/emailService";
 
 export default function StudentResultsPage({ studentId: propStudentId = null, standalone = true }) {
   const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme(); // 👈 get theme colours
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const [sendingEmailId, setSendingEmailId] = useState(null);
@@ -56,7 +59,7 @@ export default function StudentResultsPage({ studentId: propStudentId = null, st
         return;
       }
 
-      // Build HTML table rows
+      // Build HTML table rows (dynamic theme colours)
       let tableRows = results.map((res) => {
         const exam = res.exams;
         const percentage = exam?.total_marks ? ((res.marks_obtained / exam.total_marks) * 100).toFixed(1) : '—';
@@ -76,12 +79,12 @@ export default function StudentResultsPage({ studentId: propStudentId = null, st
 
       const htmlBody = `
         <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
-          <h2 style="color:#0D47A1;">Exam Results Report</h2>
+          <h2 style="color:${theme.primary_color};">Exam Results Report</h2>
           <p><strong>Student:</strong> ${recipient.name}</p>
           <p><strong>Total Exams:</strong> ${results.length}</p>
           <hr />
           <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
-            <thead style="background:#e3f2fd;">
+            <thead style="background:${theme.primary_light_color || '#e3f2fd'};">
               <tr>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Exam</th>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Batch</th>
@@ -196,11 +199,11 @@ export default function StudentResultsPage({ studentId: propStudentId = null, st
   const content = (
     <div>
       {isLoading ? (
-        <div className="p-4 text-center text-secondary">Loading results…</div>
+        <div className="p-4 text-center text-gray-500 dark:text-gray-400">Loading results…</div>
       ) : results.length === 0 ? (
-        <div className="bg-white rounded-xl p-8 shadow-sm border border-secondary-light text-center">
-          <Award size={32} className="text-secondary-light mx-auto mb-2" />
-          <p className="text-secondary">No exam results found for this student.</p>
+        <div className="bg-white dark:bg-accent rounded-xl p-8 shadow-sm border border-gray-200 dark:border-gray-700 text-center">
+          <Award size={32} className="text-gray-400 dark:text-gray-500 mx-auto mb-2" />
+          <p className="text-gray-600 dark:text-gray-400">No exam results found for this student.</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -209,38 +212,38 @@ export default function StudentResultsPage({ studentId: propStudentId = null, st
             return (
               <div
                 key={idx}
-                className="bg-white rounded-xl p-4 shadow-sm border border-secondary-light"
+                className="bg-white dark:bg-accent rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700"
               >
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <Award size={18} className="text-primary" />
                     <h3 className="font-bold text-primary-dark">{exam?.exam_name}</h3>
                   </div>
-                  {/* 👇 Resend Result Email button */}
+                  {/* 👇 Resend Result Email button – theme colours */}
                   <button
                     onClick={() => sendResultEmail(res, idx)}
                     disabled={sendingEmailId === idx}
-                    className="text-blue-600 hover:text-blue-800 disabled:opacity-50 flex items-center gap-1"
+                    className="text-primary hover:text-primary-light disabled:opacity-50 flex items-center gap-1"
                     title="Resend result email"
                   >
                     <Mail size={16} />
                     {sendingEmailId === idx ? '...' : ''}
                   </button>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm text-secondary-dark">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm text-gray-600 dark:text-gray-400">
                   <div className="flex items-center gap-1">
-                    <Layers size={16} /> {exam?.batches?.batch_name}
+                    <Layers size={16} className="text-gray-500 dark:text-gray-400" /> {exam?.batches?.batch_name}
                   </div>
                   <div className="flex items-center gap-1">
-                    <BookOpen size={16} /> {exam?.batches?.courses?.course_name}
+                    <BookOpen size={16} className="text-gray-500 dark:text-gray-400" /> {exam?.batches?.courses?.course_name}
                   </div>
                   <div className="flex items-center gap-1">
-                    <Calendar size={16} /> {exam?.exam_date}
+                    <Calendar size={16} className="text-gray-500 dark:text-gray-400" /> {exam?.exam_date}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-4 mt-2 text-sm">
                   <span>
-                    Marks: <strong>{res.marks_obtained}</strong>
+                    Marks: <strong className="text-gray-800 dark:text-gray-100">{res.marks_obtained}</strong>
                     {exam?.total_marks && ` / ${exam.total_marks}`}
                   </span>
                   {res.grade && (
@@ -249,7 +252,7 @@ export default function StudentResultsPage({ studentId: propStudentId = null, st
                     </span>
                   )}
                   {res.remarks && (
-                    <span className="text-secondary text-xs">Remarks: {res.remarks}</span>
+                    <span className="text-gray-500 dark:text-gray-400 text-xs">Remarks: {res.remarks}</span>
                   )}
                 </div>
               </div>
@@ -265,12 +268,12 @@ export default function StudentResultsPage({ studentId: propStudentId = null, st
   return (
     <div className="p-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
-        <h1 className="text-3xl font-righteous text-primary-dark">My Results</h1>
-        {/* 👇 Send Report button */}
+        <h1 className="text-3xl font-heading text-primary-dark">My Results</h1>
+        {/* 👇 Send Report button – primary theme */}
         {results.length > 0 && (
           <button
             onClick={sendReportEmail}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+            className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
           >
             <Mail size={16} /> Send Report
           </button>

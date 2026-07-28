@@ -10,13 +10,18 @@ import {
 } from "../services/inquiryService";
 import { useOrgDarkLogo } from "../hooks/useOrgDarkLogo";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 
 export default function InquiryForm({ onSubmit, onClose, initialData = {} }) {
   const darkLogo = useOrgDarkLogo();
   const { org, branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();                                     // ✅ theme hook
   const orgName = org?.company_name || "Academy";
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const [form, setForm] = useState({
     student_name: initialData.student_name || "",
@@ -34,17 +39,8 @@ export default function InquiryForm({ onSubmit, onClose, initialData = {} }) {
   const [courses, setCourses] = useState([]);
   const [mediums, setMediums] = useState([]);
 
-  if (!branchId || !financialYearId) {
-    return (
-      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl p-8 shadow-xl">
-          <p className="text-secondary font-montserrat">Loading organisation data…</p>
-        </div>
-      </div>
-    );
-  }
-
   useEffect(() => {
+    if (!branchId || !financialYearId) return;
     loadDropdowns();
   }, [branchId, financialYearId]);
 
@@ -77,23 +73,23 @@ export default function InquiryForm({ onSubmit, onClose, initialData = {} }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl w-full max-w-2xl shadow-xl max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-secondary-light px-6 py-4 flex items-center justify-between rounded-t-xl z-10">
+      <div className="bg-white rounded-xl w-full max-w-2xl shadow-xl max-h-[90vh] overflow-y-auto border border-primary-bg">
+        <div className="sticky top-0 bg-white border-b border-primary-bg px-6 py-4 flex items-center justify-between rounded-t-xl z-10">
           <div className="flex items-center gap-3">
             <img src={darkLogo} alt={orgName} className="h-10 w-auto" />
-            <h2 className="text-xl font-righteous text-primary-dark">
+            <h2 className="text-xl font-bold text-primary" style={{ fontFamily: headingFont }}>
               {initialData.id ? "Edit Inquiry" : "New Inquiry"}
             </h2>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-secondary-bg rounded-lg transition">
-            <X size={20} className="text-secondary-dark" />
+          <button onClick={onClose} className="p-2 hover:bg-primary-bg rounded-lg transition">
+            <X size={20} className="text-primary-dark" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
                 <User size={14} className="inline mr-1" /> Student Name *
               </label>
               <input
@@ -101,12 +97,13 @@ export default function InquiryForm({ onSubmit, onClose, initialData = {} }) {
                 placeholder="Full name"
                 value={form.student_name}
                 onChange={handleChange}
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+                className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-primary-dark/40"
                 required
+                style={{ fontFamily: bodyFont }}
               />
             </div>
             <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
                 <User size={14} className="inline mr-1" /> Parent Name
               </label>
               <input
@@ -114,14 +111,15 @@ export default function InquiryForm({ onSubmit, onClose, initialData = {} }) {
                 placeholder="Father / Mother"
                 value={form.parent_name}
                 onChange={handleChange}
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+                className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-primary-dark/40"
+                style={{ fontFamily: bodyFont }}
               />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
                 <Phone size={14} className="inline mr-1" /> Mobile *
               </label>
               <input
@@ -129,12 +127,13 @@ export default function InquiryForm({ onSubmit, onClose, initialData = {} }) {
                 placeholder="Phone number"
                 value={form.mobile}
                 onChange={handleChange}
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+                className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-primary-dark/40"
                 required
+                style={{ fontFamily: bodyFont }}
               />
             </div>
             <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
                 <Phone size={14} className="inline mr-1" /> WhatsApp
               </label>
               <input
@@ -142,14 +141,15 @@ export default function InquiryForm({ onSubmit, onClose, initialData = {} }) {
                 placeholder="WhatsApp number"
                 value={form.whatsapp}
                 onChange={handleChange}
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+                className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-primary-dark/40"
+                style={{ fontFamily: bodyFont }}
               />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
                 <Mail size={14} className="inline mr-1" /> Email
               </label>
               <input
@@ -158,18 +158,20 @@ export default function InquiryForm({ onSubmit, onClose, initialData = {} }) {
                 placeholder="Email address"
                 value={form.email}
                 onChange={handleChange}
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+                className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-primary-dark/40"
+                style={{ fontFamily: bodyFont }}
               />
             </div>
             <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
                 <BookOpen size={14} className="inline mr-1" /> Interested Course
               </label>
               <select
                 name="interested_course_id"
                 value={form.interested_course_id}
                 onChange={handleChange}
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                style={{ fontFamily: bodyFont }}
               >
                 <option value="">Select Course</option>
                 {courses.map((c) => (
@@ -181,14 +183,15 @@ export default function InquiryForm({ onSubmit, onClose, initialData = {} }) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
                 <Layers size={14} className="inline mr-1" /> Medium
               </label>
               <select
                 name="medium_id"
                 value={form.medium_id}
                 onChange={handleChange}
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                style={{ fontFamily: bodyFont }}
               >
                 <option value="">Select Medium</option>
                 {mediums.map((m) => (
@@ -197,7 +200,7 @@ export default function InquiryForm({ onSubmit, onClose, initialData = {} }) {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
                 <Tag size={14} className="inline mr-1" /> Source
               </label>
               <input
@@ -205,14 +208,15 @@ export default function InquiryForm({ onSubmit, onClose, initialData = {} }) {
                 placeholder="e.g., Walk-in, Reference"
                 value={form.source}
                 onChange={handleChange}
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+                className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-primary-dark/40"
+                style={{ fontFamily: bodyFont }}
               />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
                 <Calendar size={14} className="inline mr-1" /> Follow-up Date
               </label>
               <input
@@ -220,14 +224,13 @@ export default function InquiryForm({ onSubmit, onClose, initialData = {} }) {
                 name="followup_date"
                 value={form.followup_date}
                 onChange={handleChange}
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
               />
             </div>
-            {/* Removed Status dropdown – status managed via actions */}
           </div>
 
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
               Remarks
             </label>
             <textarea
@@ -236,21 +239,24 @@ export default function InquiryForm({ onSubmit, onClose, initialData = {} }) {
               value={form.remarks}
               onChange={handleChange}
               rows={3}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light resize-none"
+              className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-primary-dark/40 resize-none"
+              style={{ fontFamily: bodyFont }}
             />
           </div>
 
           <div className="flex flex-col sm:flex-row-reverse gap-3 pt-2">
             <button
               type="submit"
-              className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat transition flex items-center justify-center gap-2"
+              className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg transition flex items-center justify-center gap-2"
+              style={{ fontFamily: bodyFont }}
             >
               {initialData.id ? "Update Inquiry" : "Create Inquiry"}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="w-full sm:w-auto border border-secondary-light text-secondary-dark hover:bg-secondary-bg px-6 py-2.5 rounded-lg font-montserrat transition"
+              className="w-full sm:w-auto border border-primary-bg text-primary-dark hover:bg-primary-bg px-6 py-2.5 rounded-lg transition"
+              style={{ fontFamily: bodyFont }}
             >
               Cancel
             </button>

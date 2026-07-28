@@ -2,14 +2,19 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../api/supabase';
 import { useOrg } from '../context/OrganizationContext';
+import { useTheme } from '../context/ThemeContext'; // ✅ dynamic theme
 import toast from 'react-hot-toast';
 import { X, Plus, Trash2 } from 'lucide-react';
 
 export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialData = null }) {
   const { org, branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme(); // ✅ theme hook
   const branchId = branch?.id ? Number(branch.id) : null;
   const financialYearId = selectedFinancialYear?.id ? Number(selectedFinancialYear.id) : null;
   const organizationId = org?.id;
+
+  const headingFont = theme?.font_heading || 'Righteous';
+  const bodyFont = theme?.font_body || 'Montserrat';
 
   const [form, setForm] = useState({
     course_id: '',
@@ -57,18 +62,18 @@ export default function FeeStructureForm({ isOpen, onClose, onSuccess, initialDa
         .select('id, course_name')
         .eq('status', true)
         .eq('organization_id', organizationId)
-        .is('deleted_at', null);          // ✅ exclude soft-deleted
+        .is('deleted_at', null);
 
       if (financialYearId) coursesQuery = coursesQuery.eq('financial_year_id', financialYearId);
 
-      // Tax rates – also scoped by organization (if the table supports it)
+      // Tax rates – also scoped by organization
       let taxQuery = supabase
-  .from('tax_rates')
-  .select('id, name, rate')
-  .eq('is_active', true)
-  .eq('organization_id', organizationId);   // ✅ now org‑scoped
+        .from('tax_rates')
+        .select('id, name, rate')
+        .eq('is_active', true)
+        .eq('organization_id', organizationId);
 
-if (financialYearId) taxQuery = taxQuery.eq('financial_year_id', financialYearId);
+      if (financialYearId) taxQuery = taxQuery.eq('financial_year_id', financialYearId);
 
       const [coursesRes, taxRes] = await Promise.all([coursesQuery, taxQuery]);
       setCourses(coursesRes.data || []);
@@ -233,24 +238,27 @@ if (financialYearId) taxQuery = taxQuery.eq('financial_year_id', financialYearId
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl w-full max-w-4xl shadow-xl max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-secondary-light px-6 py-4 flex items-center justify-between rounded-t-xl">
-          <h2 className="text-xl font-righteous text-primary-dark">
+      <div className="bg-white rounded-xl w-full max-w-4xl shadow-xl max-h-[90vh] overflow-y-auto border border-primary-bg">
+        <div className="sticky top-0 bg-white border-b border-primary-bg px-6 py-4 flex items-center justify-between rounded-t-xl">
+          <h2 className="text-xl font-bold text-primary" style={{ fontFamily: headingFont }}>
             {initialData?.id ? 'Edit Fee Structure' : 'New Fee Structure'}
           </h2>
-          <button onClick={onClose} className="p-2 hover:bg-secondary-bg rounded-lg">
-            <X size={20} className="text-secondary-dark" />
+          <button onClick={onClose} className="p-2 hover:bg-primary-bg rounded-lg transition-colors">
+            <X size={20} className="text-primary-dark" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">Course *</label>
+            <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
+              Course *
+            </label>
             <select
               value={form.course_id}
               onChange={handleCourseChange}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+              className="w-full border border-primary-bg rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none bg-white text-primary-dark"
               required
+              style={{ fontFamily: bodyFont }}
             >
               <option value="">Select Course</option>
               {courses.map((c) => (
@@ -267,24 +275,27 @@ if (financialYearId) taxQuery = taxQuery.eq('financial_year_id', financialYearId
               id="installment_allowed"
               checked={form.installment_allowed}
               onChange={handleInstallmentChange}
-              className="rounded accent-primary h-4 w-4"
+              className="rounded text-primary focus:ring-primary h-4 w-4"
             />
-            <label htmlFor="installment_allowed" className="text-sm font-montserrat text-secondary-dark">
+            <label htmlFor="installment_allowed" className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
               Allow Installments
             </label>
           </div>
 
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-2">Fee Components</label>
+            <label className="block text-sm text-primary-dark mb-2" style={{ fontFamily: bodyFont }}>
+              Fee Components
+            </label>
             <div className="space-y-3">
               {components.map((comp, idx) => (
-                <div key={idx} className="grid grid-cols-1 sm:grid-cols-6 gap-2 items-center border p-3 rounded">
+                <div key={idx} className="grid grid-cols-1 sm:grid-cols-6 gap-2 items-center border border-primary-bg p-3 rounded">
                   <input
                     type="text"
                     placeholder="Name"
                     value={comp.component_name}
                     onChange={(e) => handleComponentChange(idx, 'component_name', e.target.value)}
-                    className="col-span-2 border rounded p-2 text-sm"
+                    className="col-span-2 border border-primary-bg rounded p-2 text-sm bg-white text-primary-dark placeholder-primary-dark/40"
+                    style={{ fontFamily: bodyFont }}
                     required
                   />
                   <input
@@ -292,13 +303,15 @@ if (financialYearId) taxQuery = taxQuery.eq('financial_year_id', financialYearId
                     placeholder="Amount"
                     value={comp.amount}
                     onChange={(e) => handleComponentChange(idx, 'amount', e.target.value)}
-                    className="col-span-1 border rounded p-2 text-sm"
+                    className="col-span-1 border border-primary-bg rounded p-2 text-sm bg-white text-primary-dark placeholder-primary-dark/40"
+                    style={{ fontFamily: bodyFont }}
                     required
                   />
                   <select
                     value={comp.tax_rate_id}
                     onChange={(e) => handleComponentChange(idx, 'tax_rate_id', e.target.value)}
-                    className="col-span-1 border rounded p-2 text-sm"
+                    className="col-span-1 border border-primary-bg rounded p-2 text-sm bg-white text-primary-dark"
+                    style={{ fontFamily: bodyFont }}
                   >
                     <option value="">No Tax</option>
                     {taxRates.map((t) => (
@@ -308,18 +321,20 @@ if (financialYearId) taxQuery = taxQuery.eq('financial_year_id', financialYearId
                     ))}
                   </select>
                   <div className="col-span-1 flex items-center gap-1">
-                    <label className="text-xs whitespace-nowrap">Incl.</label>
+                    <label className="text-xs whitespace-nowrap text-primary-dark" style={{ fontFamily: bodyFont }}>
+                      Incl.
+                    </label>
                     <input
                       type="checkbox"
                       checked={comp.tax_inclusive !== false}
                       onChange={(e) => handleComponentChange(idx, 'tax_inclusive', e.target.checked)}
-                      className="rounded accent-primary h-4 w-4"
+                      className="rounded text-primary focus:ring-primary h-4 w-4"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={() => removeComponent(idx)}
-                    className="text-red-500 justify-self-end"
+                    className="text-accent-dark hover:text-accent justify-self-end"
                   >
                     <Trash2 size={16} />
                   </button>
@@ -329,20 +344,21 @@ if (financialYearId) taxQuery = taxQuery.eq('financial_year_id', financialYearId
             <button
               type="button"
               onClick={addComponent}
-              className="text-primary text-sm mt-2 flex items-center gap-1"
+              className="text-primary hover:underline text-sm mt-2 flex items-center gap-1"
+              style={{ fontFamily: bodyFont }}
             >
               <Plus size={16} /> Add Component
             </button>
           </div>
 
-          <div className="border-t pt-3 text-right">
-            <span className="text-sm font-medium text-secondary-dark">
+          <div className="border-t border-primary-bg pt-3 text-right">
+            <span className="text-sm font-medium text-primary-dark" style={{ fontFamily: bodyFont }}>
               Total Fee:
             </span>
-            <span className="text-lg font-bold text-primary ml-2">
+            <span className="text-lg font-bold text-primary ml-2" style={{ fontFamily: headingFont }}>
               ₹ {totalAmount.toLocaleString('en-IN')}
             </span>
-            <div className="text-xs text-gray-500 mt-1">
+            <div className="text-xs text-primary-dark/60 mt-1" style={{ fontFamily: bodyFont }}>
               * Tax handling per component (Inclusive/Exclusive)
             </div>
           </div>
@@ -351,14 +367,16 @@ if (financialYearId) taxQuery = taxQuery.eq('financial_year_id', financialYearId
             <button
               type="submit"
               disabled={loading}
-              className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat transition disabled:opacity-60"
+              className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg transition disabled:opacity-60"
+              style={{ fontFamily: bodyFont }}
             >
               {loading ? 'Saving...' : initialData?.id ? 'Update' : 'Create'}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="w-full sm:w-auto border border-secondary-light text-secondary-dark hover:bg-secondary-bg px-6 py-2.5 rounded-lg font-montserrat transition"
+              className="w-full sm:w-auto border border-primary-bg text-primary-dark hover:bg-primary-bg px-6 py-2.5 rounded-lg transition"
+              style={{ fontFamily: bodyFont }}
             >
               Cancel
             </button>

@@ -21,7 +21,7 @@ import {
 } from "../services/attendanceService";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
-import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
+import { useTheme } from "../context/ThemeContext";
 import { sendEmail } from "../services/emailService";
 
 export default function MarkAttendance() {
@@ -29,9 +29,14 @@ export default function MarkAttendance() {
   const navigate = useNavigate();
 
   const { branch, selectedFinancialYear, org } = useOrg();
-  const theme = useTheme();                                     // ✅ theme hook
-  const branchId = branch?.id;
-  const financialYearId = selectedFinancialYear?.id;
+  const theme = useTheme();
+
+  // Convert IDs to integers immediately
+  const branchId = branch?.id ? Number(branch.id) : undefined;
+  const financialYearId = selectedFinancialYear?.id
+    ? Number(selectedFinancialYear.id)
+    : undefined;
+  const sessionIdNum = sessionId ? parseInt(sessionId, 10) : undefined;
 
   const headingFont = theme?.font_heading || "Righteous";
   const bodyFont = theme?.font_body || "Montserrat";
@@ -76,27 +81,29 @@ export default function MarkAttendance() {
         return;
       }
 
-      // Build HTML table rows
-      let tableRows = students.map((student) => {
-        const status = attendance[student.student_id] || "Present";
-        const remark = remarks[student.student_id] || "";
-        const statusColor = status === "Present" ? "#2e7d32" : "#c62828";
-        const statusBg = status === "Present" ? "#e8f5e9" : "#ffebee";
+      let tableRows = students
+        .map((student) => {
+          const status =
+            attendance[student.student_id] || "present"; // lowercase
+          const remark = remarks[student.student_id] || "";
+          const statusColor = status === "present" ? "#2e7d32" : "#c62828";
+          const statusBg = status === "present" ? "#e8f5e9" : "#ffebee";
 
-        return `
-          <tr>
-            <td style="padding:4px 8px;border:1px solid #ddd;">${student.admission_no}</td>
-            <td style="padding:4px 8px;border:1px solid #ddd;">${student.first_name} ${student.last_name}</td>
-            <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">
-              <span style="background:${statusBg};color:${statusColor};padding:2px 12px;border-radius:12px;font-size:10px;font-weight:600;">${status}</span>
-            </td>
-            <td style="padding:4px 8px;border:1px solid #ddd;">${remark || '—'}</td>
-          </tr>
-        `;
-      }).join('');
+          return `
+            <tr>
+              <td style="padding:4px 8px;border:1px solid #ddd;">${student.admission_no}</td>
+              <td style="padding:4px 8px;border:1px solid #ddd;">${student.first_name} ${student.last_name}</td>
+              <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">
+                <span style="background:${statusBg};color:${statusColor};padding:2px 12px;border-radius:12px;font-size:10px;font-weight:600;">${status}</span>
+              </td>
+              <td style="padding:4px 8px;border:1px solid #ddd;">${remark || '—'}</td>
+            </tr>
+          `;
+        })
+        .join("");
 
       const presentCount = students.filter(
-        (s) => (attendance[s.student_id] || "Present") === "Present"
+        (s) => (attendance[s.student_id] || "present") === "present"
       ).length;
       const absentCount = students.length - presentCount;
 
@@ -147,10 +154,10 @@ export default function MarkAttendance() {
 
   // ─── Load data ──────────────────────────────────────────────────────
   useEffect(() => {
-    if (branchId && financialYearId) {
+    if (branchId !== undefined && financialYearId !== undefined && sessionIdNum) {
       loadData();
     }
-  }, [sessionId, branchId, financialYearId]);
+  }, [sessionIdNum, branchId, financialYearId]);
 
   async function loadData() {
     setLoading(true);
@@ -161,7 +168,7 @@ export default function MarkAttendance() {
           `id, attendance_date, topic_covered, batch_id,
            batches(batch_name, medium_id, mediums(name))`
         )
-        .eq("id", sessionId)
+        .eq("id", sessionIdNum)
         .eq("branch_id", branchId)
         .eq("financial_year_id", financialYearId)
         .single();
@@ -179,20 +186,24 @@ export default function MarkAttendance() {
         financialYearId
       );
 
+      // Deduplicate students by student_id
       const uniqueStudents = Array.from(
         new Map(studentList.map((s) => [s.student_id, s])).values()
       );
       setStudents(uniqueStudents);
 
       const marked = await getMarkedAttendance(
-        sessionId,
+        sessionIdNum,
         branchId,
         financialYearId
       );
       const initialAttendance = {};
       const initialRemarks = {};
       marked.forEach((m) => {
-        initialAttendance[m.student_id] = m.status;
+        // Normalize to lowercase
+        const status = (m.status || "").toLowerCase();
+        initialAttendance[m.student_id] =
+          status === "absent" ? "absent" : "present";
         initialRemarks[m.student_id] = m.remarks || "";
       });
       setAttendance(initialAttendance);
@@ -214,21 +225,23 @@ export default function MarkAttendance() {
 
   function markAllPresent() {
     const newAttendance = {};
-    students.forEach((s) => (newAttendance[s.student_id] = "Present"));
+    students.forEach((s) => (newAttendance[s.student_id] = "present"));
     setAttendance(newAttendance);
   }
 
   async function handleSave() {
+    // Create records with lowercase statuses
     const records = students.map((s) => ({
       student_id: s.student_id,
-      status: attendance[s.student_id] || "Absent",
+      status: attendance[s.student_id] || "absent",   // lowercase
       remarks: remarks[s.student_id] || "",
     }));
 
     setSaving(true);
     try {
-      await saveAttendance(sessionId, records, branchId, financialYearId);
+      await saveAttendance(sessionIdNum, records, branchId, financialYearId);
 
+      // Update the session's teacher_id if not already set
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: teacherData } = await supabase
@@ -247,7 +260,7 @@ export default function MarkAttendance() {
               branch_id: branchId,
               financial_year_id: financialYearId,
             })
-            .eq("id", sessionId)
+            .eq("id", sessionIdNum)
             .eq("branch_id", branchId)
             .eq("financial_year_id", financialYearId)
             .is("teacher_id", null);
@@ -269,7 +282,10 @@ export default function MarkAttendance() {
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+      <div
+        className="p-8 text-center text-primary-dark/60"
+        style={{ fontFamily: bodyFont }}
+      >
         Loading attendance sheet…
       </div>
     );
@@ -287,11 +303,17 @@ export default function MarkAttendance() {
           <ArrowLeft size={18} />
           Back to Sessions
         </button>
-        <h1 className="text-3xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+        <h1
+          className="text-3xl font-bold text-primary"
+          style={{ fontFamily: headingFont }}
+        >
           Mark Attendance
         </h1>
         {sessionInfo && (
-          <div className="flex flex-wrap gap-2 mt-2 text-sm" style={{ fontFamily: bodyFont }}>
+          <div
+            className="flex flex-wrap gap-2 mt-2 text-sm"
+            style={{ fontFamily: bodyFont }}
+          >
             <span className="flex items-center gap-1 bg-primary-bg text-primary px-3 py-1 rounded-full">
               <Layers size={14} /> {sessionInfo.batches?.batch_name}
             </span>
@@ -315,12 +337,14 @@ export default function MarkAttendance() {
       {/* Students Table */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-primary-bg">
         <div className="p-4 border-b border-primary-bg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-          <h2 className="text-lg font-bold text-primary flex items-center gap-2" style={{ fontFamily: headingFont }}>
+          <h2
+            className="text-lg font-bold text-primary flex items-center gap-2"
+            style={{ fontFamily: headingFont }}
+          >
             <User size={18} />
             Students ({students.length})
           </h2>
           <div className="flex gap-2">
-            {/* Send Report button */}
             <button
               onClick={sendAttendanceReport}
               disabled={sendingReport}
@@ -345,32 +369,50 @@ export default function MarkAttendance() {
           <table className="w-full min-w-[600px]">
             <thead className="bg-primary-bg border-b border-primary-bg">
               <tr>
-                <th className="text-left p-3 text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                <th
+                  className="text-left p-3 text-sm font-medium text-primary-dark uppercase"
+                  style={{ fontFamily: bodyFont }}
+                >
                   <Hash size={14} className="inline mr-1" />
                   Admission No
                 </th>
-                <th className="text-left p-3 text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                <th
+                  className="text-left p-3 text-sm font-medium text-primary-dark uppercase"
+                  style={{ fontFamily: bodyFont }}
+                >
                   <User size={14} className="inline mr-1" />
                   Name
                 </th>
-                <th className="text-center p-3 text-sm font-medium text-primary-dark uppercase w-40" style={{ fontFamily: bodyFont }}>
+                <th
+                  className="text-center p-3 text-sm font-medium text-primary-dark uppercase w-40"
+                  style={{ fontFamily: bodyFont }}
+                >
                   Status
                 </th>
-                <th className="text-left p-3 text-sm font-medium text-primary-dark uppercase w-48" style={{ fontFamily: bodyFont }}>
+                <th
+                  className="text-left p-3 text-sm font-medium text-primary-dark uppercase w-48"
+                  style={{ fontFamily: bodyFont }}
+                >
                   Remarks
                 </th>
               </tr>
             </thead>
             <tbody>
-              {students.map((student) => (
+              {students.map((student, index) => (
                 <tr
-                  key={student.student_id}
+                  key={student.student_id || student.id || index}
                   className="border-b border-primary-bg hover:bg-primary-bg transition"
                 >
-                  <td className="p-3 text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
+                  <td
+                    className="p-3 text-sm text-primary-dark"
+                    style={{ fontFamily: bodyFont }}
+                  >
                     {student.admission_no}
                   </td>
-                  <td className="p-3 text-sm font-medium text-primary" style={{ fontFamily: headingFont }}>
+                  <td
+                    className="p-3 text-sm font-medium text-primary"
+                    style={{ fontFamily: headingFont }}
+                  >
                     {student.first_name} {student.last_name}
                   </td>
                   <td className="p-3 text-center">
@@ -379,21 +421,21 @@ export default function MarkAttendance() {
                         <input
                           type="radio"
                           name={`status-${student.student_id}`}
-                          value="Present"
+                          value="present"
                           checked={
-                            (attendance[student.student_id] || "Present") ===
-                            "Present"
+                            (attendance[student.student_id] || "present") ===
+                            "present"
                           }
                           onChange={() =>
-                            handleStatusChange(
-                              student.student_id,
-                              "Present"
-                            )
+                            handleStatusChange(student.student_id, "present")
                           }
                           className="w-4 h-4 text-primary accent-primary"
                         />
-                        <span className="text-sm text-primary-dark font-medium" style={{ fontFamily: bodyFont }}>
-                          Present
+                        <span
+                          className="text-sm text-primary-dark font-medium"
+                          style={{ fontFamily: bodyFont }}
+                        >
+                          present
                         </span>
                       </label>
 
@@ -401,19 +443,19 @@ export default function MarkAttendance() {
                         <input
                           type="radio"
                           name={`status-${student.student_id}`}
-                          value="Absent"
+                          value="absent"
                           checked={
-                            attendance[student.student_id] === "Absent"
+                            attendance[student.student_id] === "absent"
                           }
                           onChange={() =>
-                            handleStatusChange(
-                              student.student_id,
-                              "Absent"
-                            )
+                            handleStatusChange(student.student_id, "absent")
                           }
                           className="w-4 h-4 text-accent accent-accent"
                         />
-                        <span className="text-sm text-accent-dark font-medium" style={{ fontFamily: bodyFont }}>
+                        <span
+                          className="text-sm text-accent-dark font-medium"
+                          style={{ fontFamily: bodyFont }}
+                        >
                           Absent
                         </span>
                       </label>

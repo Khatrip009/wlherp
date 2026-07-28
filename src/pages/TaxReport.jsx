@@ -9,6 +9,7 @@ import Papa from "papaparse";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // 👈 import theme
 import { sendEmail } from "../services/emailService";
 
 // ─── Helper: load image as base64 ────────────────────────────
@@ -32,6 +33,7 @@ export default function TaxReport() {
   );
 
   const { org: currentOrg, branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme(); // 👈 get theme colours
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -65,7 +67,7 @@ export default function TaxReport() {
         return;
       }
 
-      // Build HTML table rows for summary
+      // Build HTML table rows using theme colours
       let tableRows = summaryArray.map(row => `
         <tr>
           <td style="padding:4px 8px;border:1px solid #ddd;">${row.name}</td>
@@ -76,18 +78,19 @@ export default function TaxReport() {
       `).join('');
 
       const orgName = currentOrg?.company_name || "Academy";
+      const primaryColor = theme.primary_color;
 
       const htmlBody = `
         <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
-          <h2 style="color:#0D47A1;">Tax Report</h2>
+          <h2 style="color:${primaryColor};">Tax Report</h2>
           <p><strong>Organization:</strong> ${orgName}</p>
           <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
           <p><strong>Period:</strong> ${startDate} – ${endDate}</p>
           <p><strong>Total Tax Collected:</strong> ₹ ${totalTax.toLocaleString('en-IN')}</p>
           <hr />
-          <h3 style="color:#0D47A1;">Breakdown by Tax Rate</h3>
+          <h3 style="color:${primaryColor};">Breakdown by Tax Rate</h3>
           <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
-            <thead style="background:#e3f2fd;">
+            <thead style="background:${theme.primary_light_color || '#e3f2fd'};">
               <tr>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Tax Rate</th>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:center;">Rate %</th>
@@ -209,6 +212,7 @@ export default function TaxReport() {
 
     const letterheadUrl = org?.letterhead_url || null;
     const companyName = org?.company_name || "ShreeVidhya Academy";
+    const primaryColor = theme.primary_color || "#0D47A1";
 
     let letterheadBase64 = null;
     if (letterheadUrl) {
@@ -234,7 +238,7 @@ export default function TaxReport() {
 
     doc.setFont("times", "bold");
     doc.setFontSize(22);
-    doc.setTextColor("#0D47A1");
+    doc.setTextColor(primaryColor);
     doc.text("Tax Report", pageWidth / 2, y, { align: "center" });
     y += 12;
 
@@ -250,7 +254,7 @@ export default function TaxReport() {
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
-    doc.setTextColor("#0D47A1");
+    doc.setTextColor(primaryColor);
     doc.text(`Total Tax Collected: ₹${totalTax.toLocaleString("en-IN")}`, sideMargin, y);
     y += 10;
 
@@ -276,7 +280,7 @@ export default function TaxReport() {
         lineWidth: 0.5,
       },
       headStyles: {
-        fillColor: "#0D47A1",
+        fillColor: primaryColor,
         textColor: "#FFFFFF",
         fontStyle: "bold",
         fontSize: 11,
@@ -325,18 +329,18 @@ export default function TaxReport() {
   };
 
   return (
-    <>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
-          <h1 className="text-3xl font-righteous text-primary-dark">Tax Report</h1>
-          <p className="text-sm text-secondary-dark font-montserrat mt-1">
+          <h1 className="text-3xl font-heading text-primary-dark">Tax Report</h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400 font-body mt-1">
             Tax collected (from fee payments & income)
           </p>
         </div>
-        {/* 👇 Send Report button */}
+        {/* 👇 Send Report button – primary theme */}
         <button
           onClick={sendReportEmail}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
         >
           <Mail size={16} /> Send Report
         </button>
@@ -345,78 +349,78 @@ export default function TaxReport() {
       {/* Date filters & buttons */}
       <div className="flex flex-wrap items-end gap-4 mb-6">
         <div>
-          <label className="text-xs font-montserrat text-secondary-dark">From Date</label>
+          <label className="text-xs font-body text-gray-700 dark:text-gray-300">From Date</label>
           <input
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="border border-gray-300 rounded p-2 text-sm mt-1"
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm mt-1"
           />
         </div>
         <div>
-          <label className="text-xs font-montserrat text-secondary-dark">To Date</label>
+          <label className="text-xs font-body text-gray-700 dark:text-gray-300">To Date</label>
           <input
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="border border-gray-300 rounded p-2 text-sm mt-1"
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm mt-1"
           />
         </div>
         <button
           onClick={handlePrintPdf}
-          className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
         >
           <Printer size={16} /> Print PDF
         </button>
         <button
           onClick={handleExport}
-          className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
         >
           <Download size={16} /> Export CSV
         </button>
       </div>
 
       {/* Total Tax */}
-      <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-        <h2 className="text-lg font-righteous text-primary-dark mb-4">Total Tax Collected</h2>
+      <div className="bg-white dark:bg-accent rounded-xl shadow-sm p-6 mb-6 border border-gray-200 dark:border-gray-700">
+        <h2 className="text-lg font-heading text-primary-dark mb-4">Total Tax Collected</h2>
         {isLoading ? (
-          <p className="text-secondary">Loading…</p>
+          <p className="text-gray-500 dark:text-gray-400">Loading…</p>
         ) : (
-          <p className="text-3xl font-bold text-primary-dark">
+          <p className="text-3xl font-bold text-primary">
             ₹{totalTax.toLocaleString("en-IN")}
           </p>
         )}
-        <p className="text-xs text-secondary-light mt-1">
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
           {startDate} – {endDate}
         </p>
       </div>
 
       {/* Summary table by tax rate */}
       {isLoading ? (
-        <div className="text-center p-6 text-secondary">Loading…</div>
+        <div className="text-center p-6 text-gray-500 dark:text-gray-400">Loading…</div>
       ) : summaryArray.length === 0 ? (
-        <div className="text-center p-6 text-secondary">
+        <div className="text-center p-6 text-gray-500 dark:text-gray-400">
           No tax records found for the selected period.
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-accent rounded-xl shadow-sm overflow-hidden border border-gray-200 dark:border-gray-700">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[600px]">
-              <thead className="bg-slate-100">
+              <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>
-                  <th className="p-3 text-left text-sm font-montserrat">Tax Rate</th>
-                  <th className="p-3 text-left text-sm font-montserrat">Rate %</th>
-                  <th className="p-3 text-left text-sm font-montserrat">Transactions</th>
-                  <th className="p-3 text-left text-sm font-montserrat">Tax Total (₹)</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tax Rate</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Rate %</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Transactions</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tax Total (₹)</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {summaryArray.map((row) => (
-                  <tr key={row.name} className="border-t hover:bg-gray-50">
-                    <td className="p-3 text-sm font-medium">{row.name}</td>
-                    <td className="p-3 text-sm">{row.rate}%</td>
-                    <td className="p-3 text-sm">{row.count}</td>
-                    <td className="p-3 text-sm">₹{row.totalTax.toLocaleString("en-IN")}</td>
+                  <tr key={row.name} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    <td className="p-3 text-sm font-medium text-gray-800 dark:text-gray-100">{row.name}</td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{row.rate}%</td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">{row.count}</td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">₹{row.totalTax.toLocaleString("en-IN")}</td>
                   </tr>
                 ))}
               </tbody>
@@ -424,6 +428,6 @@ export default function TaxReport() {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

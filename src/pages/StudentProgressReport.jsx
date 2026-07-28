@@ -29,6 +29,7 @@ import { supabase } from "../api/supabase";
 import { getStudentProgress } from "../services/examService";
 import { generateProgressPdf } from "../utils/progressPdf";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // 👈 import theme
 import { sendEmail, sendTemplateEmail } from "../services/emailService";
 
 export default function StudentProgressReport() {
@@ -44,6 +45,7 @@ export default function StudentProgressReport() {
   const [sendingEmailId, setSendingEmailId] = useState(null);
 
   const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme(); // 👈 get theme colours
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -66,7 +68,10 @@ export default function StudentProgressReport() {
     if (!parentError && parent && parent.parents?.email) {
       return {
         email: parent.parents.email,
-        name: parent.parents.father_name || parent.parents.mother_name || `${student.first_name} ${student.last_name}`,
+        name:
+          parent.parents.father_name ||
+          parent.parents.mother_name ||
+          `${student.first_name} ${student.last_name}`,
       };
     }
     return {
@@ -93,28 +98,39 @@ export default function StudentProgressReport() {
         return;
       }
 
-      // Build HTML summary
-      let subjectHtml = '';
+      let subjectHtml = "";
       progressData.forEach((subject) => {
         const sortedExams = subject.exams.slice(-5);
         subjectHtml += `
-          <h4 style="margin:8px 0 4px;color:#0D47A1;">${subject.subject_name}</h4>
+          <h4 style="margin:8px 0 4px;color:${
+            theme.primary_color
+          };">${subject.subject_name}</h4>
           <table style="width:100%;border-collapse:collapse;font-size:11px;">
-            <thead><tr style="background:#f0f0f0;">
+            <thead><tr style="background:${
+              theme.primary_light_color || "#f0f0f0"
+            };">
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Exam</th>
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Marks</th>
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:right;">Total</th>
               <th style="padding:4px 8px;border:1px solid #ddd;text-align:center;">%</th>
             </tr></thead>
             <tbody>
-              ${sortedExams.map(e => `
+              ${sortedExams
+                .map(
+                  (e) => `
                 <tr>
                   <td style="padding:4px 8px;border:1px solid #ddd;">${e.exam_name}</td>
                   <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${e.marks_obtained}</td>
                   <td style="padding:4px 8px;border:1px solid #ddd;text-align:right;">${e.total_marks}</td>
-                  <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${e.total_marks ? ((e.marks_obtained / e.total_marks) * 100).toFixed(1) : 0}%</td>
+                  <td style="padding:4px 8px;border:1px solid #ddd;text-align:center;">${
+                    e.total_marks
+                      ? ((e.marks_obtained / e.total_marks) * 100).toFixed(1)
+                      : 0
+                  }%</td>
                 </tr>
-              `).join('')}
+              `
+                )
+                .join("")}
             </tbody>
           </table>
         `;
@@ -122,13 +138,19 @@ export default function StudentProgressReport() {
 
       const htmlBody = `
         <div style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;">
-          <h2 style="color:#0D47A1;">Student Progress Report</h2>
+          <h2 style="color:${theme.primary_color};">Student Progress Report</h2>
           <p><strong>Student:</strong> ${recipient.name}</p>
-          <p><strong>Admission No:</strong> ${selectedStudent.admission_no || 'N/A'}</p>
-          <p><strong>Organization:</strong> ${org?.company_name || 'Academy'}</p>
+          <p><strong>Admission No:</strong> ${
+            selectedStudent.admission_no || "N/A"
+          }</p>
+          <p><strong>Organization:</strong> ${
+            org?.company_name || "Academy"
+          }</p>
           <hr />
           ${subjectHtml}
-          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated progress report from ${org?.company_name || 'Academy'}</p>
+          <p style="color:#888;font-size:10px;margin-top:20px;">Computer‑generated progress report from ${
+            org?.company_name || "Academy"
+          }</p>
         </div>
       `;
 
@@ -136,7 +158,6 @@ export default function StudentProgressReport() {
         to: recipient.email,
         subject: `Progress Report - ${recipient.name}`,
         html: htmlBody,
-       // from: org?.email || undefined,
       });
 
       toast.success(`Report sent to ${recipient.email}`);
@@ -157,9 +178,12 @@ export default function StudentProgressReport() {
         return;
       }
 
-      const percentage = exam.total_marks ? ((exam.marks_obtained / exam.total_marks) * 100).toFixed(1) : 0;
+      const percentage = exam.total_marks
+        ? ((exam.marks_obtained / exam.total_marks) * 100).toFixed(1)
+        : 0;
 
-      const message = `A new exam result has been recorded for ${recipient.name}:\n` +
+      const message =
+        `A new exam result has been recorded for ${recipient.name}:\n` +
         `Subject: ${subjectName}\n` +
         `Exam: ${exam.exam_name}\n` +
         `Marks Obtained: ${exam.marks_obtained}\n` +
@@ -236,7 +260,12 @@ export default function StudentProgressReport() {
 
   // ─── Fetch students ──────────────────────────────────────────────────
   const { data: students = [] } = useQuery({
-    queryKey: ["students-filtered", { search, ...filters }, branchId, financialYearId],
+    queryKey: [
+      "students-filtered",
+      { search, ...filters },
+      branchId,
+      financialYearId,
+    ],
     queryFn: async () => {
       let query = supabase
         .from("students")
@@ -286,7 +315,8 @@ export default function StudentProgressReport() {
           .eq("course_id", filters.course_id);
 
         if (branchId) courseBatchesQuery = courseBatchesQuery.eq("branch_id", branchId);
-        if (financialYearId) courseBatchesQuery = courseBatchesQuery.eq("financial_year_id", financialYearId);
+        if (financialYearId)
+          courseBatchesQuery = courseBatchesQuery.eq("financial_year_id", financialYearId);
 
         const { data: courseBatches } = await courseBatchesQuery;
         const batchIds = courseBatches?.map((b) => b.id) || [];
@@ -299,7 +329,8 @@ export default function StudentProgressReport() {
           .eq("status", "active");
 
         if (branchId) courseStudentsQuery = courseStudentsQuery.eq("branch_id", branchId);
-        if (financialYearId) courseStudentsQuery = courseStudentsQuery.eq("financial_year_id", financialYearId);
+        if (financialYearId)
+          courseStudentsQuery = courseStudentsQuery.eq("financial_year_id", financialYearId);
 
         const { data: courseStudents } = await courseStudentsQuery;
         const ids = courseStudents?.map((cs) => cs.student_id) || [];
@@ -312,7 +343,8 @@ export default function StudentProgressReport() {
               .eq("status", "active");
 
             if (branchId) batchIntersectQuery = batchIntersectQuery.eq("branch_id", branchId);
-            if (financialYearId) batchIntersectQuery = batchIntersectQuery.eq("financial_year_id", financialYearId);
+            if (financialYearId)
+              batchIntersectQuery = batchIntersectQuery.eq("financial_year_id", financialYearId);
 
             const { data: batchIdsForIntersect } = await batchIntersectQuery;
             const existingIds = batchIdsForIntersect?.map((bs) => bs.student_id) || [];
@@ -351,7 +383,9 @@ export default function StudentProgressReport() {
     const sorted = subject.exams.slice(-5);
     const series = sorted.map((e) => ({
       exam: e.exam_name,
-      score: e.total_marks ? ((e.marks_obtained / e.total_marks) * 100).toFixed(1) : 0,
+      score: e.total_marks
+        ? ((e.marks_obtained / e.total_marks) * 100).toFixed(1)
+        : 0,
     }));
     chartData[subject.subject_name] = series;
   });
@@ -373,10 +407,10 @@ export default function StudentProgressReport() {
   return (
     <AdminLayout>
       <div className="mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">
+        <h1 className="text-3xl font-heading text-primary">
           Student Progress Report
         </h1>
-        <p className="text-sm text-secondary-dark font-montserrat mt-1">
+        <p className="text-sm text-gray-600 dark:text-gray-400 font-body mt-1">
           Subject‑wise exam performance & trends
         </p>
       </div>
@@ -384,18 +418,21 @@ export default function StudentProgressReport() {
       {/* Search & Filters Toggle */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+          <Search
+            size={18}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+          />
           <input
             type="text"
             placeholder="Search by name, admission no..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-secondary-light rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none placeholder-gray-400 dark:placeholder-gray-500"
           />
         </div>
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className="border border-secondary-light px-4 py-2.5 rounded-lg text-secondary-dark hover:bg-secondary-bg font-montserrat text-sm flex items-center gap-2 self-start"
+          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2.5 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 font-body text-sm flex items-center gap-2 self-start"
         >
           <Filter size={18} /> Filters
           {showFilters && <X size={16} />}
@@ -404,15 +441,17 @@ export default function StudentProgressReport() {
 
       {/* Advanced Filters Panel */}
       {showFilters && (
-        <div className="bg-white rounded-xl p-4 shadow-sm mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 border border-secondary-light">
+        <div className="bg-white dark:bg-accent rounded-xl p-4 shadow-sm mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 border border-gray-200 dark:border-gray-700">
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">
+            <label className="text-xs font-body text-gray-700 dark:text-gray-300">
               <Layers size={14} className="inline mr-1" /> Batch
             </label>
             <select
               value={filters.batch_id}
-              onChange={(e) => setFilters({ ...filters, batch_id: e.target.value })}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              onChange={(e) =>
+                setFilters({ ...filters, batch_id: e.target.value })
+              }
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm mt-1 focus:ring-2 focus:ring-primary outline-none"
             >
               <option value="">All Batches</option>
               {batches.map((b) => (
@@ -423,13 +462,15 @@ export default function StudentProgressReport() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">
+            <label className="text-xs font-body text-gray-700 dark:text-gray-300">
               <BookOpen size={14} className="inline mr-1" /> Course
             </label>
             <select
               value={filters.course_id}
-              onChange={(e) => setFilters({ ...filters, course_id: e.target.value })}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              onChange={(e) =>
+                setFilters({ ...filters, course_id: e.target.value })
+              }
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm mt-1 focus:ring-2 focus:ring-primary outline-none"
             >
               <option value="">All Courses</option>
               {courses.map((c) => (
@@ -440,13 +481,15 @@ export default function StudentProgressReport() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">
+            <label className="text-xs font-body text-gray-700 dark:text-gray-300">
               <GraduationCap size={14} className="inline mr-1" /> Medium
             </label>
             <select
               value={filters.medium_id}
-              onChange={(e) => setFilters({ ...filters, medium_id: e.target.value })}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              onChange={(e) =>
+                setFilters({ ...filters, medium_id: e.target.value })
+              }
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm mt-1 focus:ring-2 focus:ring-primary outline-none"
             >
               <option value="">All Mediums</option>
               {mediums.map((m) => (
@@ -457,13 +500,15 @@ export default function StudentProgressReport() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-montserrat text-secondary-dark">
+            <label className="text-xs font-body text-gray-700 dark:text-gray-300">
               <Users size={14} className="inline mr-1" /> Status
             </label>
             <select
               value={filters.status}
-              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-              className="w-full border border-secondary-light rounded p-2 text-sm mt-1 focus:ring-1 focus:ring-primary"
+              onChange={(e) =>
+                setFilters({ ...filters, status: e.target.value })
+              }
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm mt-1 focus:ring-2 focus:ring-primary outline-none"
             >
               <option value="">All Statuses</option>
               <option value="active">Active</option>
@@ -474,7 +519,7 @@ export default function StudentProgressReport() {
           <div className="flex items-end">
             <button
               onClick={clearFilters}
-              className="text-primary text-sm hover:underline"
+              className="text-primary text-sm hover:underline font-body"
             >
               Clear Filters
             </button>
@@ -485,9 +530,11 @@ export default function StudentProgressReport() {
       {/* Student Search Dropdown */}
       {search && (
         <div className="relative mb-6 max-w-md">
-          <div className="absolute z-10 w-full bg-white border border-secondary-light rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
+          <div className="absolute z-10 w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
             {students.length === 0 ? (
-              <p className="px-4 py-2 text-sm text-secondary">No students match</p>
+              <p className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400">
+                No students match
+              </p>
             ) : (
               students.map((s) => (
                 <button
@@ -496,13 +543,13 @@ export default function StudentProgressReport() {
                     setSelectedStudent(s);
                     setSearch("");
                   }}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-primary-bg flex items-center gap-3"
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-primary-bg dark:hover:bg-primary-dark flex items-center gap-3 text-gray-700 dark:text-gray-200"
                 >
                   {s.photo_url && (
                     <img
                       src={s.photo_url}
                       alt=""
-                      className="w-8 h-8 rounded-full object-cover border"
+                      className="w-8 h-8 rounded-full object-cover border border-gray-300 dark:border-gray-600"
                     />
                   )}
                   <span>
@@ -517,30 +564,31 @@ export default function StudentProgressReport() {
 
       {/* Selected student info */}
       {selectedStudent && (
-        <div className="bg-white rounded-xl p-4 shadow-sm mb-6 flex flex-wrap items-center gap-4">
+        <div className="bg-white dark:bg-accent rounded-xl p-4 shadow-sm mb-6 flex flex-wrap items-center gap-4 border border-gray-200 dark:border-gray-700">
           {selectedStudent.photo_url && (
             <img
               src={selectedStudent.photo_url}
               alt=""
-              className="w-12 h-12 rounded-full object-cover border"
+              className="w-12 h-12 rounded-full object-cover border border-gray-300 dark:border-gray-600"
             />
           )}
           <div>
-            <h2 className="font-righteous text-primary-dark text-lg">
+            <h2 className="font-heading text-primary text-lg">
               {selectedStudent.first_name} {selectedStudent.last_name}
             </h2>
-            <p className="text-sm text-secondary">{selectedStudent.admission_no}</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              {selectedStudent.admission_no}
+            </p>
           </div>
-          {/* 👇 Send Report button */}
           <button
             onClick={sendReportEmail}
-            className="ml-auto bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            className="ml-auto bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 font-body"
           >
             <Mail size={16} /> Send Report
           </button>
           <button
             onClick={handleExportPdf}
-            className="bg-primary text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 font-body"
           >
             <Download size={16} /> Export PDF
           </button>
@@ -549,39 +597,57 @@ export default function StudentProgressReport() {
 
       {/* Charts with per-exam email buttons */}
       {isLoading ? (
-        <div className="text-center p-6 text-secondary">Loading progress…</div>
+        <div className="text-center p-6 text-gray-500 dark:text-gray-400">
+          Loading progress…
+        </div>
       ) : selectedStudent && progressData.length === 0 ? (
-        <div className="text-center p-6 text-secondary">No exam data found for this student.</div>
+        <div className="text-center p-6 text-gray-500 dark:text-gray-400">
+          No exam data found for this student.
+        </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {Object.entries(chartData).map(([subject, data]) => {
-            // Get the actual subject data with exam IDs
-            const subjectData = progressData.find(p => p.subject_name === subject);
+            const subjectData = progressData.find(
+              (p) => p.subject_name === subject
+            );
             return (
-              <div key={subject} className="bg-white rounded-xl shadow-sm p-4">
-                <h3 className="font-righteous text-primary-dark text-lg mb-2">{subject}</h3>
+              <div
+                key={subject}
+                className="bg-white dark:bg-accent rounded-xl shadow-sm p-4 border border-gray-200 dark:border-gray-700"
+              >
+                <h3 className="font-heading text-primary text-lg mb-2">
+                  {subject}
+                </h3>
                 <ResponsiveContainer width="100%" height={250}>
                   <BarChart data={data}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="exam" fontSize={12} />
                     <YAxis domain={[0, 100]} fontSize={12} />
                     <Tooltip />
-                    <Bar dataKey="score" fill="#0D47A1" name="Score %" radius={[4, 4, 0, 0]} />
+                    <Bar
+                      dataKey="score"
+                      fill={theme.primary_color || "#0D47A1"}
+                      name="Score %"
+                      radius={[4, 4, 0, 0]}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
-                {/* 👇 Per-exam email buttons */}
                 {subjectData && subjectData.exams.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
                     {subjectData.exams.slice(-5).map((exam) => (
                       <button
                         key={exam.exam_id}
                         onClick={() => sendEvaluationEmail(subject, exam)}
-                        disabled={sendingEmailId === `${subject}-${exam.exam_id}`}
-                        className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50 flex items-center gap-1"
+                        disabled={
+                          sendingEmailId === `${subject}-${exam.exam_id}`
+                        }
+                        className="text-primary dark:text-primary-light hover:underline disabled:opacity-50 flex items-center gap-1 text-xs"
                       >
                         <Mail size={12} />
                         {exam.exam_name}
-                        {sendingEmailId === `${subject}-${exam.exam_id}` ? '...' : ''}
+                        {sendingEmailId === `${subject}-${exam.exam_id}`
+                          ? "..."
+                          : ""}
                       </button>
                     ))}
                   </div>

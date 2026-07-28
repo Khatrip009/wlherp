@@ -10,6 +10,7 @@ import { NavLink } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // ✅ dynamic theme
 import { supabase } from "../api/supabase";
 import ScopeSelector from "./ScopeSelector";
 
@@ -18,8 +19,13 @@ function normaliseRole(rawRole) {
 }
 
 function SectionLabel({ children }) {
+  const { theme } = useTheme();
+  const bodyFont = theme?.font_body || "Montserrat";
   return (
-    <p className="px-4 pt-4 pb-1 text-[10px] font-montserrat font-semibold uppercase tracking-wider text-secondary-light">
+    <p
+      className="px-4 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-primary-bg/70"
+      style={{ fontFamily: bodyFont }}
+    >
       {children}
     </p>
   );
@@ -35,7 +41,7 @@ function SidebarLink({ to, icon: Icon, children, end }) {
         `flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors ${
           isActive
             ? "bg-primary-light text-white"
-            : "hover:bg-primary-light/50 text-secondary-light hover:text-white"
+            : "text-primary-bg/70 hover:bg-primary-light/50 hover:text-white"
         }`
       }
     >
@@ -51,14 +57,17 @@ function AccordionSection({ icon: Icon, label, open, onClick, collapsed, childre
       <button
         onClick={onClick}
         title={collapsed ? label : undefined}
-        className="w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg hover:bg-primary-light/50 transition-colors text-secondary-light hover:text-white"
+        className="w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg hover:bg-primary-light/50 transition-colors text-primary-bg/70 hover:text-white"
       >
         <span className="flex items-center gap-3 truncate">
           <Icon size={18} className="flex-shrink-0" />
           {!collapsed && <span>{label}</span>}
         </span>
         {!collapsed && (
-          <ChevronDown size={16} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+          <ChevronDown
+            size={16}
+            className={`transition-transform ${open ? "rotate-180" : ""}`}
+          />
         )}
       </button>
       {open && !collapsed && <div className="ml-6 space-y-1">{children}</div>}
@@ -69,6 +78,7 @@ function AccordionSection({ icon: Icon, label, open, onClick, collapsed, childre
 export default function Sidebar({ onClose, collapsed, onToggleCollapse }) {
   const { profile } = useAuth();
   const orgContext = useOrg();
+  const theme = useTheme(); // ✅ dynamic theme
   const [org, setOrg] = useState(orgContext?.org || null);
 
   // Financial year from context (kept for any remaining usage, but selection is now via ScopeSelector)
@@ -109,7 +119,7 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse }) {
         style={{ width: collapsed ? 64 : 288 }}
       >
         <div className="flex items-center justify-center h-full">
-          <p className="text-sm text-secondary-light">Loading…</p>
+          <p className="text-sm text-primary-bg/70">Loading…</p>
         </div>
       </aside>
     );
@@ -200,9 +210,6 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse }) {
     </>
   );
 
-  // Remove the old FY selector – we'll use the universal ScopeSelector instead
-  // (ScopeSelector already includes both branch and financial year)
-
   return (
     <aside
       className="bg-primary text-white h-screen border-r border-primary-dark flex flex-col overflow-y-auto sidebar-scroll transition-all duration-300"
@@ -212,12 +219,12 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse }) {
       <div className="flex items-center justify-between p-2">
         <button
           onClick={onToggleCollapse}
-          className="hidden lg:block text-white/80 hover:text-white p-1 rounded hover:bg-primary-light"
+          className="hidden lg:block text-primary-bg/80 hover:text-white p-1 rounded hover:bg-primary-light"
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {collapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
         </button>
-        <button onClick={onClose} className="lg:hidden text-white/80 hover:text-white p-1 ml-auto">
+        <button onClick={onClose} className="lg:hidden text-primary-bg/80 hover:text-white p-1 ml-auto">
           <X size={24} />
         </button>
       </div>

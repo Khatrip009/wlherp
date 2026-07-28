@@ -1,6 +1,6 @@
 // src/services/attendanceReportService.js
 import { supabase } from "../api/supabase";
-import { sendEmail } from "./emailService"; // 👈 Added import for email sending
+import { sendEmail } from "./emailService";
 
 /**
  * Get attendance report: per student in a batch (or all batches)
@@ -21,7 +21,6 @@ export async function getAttendanceReport(
     .select("id, attendance_date, batch_id")
     .order("attendance_date", { ascending: true });
 
-  // Safely apply branch and financial year scope
   if (branchId) sessionQuery = sessionQuery.eq("branch_id", branchId);
   if (financialYearId) sessionQuery = sessionQuery.eq("financial_year_id", financialYearId);
 
@@ -29,7 +28,7 @@ export async function getAttendanceReport(
   if (startDate) sessionQuery = sessionQuery.gte("attendance_date", startDate);
   if (endDate) sessionQuery = sessionQuery.lte("attendance_date", endDate);
 
-  // If medium filter is provided, restrict to batches of that medium (also scoped)
+  // If medium filter is provided, restrict to batches of that medium
   if (mediumId) {
     let mediumBatchQuery = supabase
       .from("batches")
@@ -67,7 +66,6 @@ export async function getAttendanceReport(
   if (batchId) {
     studentQuery = studentQuery.eq("batch_id", batchId);
   } else if (mediumId) {
-    // Restrict students to batches of that medium – already scoped
     let mediumStudentBatchQuery = supabase
       .from("batches")
       .select("id")
@@ -107,16 +105,16 @@ export async function getAttendanceReport(
 
   if (marksError) throw marksError;
 
-  // 4. Calculate per student
+  // 4. Calculate per student – CASE‑INSENSITIVE present check
   const totalSessions = sessionIds.length;
   const presentCountMap = {};
   marks.forEach((m) => {
-    if (m.status === "Present") {
+    if (m.status?.toLowerCase() === "present") {
       presentCountMap[m.student_id] = (presentCountMap[m.student_id] || 0) + 1;
     }
   });
 
-  // 5. If a single batch is selected, fetch its name and medium for display (scoped)
+  // 5. If a single batch is selected, fetch its name and medium for display
   let batchName = "";
   let mediumName = "";
   if (batchId) {
@@ -174,24 +172,8 @@ export async function getMediumOptions() {
   return data || [];
 }
 
-// ─── NEW: Send attendance report via email ─────────────────────────────
-
 /**
  * Fetches the attendance report and sends it as an HTML email to the specified recipients.
- * 
- * @param {Object} params
- * @param {number} params.batchId - optional, batch ID to filter
- * @param {string} params.startDate - optional, YYYY-MM-DD
- * @param {string} params.endDate - optional, YYYY-MM-DD
- * @param {number|null} params.mediumId - optional, medium filter
- * @param {number} params.branchId - required
- * @param {number} params.financialYearId - required
- * @param {string|string[]} params.recipients - email address(es) to send the report to
- * @param {string} [params.subject] - email subject (default: "Attendance Report")
- * @param {string} [params.from] - optional sender override
- * @param {string} [params.includeTable] - if true, include the full HTML table (default: true)
- * 
- * @returns {Promise<{ success: boolean, data?: any, error?: any }>}
  */
 export async function sendAttendanceReportEmail({
   batchId,
@@ -206,7 +188,6 @@ export async function sendAttendanceReportEmail({
   includeTable = true,
 }) {
   try {
-    // 1. Fetch the report data
     const reportData = await getAttendanceReport(
       batchId,
       startDate,
@@ -220,7 +201,6 @@ export async function sendAttendanceReportEmail({
       throw new Error("No attendance data found for the given parameters.");
     }
 
-    // 2. Build an HTML table from the report
     let tableHtml = `
       <table style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 14px;">
         <thead>
@@ -254,9 +234,8 @@ export async function sendAttendanceReportEmail({
       </table>
     `;
 
-    // Add summary info
-    const batchInfo = reportData.length > 0 ? reportData[0].batch_name || 'All Batches' : 'All Batches';
-    const mediumInfo = reportData.length > 0 ? reportData[0].medium_name || 'All Mediums' : 'All Mediums';
+    const batchInfo = reportData[0]?.batch_name || 'All Batches';
+    const mediumInfo = reportData[0]?.medium_name || 'All Mediums';
     const dateRange = startDate && endDate ? `${startDate} to ${endDate}` : 'All Dates';
 
     const htmlBody = `
@@ -272,7 +251,6 @@ export async function sendAttendanceReportEmail({
       </div>
     `;
 
-    // 3. Send the email
     const result = await sendEmail({
       to: recipients,
       subject: subject,

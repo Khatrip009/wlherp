@@ -69,49 +69,49 @@ export default function GlobalSearch() {
 
   return (
     <div className="relative flex-1 max-w-md mx-4" ref={containerRef}>
-      <div className="flex items-center bg-secondary-bg rounded-xl px-4 py-2">
-        <Search size={18} className="text-secondary flex-shrink-0" />
+      <div className="flex items-center bg-primary-bg rounded-xl px-4 py-2">
+        <Search size={18} className="text-primary-dark/60 flex-shrink-0" />
         <input
           type="text"
           placeholder="Search students, inquiries, batches..."
           value={query}
           onChange={(e) => handleSearch(e.target.value)}
-          className="bg-transparent outline-none ml-3 w-full text-sm text-secondary-dark placeholder-secondary-light"
+          className="bg-transparent outline-none ml-3 w-full text-sm text-primary-dark placeholder-primary-dark/40"
         />
         {query && (
           <button onClick={() => { setQuery(""); setOpen(false); }} className="p-1">
-            <X size={16} className="text-secondary" />
+            <X size={16} className="text-primary-dark/60" />
           </button>
         )}
       </div>
 
       {/* Results dropdown */}
       {open && (
-        <div className="absolute top-full mt-2 w-full bg-white rounded-xl shadow-xl border border-secondary-light z-50 overflow-hidden max-h-80 overflow-y-auto">
+        <div className="absolute top-full mt-2 w-full bg-white rounded-xl shadow-xl border border-primary-bg z-50 overflow-hidden max-h-80 overflow-y-auto">
           {loading ? (
-            <div className="p-4 text-center text-sm text-secondary">Searching...</div>
+            <div className="p-4 text-center text-sm text-primary-dark/60">Searching...</div>
           ) : (
             <>
               {/* Students */}
               {results.students.length > 0 && (
                 <div>
-                  <div className="px-4 py-2 text-xs font-montserrat text-secondary-dark bg-slate-50">
+                  <div className="px-4 py-2 text-xs font-medium text-primary-dark bg-primary-bg">
                     Students
                   </div>
                   {results.students.map((s) => (
                     <button
                       key={s.id}
                       onClick={() => handleNavigate(`/students/${s.id}`)}
-                      className="w-full text-left px-4 py-2.5 hover:bg-primary-bg transition flex items-center gap-3 border-b border-secondary-light last:border-0"
+                      className="w-full text-left px-4 py-2.5 hover:bg-primary-bg transition flex items-center gap-3 border-b border-primary-bg last:border-0"
                     >
                       {s.photo_url ? (
                         <img src={s.photo_url} alt="" className="w-7 h-7 rounded-full object-cover" />
                       ) : (
-                        <User size={18} className="text-secondary" />
+                        <User size={18} className="text-primary-dark/60" />
                       )}
                       <div>
-                        <p className="text-sm font-medium">{s.first_name} {s.last_name}</p>
-                        <p className="text-xs text-secondary">{s.admission_no}</p>
+                        <p className="text-sm font-medium text-primary-dark">{s.first_name} {s.last_name}</p>
+                        <p className="text-xs text-primary-dark/60">{s.admission_no}</p>
                       </div>
                     </button>
                   ))}
@@ -121,19 +121,19 @@ export default function GlobalSearch() {
               {/* Inquiries */}
               {results.inquiries.length > 0 && (
                 <div>
-                  <div className="px-4 py-2 text-xs font-montserrat text-secondary-dark bg-slate-50">
+                  <div className="px-4 py-2 text-xs font-medium text-primary-dark bg-primary-bg">
                     Inquiries
                   </div>
                   {results.inquiries.map((inq) => (
                     <button
                       key={inq.id}
                       onClick={() => handleNavigate(`/inquiries`)}
-                      className="w-full text-left px-4 py-2.5 hover:bg-primary-bg transition flex items-center gap-3 border-b border-secondary-light last:border-0"
+                      className="w-full text-left px-4 py-2.5 hover:bg-primary-bg transition flex items-center gap-3 border-b border-primary-bg last:border-0"
                     >
-                      <PhoneCall size={18} className="text-secondary" />
+                      <PhoneCall size={18} className="text-primary-dark/60" />
                       <div>
-                        <p className="text-sm font-medium">{inq.student_name}</p>
-                        <p className="text-xs text-secondary">{inq.inquiry_no} – {inq.mobile}</p>
+                        <p className="text-sm font-medium text-primary-dark">{inq.student_name}</p>
+                        <p className="text-xs text-primary-dark/60">{inq.inquiry_no} – {inq.mobile}</p>
                       </div>
                     </button>
                   ))}
@@ -143,17 +143,17 @@ export default function GlobalSearch() {
               {/* Batches */}
               {results.batches.length > 0 && (
                 <div>
-                  <div className="px-4 py-2 text-xs font-montserrat text-secondary-dark bg-slate-50">
+                  <div className="px-4 py-2 text-xs font-medium text-primary-dark bg-primary-bg">
                     Batches
                   </div>
                   {results.batches.map((b) => (
                     <button
                       key={b.id}
                       onClick={() => handleNavigate(`/batches`)}
-                      className="w-full text-left px-4 py-2.5 hover:bg-primary-bg transition flex items-center gap-3 border-b border-secondary-light last:border-0"
+                      className="w-full text-left px-4 py-2.5 hover:bg-primary-bg transition flex items-center gap-3 border-b border-primary-bg last:border-0"
                     >
-                      <BookOpen size={18} className="text-secondary" />
-                      <span className="text-sm font-medium">{b.batch_name}</span>
+                      <BookOpen size={18} className="text-primary-dark/60" />
+                      <span className="text-sm font-medium text-primary-dark">{b.batch_name}</span>
                     </button>
                   ))}
                 </div>
@@ -161,7 +161,7 @@ export default function GlobalSearch() {
 
               {/* No results */}
               {!results.students.length && !results.inquiries.length && !results.batches.length && (
-                <div className="p-4 text-center text-sm text-secondary">No results found</div>
+                <div className="p-4 text-center text-sm text-primary-dark/60">No results found</div>
               )}
             </>
           )}

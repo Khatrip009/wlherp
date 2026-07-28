@@ -2,13 +2,18 @@ import React, { useState } from 'react';
 import { supabase } from '../api/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useOrg } from '../context/OrganizationContext';
+import { useTheme } from '../context/ThemeContext'; // ✅ dynamic theme
 import toast from 'react-hot-toast';
 
 export default function CreateOnlineClass() {
   const { profile } = useAuth();
   const { branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme(); // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -89,55 +94,90 @@ export default function CreateOnlineClass() {
 
   return (
     <div className="max-w-2xl mx-auto p-6 bg-white rounded-xl shadow">
-      <h2 className="text-2xl font-bold mb-4">Create Online Class</h2>
+      <h2
+        className="text-2xl font-bold mb-4 text-primary"
+        style={{ fontFamily: headingFont }}
+      >
+        Create Online Class
+      </h2>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium">Title *</label>
+          <label
+            className="block text-sm font-medium text-primary-dark"
+            style={{ fontFamily: bodyFont }}
+          >
+            Title *
+          </label>
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full border rounded p-2"
+            className="w-full border rounded p-2 text-primary-dark bg-white"
             required
+            style={{ fontFamily: bodyFont }}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium">Description</label>
+          <label
+            className="block text-sm font-medium text-primary-dark"
+            style={{ fontFamily: bodyFont }}
+          >
+            Description
+          </label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full border rounded p-2"
+            className="w-full border rounded p-2 text-primary-dark bg-white"
             rows="3"
+            style={{ fontFamily: bodyFont }}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium">Start Time *</label>
+          <label
+            className="block text-sm font-medium text-primary-dark"
+            style={{ fontFamily: bodyFont }}
+          >
+            Start Time *
+          </label>
           <input
             type="datetime-local"
             value={startTime}
             onChange={(e) => setStartTime(e.target.value)}
-            className="w-full border rounded p-2"
+            className="w-full border rounded p-2 text-primary-dark bg-white"
             required
+            style={{ fontFamily: bodyFont }}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium">Duration (minutes)</label>
+          <label
+            className="block text-sm font-medium text-primary-dark"
+            style={{ fontFamily: bodyFont }}
+          >
+            Duration (minutes)
+          </label>
           <input
             type="number"
             value={duration}
             onChange={(e) => setDuration(e.target.value)}
-            className="w-full border rounded p-2"
+            className="w-full border rounded p-2 text-primary-dark bg-white"
             min="15"
             step="5"
+            style={{ fontFamily: bodyFont }}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium">Select Batch *</label>
+          <label
+            className="block text-sm font-medium text-primary-dark"
+            style={{ fontFamily: bodyFont }}
+          >
+            Select Batch *
+          </label>
           <select
             value={batchId}
             onChange={(e) => setBatchId(e.target.value)}
-            className="w-full border rounded p-2"
+            className="w-full border rounded p-2 text-primary-dark bg-white"
             required
+            style={{ fontFamily: bodyFont }}
           >
             <option value="">-- Choose batch --</option>
             {batches.map((b) => (
@@ -151,6 +191,7 @@ export default function CreateOnlineClass() {
           type="submit"
           disabled={loading}
           className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-dark disabled:opacity-50"
+          style={{ fontFamily: bodyFont }}
         >
           {loading ? 'Creating...' : 'Create Class'}
         </button>

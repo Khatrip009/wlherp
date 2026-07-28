@@ -108,34 +108,34 @@ export default function AssignBatchModal({ onSubmit, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl">
+      <div className="bg-white dark:bg-accent rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl border border-gray-200 dark:border-gray-700">
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-secondary-light px-6 py-4 flex items-center justify-between rounded-t-xl z-10">
+        <div className="sticky top-0 bg-white dark:bg-accent border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-xl z-10">
           <div className="flex items-center gap-3">
             <img
               src="/ShreeVidhyaDark.png"
               alt="ShreeVidhya Academy"
               className="h-10 w-auto"
             />
-            <h2 className="text-xl font-righteous text-primary-dark">
+            <h2 className="text-xl font-heading text-primary">
               Bulk Assign to Batch
             </h2>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-secondary-bg rounded-lg transition">
-            <X size={20} className="text-secondary-dark" />
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition">
+            <X size={20} className="text-gray-600 dark:text-gray-400" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {/* Medium Filter */}
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
               <Layers size={14} className="inline mr-1" /> Medium
             </label>
             <select
               value={selectedMediumId}
               onChange={(e) => setSelectedMediumId(e.target.value)}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary focus:border-primary outline-none"
             >
               <option value="">All Mediums</option>
               {mediums.map((m) => (
@@ -149,14 +149,14 @@ export default function AssignBatchModal({ onSubmit, onClose }) {
           {/* Batch & Date */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
                 <Users size={14} className="inline mr-1" />
                 Batch *
               </label>
               <select
                 value={batchId}
                 onChange={(e) => setBatchId(e.target.value)}
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary focus:border-primary outline-none"
                 required
               >
                 <option value="">Select Batch</option>
@@ -168,7 +168,7 @@ export default function AssignBatchModal({ onSubmit, onClose }) {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
                 <Calendar size={14} className="inline mr-1" />
                 Enrollment Date *
               </label>
@@ -176,7 +176,7 @@ export default function AssignBatchModal({ onSubmit, onClose }) {
                 type="date"
                 value={enrollmentDate}
                 onChange={(e) => setEnrollmentDate(e.target.value)}
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary focus:border-primary outline-none"
                 required
               />
             </div>
@@ -184,24 +184,24 @@ export default function AssignBatchModal({ onSubmit, onClose }) {
 
           {/* Search */}
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
               Search Students
             </label>
             <div className="relative">
-              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
+              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
               <input
                 type="text"
                 placeholder="Type name or admission no..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full border border-secondary-light rounded-lg pl-10 pr-4 py-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg pl-10 pr-4 py-2.5 focus:ring-2 focus:ring-primary focus:border-primary outline-none placeholder-gray-400 dark:placeholder-gray-500"
               />
             </div>
           </div>
 
           {/* Select All */}
           {filteredStudents.length > 0 && (
-            <label className="flex items-center gap-2 text-sm text-secondary-dark cursor-pointer select-none">
+            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={
@@ -217,24 +217,24 @@ export default function AssignBatchModal({ onSubmit, onClose }) {
                   ? "Deselect All"
                   : "Select All"}
               </span>
-              <span className="text-secondary-light text-xs">
+              <span className="text-gray-500 dark:text-gray-400 text-xs">
                 ({filteredStudents.length} students)
               </span>
             </label>
           )}
 
           {/* Student List */}
-          <div className="border border-secondary-light rounded-lg overflow-hidden">
-            <div className="max-h-64 overflow-y-auto divide-y divide-secondary-light bg-white">
+          <div className="border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden">
+            <div className="max-h-64 overflow-y-auto divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
               {filteredStudents.length === 0 ? (
-                <p className="p-4 text-sm text-secondary text-center">
+                <p className="p-4 text-sm text-gray-500 dark:text-gray-400 text-center">
                   No students found
                 </p>
               ) : (
                 filteredStudents.map((student) => (
                   <label
                     key={student.id}
-                    className="flex items-center gap-3 px-4 py-3 hover:bg-primary-bg cursor-pointer transition"
+                    className="flex items-center gap-3 px-4 py-3 hover:bg-primary-bg dark:hover:bg-primary-dark cursor-pointer transition"
                   >
                     <input
                       type="checkbox"
@@ -242,10 +242,10 @@ export default function AssignBatchModal({ onSubmit, onClose }) {
                       onChange={() => toggleStudent(student.id)}
                       className="rounded accent-primary h-4 w-4"
                     />
-                    <span className="font-medium text-secondary-dark">
+                    <span className="font-medium text-gray-800 dark:text-gray-100">
                       {student.first_name} {student.last_name}
                     </span>
-                    <span className="text-xs text-secondary ml-auto">
+                    <span className="text-xs text-gray-500 dark:text-gray-400 ml-auto">
                       {student.admission_no}
                     </span>
                   </label>
@@ -255,7 +255,7 @@ export default function AssignBatchModal({ onSubmit, onClose }) {
           </div>
 
           {/* Selected Count */}
-          <p className="text-sm text-secondary-dark font-montserrat">
+          <p className="text-sm text-gray-700 dark:text-gray-300 font-body">
             <span className="font-semibold text-primary">
               {selectedStudents.length}
             </span>{" "}
@@ -267,14 +267,14 @@ export default function AssignBatchModal({ onSubmit, onClose }) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat transition disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-body transition disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {loading ? "Assigning..." : "Assign All Selected"}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="w-full sm:w-auto border border-secondary-light text-secondary-dark hover:bg-secondary-bg px-6 py-2.5 rounded-lg font-montserrat transition"
+              className="w-full sm:w-auto border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 px-6 py-2.5 rounded-lg font-body transition"
             >
               Cancel
             </button>

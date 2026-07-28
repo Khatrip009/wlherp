@@ -9,7 +9,6 @@ import {
   message,
   Tag,
   Spin,
-  
 } from "antd";
 
 import {
@@ -28,13 +27,13 @@ import { getInvoices, getInvoice } from "../services/invoiceService";
 import { useOrg } from "../context/OrganizationContext";
 import CollectPaymentModal from "./CollectPaymentModal";
 import { generateInvoicePDF } from "../utils/invoicePdf";
-import { useTheme } from "../context/ThemeContext";   // adjust path if needed
+import { useTheme } from "../context/ThemeContext";   // dynamic theme
 
 export default function FeeManagement({ studentId, open, onClose }) {
   const queryClient = useQueryClient();
   const { branch, selectedFinancialYear, org } = useOrg();
   const ctx = { branchId: branch?.id, financialYearId: selectedFinancialYear?.id };
-  const { theme } = useTheme?.() || {};
+  const theme = useTheme();
 
   const [collectingFee, setCollectingFee] = useState(null);
   const [printingInvoice, setPrintingInvoice] = useState(false);
@@ -138,12 +137,12 @@ export default function FeeManagement({ studentId, open, onClose }) {
               ₹{Number(fee.final_fee).toLocaleString()}
             </Descriptions.Item>
             <Descriptions.Item label="Paid">
-              <span style={{ color: "green" }}>
+              <span style={{ color: theme?.primary_color }}>
                 ₹{(fee.total_paid || 0).toLocaleString()}
               </span>
             </Descriptions.Item>
             <Descriptions.Item label="Balance">
-              <span style={{ color: "red" }}>
+              <span style={{ color: theme?.accent_color }}>
                 ₹{(fee.pending || 0).toLocaleString()}
               </span>
             </Descriptions.Item>

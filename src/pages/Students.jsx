@@ -8,6 +8,7 @@ import Papa from "papaparse";
 import StudentForm from "../components/StudentForm";
 import { getStudents, createStudent, updateStudent, deleteStudent, getMediumOptions, getAllStudentsForExport } from "../services/studentService";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // 👈 import theme
 import { generateReportPdf } from "../utils/generateReportPdf";
 import { supabase } from "../api/supabase";
 import { sendEmail, sendTemplateEmail } from "../services/emailService";
@@ -22,7 +23,8 @@ export default function Students() {
   const [sendingEmailId, setSendingEmailId] = useState(null);
   const fileInputRef = useRef();
 
-  const { branch, selectedFinancialYear, org, theme } = useOrg();
+  const { branch, selectedFinancialYear, org } = useOrg(); // 👈 removed theme from here
+  const theme = useTheme(); // 👈 get theme colours
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
@@ -57,7 +59,7 @@ export default function Students() {
         return;
       }
 
-      // Build HTML table rows
+      // Build HTML table rows – use theme colours
       let tableRows = students.map((s) => `
         <tr>
           <td style="padding:4px 8px;border:1px solid #ddd;">${s.admission_no || '—'}</td>
@@ -70,13 +72,13 @@ export default function Students() {
 
       const htmlBody = `
         <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;">
-          <h2 style="color:#0D47A1;">Student List Report</h2>
+          <h2 style="color:${theme.primary_color};">Student List Report</h2>
           <p><strong>Branch:</strong> ${branch?.branch_name || 'N/A'}</p>
           <p><strong>Filters:</strong> ${search ? `Search: "${search}"` : 'None'} ${filterMedium ? `, Medium: ${mediums.find(m => m.id === filterMedium)?.name || ''}` : ''}</p>
           <p><strong>Total Students:</strong> ${students.length}</p>
           <hr />
           <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #ddd;">
-            <thead style="background:#e3f2fd;">
+            <thead style="background:${theme.primary_light_color || '#e3f2fd'};">
               <tr>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Admission No</th>
                 <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Name</th>
@@ -97,7 +99,6 @@ export default function Students() {
         to: adminEmails,
         subject: `Student List Report - ${new Date().toLocaleDateString()}`,
         html: htmlBody,
-       // from: org?.email || undefined,
       });
 
       alert("Report sent to admins.");
@@ -111,10 +112,8 @@ export default function Students() {
   const resendWelcomeEmail = async (student) => {
     setSendingEmailId(student.id);
     try {
-      // 1. Get student email
       let recipientEmail = student.email;
       if (!recipientEmail) {
-        // Try to fetch from DB (just in case)
         const { data: freshStudent, error } = await supabase
           .from("students")
           .select("email")
@@ -129,7 +128,6 @@ export default function Students() {
         return;
       }
 
-      // 2. Try to find parent email (prefer parent)
       const { data: parent, error: parentError } = await supabase
         .from("student_parents")
         .select("parents!inner(email)")
@@ -139,7 +137,6 @@ export default function Students() {
         recipientEmail = parent.parents.email;
       }
 
-      // 3. Build context for account_welcome template
       const fullName = `${student.first_name || ''} ${student.last_name || ''}`.trim() || 'Student';
       const context = {
         academyName: org?.company_name || "Academy",
@@ -250,7 +247,7 @@ export default function Students() {
       };
 
       const filters = { start_date: null, end_date: null };
-      const doc = await generateReportPdf(config, rows, filters, org, theme);
+      const doc = await generateReportPdf(config, rows, filters, org, theme); // uses theme from useTheme
       doc.save(`students_${new Date().toISOString().slice(0, 10)}.pdf`);
       message.success("PDF exported successfully");
     } catch (err) {
@@ -393,7 +390,7 @@ export default function Students() {
           />
         </Space>
         <Space>
-          {/* 👇 Send Report button */}
+          {/* 👇 Send Report button – theme aware */}
           <Button icon={<MailOutlined />} onClick={sendReportEmail}>
             Send Report
           </Button>

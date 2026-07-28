@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";            // ✅ dynamic theme
 import JitsiMeeting from "../components/JitsiMeeting";
 import toast from "react-hot-toast";
 import { Video, ArrowLeft } from "lucide-react";
@@ -11,6 +12,7 @@ export default function JoinOnlineClass() {
   const { classId } = useParams();
   const { profile } = useAuth();
   const { branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();                                    // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const navigate = useNavigate();
@@ -20,6 +22,9 @@ export default function JoinOnlineClass() {
   const [studentId, setStudentId] = useState(null);
   const [teacherId, setTeacherId] = useState(null);
   const [error, setError] = useState(null);
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const userRole = profile?.role?.toLowerCase();
   const isAdmin = userRole === "admin" || userRole === "super_admin";
@@ -142,7 +147,7 @@ export default function JoinOnlineClass() {
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4 text-secondary">Loading class...</p>
+          <p className="mt-4 text-primary-dark/60" style={{ fontFamily: bodyFont }}>Loading class...</p>
         </div>
       </div>
     );
@@ -152,10 +157,13 @@ export default function JoinOnlineClass() {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <p className="text-red-500 text-lg">⚠️ {error || "Class not found"}</p>
+          <p className="text-accent-dark text-lg" style={{ fontFamily: bodyFont }}>
+            ⚠️ {error || "Class not found"}
+          </p>
           <button
             onClick={() => navigate("/online-classes")}
-            className="mt-4 bg-primary text-white px-4 py-2 rounded hover:bg-primary-dark"
+            className="mt-4 bg-primary hover:bg-primary-light text-white px-4 py-2 rounded transition-colors"
+            style={{ fontFamily: bodyFont }}
           >
             Back to Classes
           </button>
@@ -168,16 +176,18 @@ export default function JoinOnlineClass() {
   const canStart = (isAdmin || (isTeacher && classData.teacher_id === teacherId)) && classData.status === "scheduled";
 
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="h-full flex flex-col bg-primary-bg">
       {/* Class info bar */}
-      <div className="bg-white px-6 py-3 shadow-sm flex justify-between items-center border-b">
+      <div className="bg-white px-6 py-3 shadow-sm flex justify-between items-center border-b border-primary-bg">
         <div>
-          <h1 className="text-xl font-bold text-primary-dark">{classData.title}</h1>
-          <p className="text-sm text-gray-600">{classData.description}</p>
+          <h1 className="text-xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+            {classData.title}
+          </h1>
+          <p className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>{classData.description}</p>
         </div>
         <button
           onClick={() => navigate("/online-classes")}
-          className="text-gray-500 hover:text-gray-700 flex items-center gap-1"
+          className="text-primary-dark/60 hover:text-primary flex items-center gap-1"
         >
           <ArrowLeft size={18} /> Back
         </button>
@@ -189,23 +199,25 @@ export default function JoinOnlineClass() {
           <div className="flex items-center justify-center h-full">
             <div className="text-center max-w-md px-4">
               <Video size={64} className="mx-auto text-primary" />
-              <h2 className="text-2xl font-bold mt-4">Ready to join?</h2>
-              <p className="text-gray-600 mt-2">
+              <h2 className="text-2xl font-bold mt-4 text-primary" style={{ fontFamily: headingFont }}>Ready to join?</h2>
+              <p className="text-primary-dark mt-2" style={{ fontFamily: bodyFont }}>
                 You are about to join <strong>{classData.title}</strong>
               </p>
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-sm text-primary-dark/60 mt-1" style={{ fontFamily: bodyFont }}>
                 {new Date(classData.start_time).toLocaleString()}
               </p>
               <button
                 onClick={handleJoin}
-                className="mt-6 bg-green-500 hover:bg-green-600 text-white px-8 py-3 rounded-lg text-lg shadow-md transition"
+                className="mt-6 bg-primary hover:bg-primary-light text-white px-8 py-3 rounded-lg text-lg shadow-md transition"
+                style={{ fontFamily: bodyFont }}
               >
                 Join Class
               </button>
               {canStart && (
                 <button
                   onClick={handleStartClass}
-                  className="mt-4 bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg shadow-md transition ml-2"
+                  className="mt-4 bg-accent hover:bg-accent-dark text-white px-6 py-2 rounded-lg shadow-md transition ml-2"
+                  style={{ fontFamily: bodyFont }}
                 >
                   Start Class Now
                 </button>

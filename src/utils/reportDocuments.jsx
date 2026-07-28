@@ -42,7 +42,7 @@ function DocumentHeader({ org, primary }) {
           <img src={org.logo_dark_url} alt="Logo" style={{ height: '40px', marginRight: '15px' }} />
         )}
         <span style={{ fontSize: '18px', fontWeight: 'bold', color: primary }}>
-          {org?.company_name || 'ShreeVidhya Academy'}
+          {org?.company_name || 'Organization'}
         </span>
         <div style={{ fontSize: '10px', color: '#555' }}>
           {org?.address && <span>{org.address} | </span>}
@@ -59,8 +59,6 @@ function DocumentHeader({ org, primary }) {
 }
 
 // ─── Wrapper with letterhead support ──────────────────────
-//   letterhead = true   → try to show letterhead image; if missing, fall back to DocumentHeader
-//   letterhead = false  → no letterhead, no fallback header (content provides its own)
 function ReportWrapper({ children, org, letterhead = true, primary }) {
   const wrapperStyle = {
     position: 'relative',
@@ -83,7 +81,6 @@ function ReportWrapper({ children, org, letterhead = true, primary }) {
 
   return (
     <div style={wrapperStyle}>
-      {/* Only show the fallback header when letterhead is true but image is missing */}
       {letterhead && !org?.letterhead_url && <DocumentHeader org={org} primary={primary} />}
       <div style={{ position: 'relative', zIndex: 1 }}>
         {children}
@@ -95,7 +92,7 @@ function ReportWrapper({ children, org, letterhead = true, primary }) {
           color: '#888',
           textAlign: 'center',
         }}>
-          This is a computer‑generated document issued by {org?.company_name || 'ShreeVidhya Academy'}.
+          This is a computer‑generated document issued by {org?.company_name || 'Organization'}.
         </div>
       </div>
     </div>
@@ -137,12 +134,12 @@ const valueStyles = {
   fontSize: '12px',
 };
 
-// ─── ADMISSION FORM (Print + PDF, NO LETTERHEAD) ─────────
+// ─── ADMISSION FORM ──────────────────────────────────────
 export function AdmissionFormDocument({ data, org }) {
   const { theme } = useTheme();
-  const primary = theme?.primary_color || '#0D47A1';
-  const accent = theme?.accent_color || '#D15839';
-  
+  const primaryColor = theme?.primary_color || '#0D47A1';
+  const accentColor = theme?.accent_color || '#FF1070';
+
   const student = data;
   const parents = student.parents || [];
   const batches = student.batches || [];
@@ -181,19 +178,19 @@ export function AdmissionFormDocument({ data, org }) {
   ];
 
   return (
-    <ReportWrapper org={org} primary={primary} letterhead={false}>
+    <ReportWrapper org={org} primary={primaryColor} letterhead={false}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2 style={{ fontSize: '18px', color: primary, borderBottom: `2px solid ${primary}`, paddingBottom: '6px', margin: 0 }}>
+        <h2 style={{ fontSize: '18px', color: primaryColor, borderBottom: `2px solid ${primaryColor}`, paddingBottom: '6px', margin: 0 }}>
           Student Information
         </h2>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={handlePrint} style={{ padding: "8px 16px", background: "#fff", color: primary, border: `1px solid ${primary}`, borderRadius: 4, cursor: "pointer", fontSize: 13, fontWeight: "bold" }}>🖨️ Print</button>
-          <button onClick={handleDownloadPdf} style={{ padding: "8px 16px", background: primary, color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 13, fontWeight: "bold" }}>⬇ Download PDF</button>
+          <button onClick={handlePrint} style={{ padding: "8px 16px", background: "#fff", color: primaryColor, border: `1px solid ${primaryColor}`, borderRadius: 4, cursor: "pointer", fontSize: 13, fontWeight: "bold" }}>🖨️ Print</button>
+          <button onClick={handleDownloadPdf} style={{ padding: "8px 16px", background: primaryColor, color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 13, fontWeight: "bold" }}>⬇ Download PDF</button>
         </div>
       </div>
-      {/* ... rest unchanged ... */}
+
       {student.photo_url && (
-        <div style={{ float: 'right', marginLeft: '15px', marginBottom: '15px', border: `1px solid ${primary}` }}>
+        <div style={{ float: 'right', marginLeft: '15px', marginBottom: '15px', border: `1px solid ${primaryColor}` }}>
           <img src={student.photo_url} style={{ width: '80px', height: '100px', objectFit: 'cover' }} alt="Student" />
         </div>
       )}
@@ -201,18 +198,18 @@ export function AdmissionFormDocument({ data, org }) {
         <tbody>
           {studentRows.map(([label, value], i) => (
             <tr key={i}>
-              <td style={{ ...labelStyles(primary), width: '30%' }}>{label}</td>
+              <td style={{ ...labelStyles(primaryColor), width: '30%' }}>{label}</td>
               <td style={{ ...valueStyles, width: '70%' }}>{value}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      {/* ... parents, batches, fees, rules, signatures unchanged ... */}
+
       {parents.length > 0 && (
         <>
-          <h2 style={{ fontSize: '16px', color: primary, borderBottom: `2px solid ${primary}`, paddingBottom: '4px', margin: '20px 0 12px' }}>Parent / Guardian Details</h2>
+          <h2 style={{ fontSize: '16px', color: primaryColor, borderBottom: `2px solid ${primaryColor}`, paddingBottom: '4px', margin: '20px 0 12px' }}>Parent / Guardian Details</h2>
           {parents.map((p, i) => (
-            <div key={i} style={{ marginBottom: '15px', border: `1px solid ${primary}30`, padding: '12px', borderRadius: '4px' }}>
+            <div key={i} style={{ marginBottom: '15px', border: `1px solid ${primaryColor}30`, padding: '12px', borderRadius: '4px' }}>
               <table style={tableStyles}>
                 <tbody>
                   {[
@@ -225,7 +222,7 @@ export function AdmissionFormDocument({ data, org }) {
                     ['Address', p.address?.toUpperCase() || '-'],
                   ].map(([lbl, val], j) => (
                     <tr key={j}>
-                      <td style={{ ...labelStyles(primary), width: '30%' }}>{lbl}</td>
+                      <td style={{ ...labelStyles(primaryColor), width: '30%' }}>{lbl}</td>
                       <td style={{ ...valueStyles, width: '70%' }}>{val}</td>
                     </tr>
                   ))}
@@ -235,32 +232,37 @@ export function AdmissionFormDocument({ data, org }) {
           ))}
         </>
       )}
+
       {batches.length > 0 && (
         <>
-          <h2 style={{ fontSize: '16px', color: primary, borderBottom: `2px solid ${primary}`, paddingBottom: '4px', margin: '20px 0 12px' }}>Enrolled Batches</h2>
+          <h2 style={{ fontSize: '16px', color: primaryColor, borderBottom: `2px solid ${primaryColor}`, paddingBottom: '4px', margin: '20px 0 12px' }}>Enrolled Batches</h2>
           <table style={tableStyles}>
-            <thead><tr><th style={thStyles(primary)}>Batch Name</th><th style={thStyles(primary)}>Course</th><th style={thStyles(primary)}>Enrollment Date</th></tr></thead>
+            <thead><tr><th style={thStyles(primaryColor)}>Batch Name</th><th style={thStyles(primaryColor)}>Course</th><th style={thStyles(primaryColor)}>Enrollment Date</th></tr></thead>
             <tbody>
               {batches.map((b, i) => (
-                <tr key={i}><td style={tdStyles(primary)}>{b.batches?.batch_name?.toUpperCase() || '-'}</td><td style={tdStyles(primary)}>{b.batches?.courses?.course_name?.toUpperCase() || '-'}</td><td style={tdStyles(primary)}>{b.enrollment_date || '-'}</td></tr>
+                <tr key={i}><td style={tdStyles(primaryColor)}>{b.batches?.batch_name?.toUpperCase() || '-'}</td><td style={tdStyles(primaryColor)}>{b.batches?.courses?.course_name?.toUpperCase() || '-'}</td><td style={tdStyles(primaryColor)}>{b.enrollment_date || '-'}</td></tr>
               ))}
             </tbody>
           </table>
         </>
       )}
-      <h2 style={{ fontSize: '16px', color: primary, borderBottom: `2px solid ${primary}`, paddingBottom: '4px', margin: '20px 0 12px' }}>Fee Summary</h2>
+
+      <h2 style={{ fontSize: '16px', color: primaryColor, borderBottom: `2px solid ${primaryColor}`, paddingBottom: '4px', margin: '20px 0 12px' }}>Fee Summary</h2>
       <table style={tableStyles}>
-        <thead><tr><th style={thStyles(primary)}>Total Fee</th><th style={thStyles(primary)}>Paid</th><th style={thStyles(primary)}>Pending</th><th style={thStyles(primary)}>Status</th></tr></thead>
+        <thead><tr><th style={thStyles(primaryColor)}>Total Fee</th><th style={thStyles(primaryColor)}>Paid</th><th style={thStyles(primaryColor)}>Pending</th><th style={thStyles(primaryColor)}>Status</th></tr></thead>
         <tbody>
           <tr>
-            <td style={tdStyles(primary)}>₹ {totalFee.toLocaleString()}</td>
-            <td style={tdStyles(primary)}>₹ {paidFee.toLocaleString()}</td>
-            <td style={tdStyles(primary)}>₹ {pendingFee.toLocaleString()}</td>
-            <td style={{ ...tdStyles(primary), fontWeight: 'bold', color: pendingFee <= 0 ? '#2E7D32' : '#D32F2F' }}>{pendingFee <= 0 ? 'PAID' : 'PENDING'}</td>
+            <td style={tdStyles(primaryColor)}>₹ {totalFee.toLocaleString()}</td>
+            <td style={tdStyles(primaryColor)}>₹ {paidFee.toLocaleString()}</td>
+            <td style={tdStyles(primaryColor)}>₹ {pendingFee.toLocaleString()}</td>
+            <td style={{ ...tdStyles(primaryColor), fontWeight: 'bold', color: pendingFee <= 0 ? primaryColor : accentColor }}>
+              {pendingFee <= 0 ? 'PAID' : 'PENDING'}
+            </td>
           </tr>
         </tbody>
       </table>
-      <h2 style={{ fontSize: '16px', color: primary, borderBottom: `2px solid ${primary}`, paddingBottom: '4px', margin: '20px 0 12px' }}>Rules & Regulations</h2>
+
+      <h2 style={{ fontSize: '16px', color: primaryColor, borderBottom: `2px solid ${primaryColor}`, paddingBottom: '4px', margin: '20px 0 12px' }}>Rules & Regulations</h2>
       <ol style={{ paddingLeft: '20px', fontSize: '11px', lineHeight: 2, color: '#333' }}>
         <li>Minimum 75% attendance is mandatory to appear in exams.</li>
         <li>Fees must be paid on or before the 10th of every month.</li>
@@ -271,52 +273,151 @@ export function AdmissionFormDocument({ data, org }) {
         <li>Any damage to institute property will be charged accordingly.</li>
         <li>The institute reserves the right to amend these rules at any time.</li>
       </ol>
+
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '40px' }}>
-        <div style={{ width: '45%', textAlign: 'center' }}><div style={{ borderBottom: `1px solid ${primary}`, marginBottom: '6px' }} /><p style={{ fontWeight: 'bold', fontSize: '11px' }}>Authorised Signatory</p></div>
-        <div style={{ width: '45%', textAlign: 'center' }}><div style={{ borderBottom: `1px solid ${primary}`, marginBottom: '6px' }} /><p style={{ fontWeight: 'bold', fontSize: '11px' }}>Parent / Guardian</p></div>
+        <div style={{ width: '45%', textAlign: 'center' }}><div style={{ borderBottom: `1px solid ${primaryColor}`, marginBottom: '6px' }} /><p style={{ fontWeight: 'bold', fontSize: '11px' }}>Authorised Signatory</p></div>
+        <div style={{ width: '45%', textAlign: 'center' }}><div style={{ borderBottom: `1px solid ${primaryColor}`, marginBottom: '6px' }} /><p style={{ fontWeight: 'bold', fontSize: '11px' }}>Parent / Guardian</p></div>
       </div>
     </ReportWrapper>
   );
 }
 
-// ─── FEE RECEIPT (unchanged) ─────────────────────────────
+// ─── FEE RECEIPT ──────────────────────────────────────────
 export function FeeReceiptDocument({ data, org }) {
-  // ... same as before ...
+  const { theme } = useTheme();
+  const primaryColor = theme?.primary_color || '#0D47A1';
+  const accentColor = theme?.accent_color || '#FF1070';
+  const receipt = data;
+  const payment = receipt.fee_payments;
+
+  return (
+    <ReportWrapper org={org} primary={primaryColor} letterhead={true}>
+      <div style={{ textAlign: 'center', marginBottom: 20 }}>
+        <h2 style={{ color: primaryColor, margin: 0, fontSize: 22 }}>FEE RECEIPT</h2>
+        <p style={{ fontSize: 12, color: '#555' }}>Receipt No: {receipt.receipt_no}</p>
+      </div>
+
+      <table style={tableStyles}>
+        <tbody>
+          <tr><td style={labelStyles(primaryColor)}>Student</td><td style={valueStyles}>{receipt.students?.first_name} {receipt.students?.last_name} ({receipt.students?.admission_no})</td></tr>
+          <tr><td style={labelStyles(primaryColor)}>Date</td><td style={valueStyles}>{receipt.receipt_date}</td></tr>
+          <tr><td style={labelStyles(primaryColor)}>Amount</td><td style={{ ...valueStyles, fontWeight: 'bold', color: primaryColor }}>₹ {Number(receipt.amount).toLocaleString('en-IN')}</td></tr>
+          {payment && (
+            <>
+              <tr><td style={labelStyles(primaryColor)}>Payment Mode</td><td style={valueStyles}>{payment.payment_mode}</td></tr>
+              {payment.transaction_no && <tr><td style={labelStyles(primaryColor)}>Transaction No</td><td style={valueStyles}>{payment.transaction_no}</td></tr>}
+            </>
+          )}
+          <tr><td style={labelStyles(primaryColor)}>Course</td><td style={valueStyles}>{receipt.student_fees?.fee_structures?.courses?.course_name || '—'}</td></tr>
+        </tbody>
+      </table>
+
+      <div style={{ marginTop: 20, fontSize: 12 }}>
+        <p><strong>Amount in words:</strong> {numberToWords(Math.round(Number(receipt.amount)))} Only</p>
+      </div>
+    </ReportWrapper>
+  );
 }
 
-// ─── INCOME RECEIPT (unchanged) ───────────────────────────
+// ─── INCOME RECEIPT ───────────────────────────────────────
 export function IncomeReceiptDocument({ data, org }) {
-  // ... same as before ...
+  const { theme } = useTheme();
+  const primaryColor = theme?.primary_color || '#0D47A1';
+  const income = data;
+
+  return (
+    <ReportWrapper org={org} primary={primaryColor} letterhead={true}>
+      <div style={{ textAlign: 'center', marginBottom: 20 }}>
+        <h2 style={{ color: primaryColor, margin: 0, fontSize: 22 }}>INCOME RECEIPT</h2>
+        <p style={{ fontSize: 12, color: '#555' }}>Receipt No: {income.receipt_no}</p>
+      </div>
+
+      <table style={tableStyles}>
+        <tbody>
+          <tr><td style={labelStyles(primaryColor)}>Date</td><td style={valueStyles}>{income.income_date}</td></tr>
+          <tr><td style={labelStyles(primaryColor)}>Category</td><td style={valueStyles}>{income.category}</td></tr>
+          <tr><td style={labelStyles(primaryColor)}>Amount</td><td style={{ ...valueStyles, fontWeight: 'bold', color: primaryColor }}>₹ {Number(income.amount).toLocaleString('en-IN')}</td></tr>
+          <tr><td style={labelStyles(primaryColor)}>Payment Mode</td><td style={valueStyles}>{income.payment_mode}</td></tr>
+          <tr><td style={labelStyles(primaryColor)}>Description</td><td style={valueStyles}>{income.description || '—'}</td></tr>
+        </tbody>
+      </table>
+    </ReportWrapper>
+  );
 }
 
-// ─── EXPENSE VOUCHER (unchanged) ──────────────────────────
+// ─── EXPENSE VOUCHER ──────────────────────────────────────
 export function ExpenseReceiptDocument({ data, org }) {
-  // ... same as before ...
+  const { theme } = useTheme();
+  const primaryColor = theme?.primary_color || '#0D47A1';
+  const expense = data;
+
+  return (
+    <ReportWrapper org={org} primary={primaryColor} letterhead={true}>
+      <div style={{ textAlign: 'center', marginBottom: 20 }}>
+        <h2 style={{ color: primaryColor, margin: 0, fontSize: 22 }}>EXPENSE VOUCHER</h2>
+        <p style={{ fontSize: 12, color: '#555' }}>Voucher No: {expense.voucher_no}</p>
+      </div>
+
+      <table style={tableStyles}>
+        <tbody>
+          <tr><td style={labelStyles(primaryColor)}>Date</td><td style={valueStyles}>{expense.expense_date}</td></tr>
+          <tr><td style={labelStyles(primaryColor)}>Category</td><td style={valueStyles}>{expense.category}</td></tr>
+          <tr><td style={labelStyles(primaryColor)}>Amount</td><td style={{ ...valueStyles, fontWeight: 'bold', color: primaryColor }}>₹ {Number(expense.amount).toLocaleString('en-IN')}</td></tr>
+          <tr><td style={labelStyles(primaryColor)}>Payment Mode</td><td style={valueStyles}>{expense.payment_mode}</td></tr>
+          <tr><td style={labelStyles(primaryColor)}>Bill Number</td><td style={valueStyles}>{expense.bill_number || '—'}</td></tr>
+          <tr><td style={labelStyles(primaryColor)}>Description</td><td style={valueStyles}>{expense.description || '—'}</td></tr>
+        </tbody>
+      </table>
+    </ReportWrapper>
+  );
 }
 
 // ─── SALARY SLIP (letterhead removed, PDF download) ──────
 export function SalarySlipDocument({ data, org }) {
-  // ... same as before ...
+  const { theme } = useTheme();
+  const primaryColor = theme?.primary_color || '#0D47A1';
+  const accentColor = theme?.accent_color || '#FF1070';
+  const slip = data;
+
+  return (
+    <ReportWrapper org={org} primary={primaryColor} letterhead={false}>
+      <div style={{ textAlign: 'center', marginBottom: 20 }}>
+        <h2 style={{ color: primaryColor, margin: 0, fontSize: 22 }}>SALARY SLIP</h2>
+        <p style={{ fontSize: 12, color: '#555' }}>{slip.period}</p>
+      </div>
+
+      <table style={tableStyles}>
+        <tbody>
+          <tr><td style={labelStyles(primaryColor)}>Employee</td><td style={valueStyles}>{slip.teacher_name}</td></tr>
+          <tr><td style={labelStyles(primaryColor)}>Employee Code</td><td style={valueStyles}>{slip.employee_code}</td></tr>
+          <tr><td style={labelStyles(primaryColor)}>Gross Salary</td><td style={{ ...valueStyles, fontWeight: 'bold', color: primaryColor }}>₹ {Number(slip.gross_salary).toLocaleString('en-IN')}</td></tr>
+          <tr><td style={labelStyles(primaryColor)}>Deductions</td><td style={{ ...valueStyles, color: accentColor }}>₹ {Number(slip.deductions).toLocaleString('en-IN')}</td></tr>
+          <tr><td style={labelStyles(primaryColor)}>Net Salary</td><td style={{ ...valueStyles, fontWeight: 'bold', color: primaryColor }}>₹ {Number(slip.net_salary).toLocaleString('en-IN')}</td></tr>
+        </tbody>
+      </table>
+    </ReportWrapper>
+  );
 }
 
 // ─── CERTIFICATE (Premium Design, no extra header) ────────
-// ─── CERTIFICATE (Professional, perfectly margined) ───────
 export function CertificateDocument({ data, org }) {
   const { theme } = useTheme();
-  const primary = theme?.primary_color || '#0D47A1';
+  const primaryColor = theme?.primary_color || '#0D47A1';
+  const accentColor = theme?.accent_color || '#FF1070';
   const gold = '#D4AF37';
   const headingFont = theme?.font_heading || 'Georgia, serif';
   const bodyFont = theme?.font_body || 'Lato, sans-serif';
+  const companyName = org?.company_name || 'Organization';
 
   return (
-    <ReportWrapper org={org} primary={primary} letterhead={false}>
+    <ReportWrapper org={org} primary={primaryColor} letterhead={false}>
       <div style={{
         position: 'relative',
         width: '100%',
-        padding: '25mm 20mm',          // ample print margins (inside the wrapper)
+        padding: '25mm 20mm',
         boxSizing: 'border-box',
-        background: `linear-gradient(135deg, ${primary}06 0%, ${primary}02 100%)`,
-        border: `4px double ${primary}`,
+        background: `linear-gradient(135deg, ${primaryColor}06 0%, ${primaryColor}02 100%)`,
+        border: `4px double ${primaryColor}`,
         borderRadius: '6px',
         fontFamily: bodyFont,
         color: '#222',
@@ -329,7 +430,7 @@ export function CertificateDocument({ data, org }) {
 
         {/* Inner light border */}
         <div style={{
-          border: `1px solid ${primary}25`,
+          border: `1px solid ${primaryColor}25`,
           borderRadius: '4px',
           padding: '18mm 15mm',
           position: 'relative',
@@ -359,13 +460,13 @@ export function CertificateDocument({ data, org }) {
               <h1 style={{
                 fontSize: '26px',
                 fontWeight: 'bold',
-                color: primary,
+                color: primaryColor,
                 fontFamily: headingFont,
                 letterSpacing: '2px',
                 margin: '0 0 8px 0',
                 textTransform: 'uppercase',
               }}>
-                {org?.company_name || 'ShreeVidhya Academy'}
+                {companyName}
               </h1>
               <div style={{ width: '50%', margin: '0 auto 18px', borderBottom: `2px solid ${gold}`, borderRadius: '2px' }} />
             </div>
@@ -389,7 +490,7 @@ export function CertificateDocument({ data, org }) {
             <p style={{
               fontSize: '24px',
               fontWeight: 'bold',
-              color: primary,
+              color: primaryColor,
               fontFamily: headingFont,
               margin: '10px 0',
               letterSpacing: '0.5px',
@@ -402,7 +503,7 @@ export function CertificateDocument({ data, org }) {
             <p style={{
               fontSize: '19px',
               fontWeight: 'bold',
-              color: primary,
+              color: primaryColor,
               fontFamily: headingFont,
               margin: '10px 0',
             }}>
@@ -434,12 +535,12 @@ export function CertificateDocument({ data, org }) {
                 <p style={{ margin: '4px 0' }}>Certificate No: {data.certificate_no}</p>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ borderBottom: `1px solid ${primary}`, width: '140px', marginBottom: '6px', marginLeft: 'auto' }} />
+                <div style={{ borderBottom: `1px solid ${primaryColor}`, width: '140px', marginBottom: '6px', marginLeft: 'auto' }} />
                 <p style={{ fontWeight: 'bold', margin: 0 }}>Authorized Signatory</p>
               </div>
             </div>
 
-            {/* Gold seal */}
+            {/* Gold seal with organization name */}
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: '25px' }}>
               <div style={{
                 width: '80px',
@@ -460,8 +561,7 @@ export function CertificateDocument({ data, org }) {
                 background: `${gold}10`,
               }}>
                 <span style={{ fontSize: '10px', marginBottom: '2px' }}>🏆</span>
-                <span>Shreevidhya</span>
-                <span>Academy</span>
+                <span>{companyName.split(' ').slice(0, 2).join(' ')}</span>
                 <span style={{ fontSize: '6px', color: '#888' }}>SEAL</span>
               </div>
             </div>
@@ -470,5 +570,4 @@ export function CertificateDocument({ data, org }) {
       </div>
     </ReportWrapper>
   );
-
 }

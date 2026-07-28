@@ -1,35 +1,50 @@
 // src/pages/StudentAttendancePage.jsx
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, CheckCircle, XCircle, BookOpen } from "lucide-react";
-
 import BackButton from "../components/BackButton";
-
 import { useStudentId } from "../hooks/useStudentId";
 import { supabase } from "../api/supabase";
-import { useOrg } from "../context/OrganizationContext";
-import { useTheme } from "../context/ThemeContext"; // ✅ dynamic theme
+import { useTheme } from "../context/ThemeContext";
 
-export default function StudentAttendancePage({ studentId: propStudentId = null, standalone = true }) {
+export default function StudentAttendancePage({
+  studentId: propStudentId = null,
+  standalone = true,
+}) {
   // ── Use provided studentId or resolve via hook ──
   const { studentId: hookStudentId, isLoading: idLoadingHook } = useStudentId();
   const effectiveStudentId = propStudentId || hookStudentId;
   const idLoading = !propStudentId && idLoadingHook;
 
-  // ── Branch & Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();
-  const theme = useTheme();                                     // ✅ theme hook
-  const branchId = branch?.id;
-  const financialYearId = selectedFinancialYear?.id;
-
+  const theme = useTheme();
   const headingFont = theme?.font_heading || "Righteous";
   const bodyFont = theme?.font_body || "Montserrat";
+
+  // 🔥 Fetch the student's branch & FY from their own record (not from org context)
+  const { data: studentRecord } = useQuery({
+    queryKey: ["student-branch-fy", effectiveStudentId],
+    queryFn: async () => {
+      if (!effectiveStudentId) return null;
+      const { data, error } = await supabase
+        .from("students")
+        .select("branch_id, financial_year_id")
+        .eq("id", effectiveStudentId)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!effectiveStudentId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const branchId = studentRecord?.branch_id ?? null;
+  const financialYearId = studentRecord?.financial_year_id ?? null;
 
   const { data: sessions = [], isLoading } = useQuery({
     queryKey: ["student-attendance-detail", effectiveStudentId, branchId, financialYearId],
     queryFn: async () => {
       if (!effectiveStudentId) return [];
 
-      // Get active batch IDs for this student – scoped to branch & FY
+      // Get active batch IDs for this student
       let batchQuery = supabase
         .from("student_batches")
         .select("batch_id")
@@ -40,13 +55,15 @@ export default function StudentAttendancePage({ studentId: propStudentId = null,
       if (financialYearId) batchQuery = batchQuery.eq("financial_year_id", financialYearId);
 
       const { data: batchRows } = await batchQuery;
-      const batchIds = batchRows?.map((b) => b.batch_id) || [];
+      const batchIds = (batchRows || []).map((b) => b.batch_id).filter(Boolean);
       if (!batchIds.length) return [];
 
-      // Fetch sessions for those batches – also scoped
+      // Fetch sessions for those batches
       let sessionQuery = supabase
         .from("attendance_sessions")
-        .select(`id, attendance_date, topic_covered, batches(batch_name, medium_id, mediums(name))`)
+        .select(
+          `id, attendance_date, topic_covered, batches(batch_name, medium_id, mediums(name))`
+        )
         .in("batch_id", batchIds)
         .order("attendance_date", { ascending: false });
 
@@ -55,8 +72,10 @@ export default function StudentAttendancePage({ studentId: propStudentId = null,
 
       const { data: attendanceSessions } = await sessionQuery;
 
-      // Get attendance marks – scoped
-      const sessionIds = attendanceSessions?.map((s) => s.id) || [];
+      // Get attendance marks for this student
+      const sessionIds = (attendanceSessions || []).map((s) => s.id);
+      if (!sessionIds.length) return attendanceSessions || [];
+
       let marksQuery = supabase
         .from("student_attendance")
         .select("session_id, status")
@@ -68,38 +87,47 @@ export default function StudentAttendancePage({ studentId: propStudentId = null,
 
       const { data: marks } = await marksQuery;
 
+      // Build a map of session_id → status (normalised to title‑case for display)
       const markMap = {};
-      marks?.forEach((m) => {
-        markMap[m.session_id] = m.status;
+      (marks || []).forEach((m) => {
+        markMap[m.session_id] = m.status
+          ? m.status.charAt(0).toUpperCase() + m.status.slice(1).toLowerCase()
+          : "Absent";
       });
 
-      return (
-        attendanceSessions?.map((s) => ({
-          ...s,
-          batch_name: s.batches?.batch_name,
-          medium_name: s.batches?.mediums?.name || "",
-          status: markMap[s.id] || "Absent",
-        })) || []
-      );
+      return (attendanceSessions || []).map((s) => ({
+        ...s,
+        batch_name: s.batches?.batch_name,
+        medium_name: s.batches?.mediums?.name || "",
+        status: markMap[s.id] || "Absent",
+      }));
     },
-    enabled: !!effectiveStudentId && !!branchId && !!financialYearId,
+    enabled: !!effectiveStudentId && branchId !== null && financialYearId !== null,
     staleTime: 2 * 60 * 1000,
   });
 
-  // Overall percentage
-  const presentCount = sessions.filter((s) => s.status === "Present").length;
+  // Overall percentage – case‑insensitive
+  const presentCount = sessions.filter(
+    (s) => s.status?.toLowerCase() === "present"
+  ).length;
   const total = sessions.length;
   const percentage = total > 0 ? ((presentCount / total) * 100).toFixed(1) : 0;
 
   // ── Loading state ──
   if (idLoading || isLoading) {
     if (!standalone) {
-      return <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>Loading...</div>;
+      return (
+        <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+          Loading...
+        </div>
+      );
     }
     return (
       <>
         <BackButton to="/student" label="My Dashboard" />
-        <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>Loading...</div>
+        <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+          Loading...
+        </div>
       </>
     );
   }
@@ -121,10 +149,12 @@ export default function StudentAttendancePage({ studentId: propStudentId = null,
             <div className="w-48 bg-primary-bg rounded-full h-3">
               <div
                 className="bg-primary h-3 rounded-full"
-                style={{ width: `${percentage}%` }}
+                style={{ width: `${Math.min(percentage, 100)}%` }}
               ></div>
             </div>
-            <span className="font-bold text-primary" style={{ fontFamily: headingFont }}>{percentage}%</span>
+            <span className="font-bold text-primary" style={{ fontFamily: headingFont }}>
+              {percentage}%
+            </span>
           </div>
           <p className="text-xs text-primary-dark/60 mt-1" style={{ fontFamily: bodyFont }}>
             {presentCount} present / {total} sessions
@@ -138,11 +168,21 @@ export default function StudentAttendancePage({ studentId: propStudentId = null,
           <table className="w-full min-w-[600px]">
             <thead className="bg-primary-bg">
               <tr>
-                <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Date</th>
-                <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Batch</th>
-                <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Medium</th>
-                <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Topic</th>
-                <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>Status</th>
+                <th className="p-3 text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                  Date
+                </th>
+                <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                  Batch
+                </th>
+                <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                  Medium
+                </th>
+                <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                  Topic
+                </th>
+                <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
+                  Status
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -155,12 +195,20 @@ export default function StudentAttendancePage({ studentId: propStudentId = null,
               ) : (
                 sessions.map((s) => (
                   <tr key={s.id} className="border-t border-primary-bg hover:bg-primary-bg">
-                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>{s.attendance_date}</td>
-                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>{s.batch_name || "—"}</td>
-                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>{s.medium_name || "—"}</td>
-                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>{s.topic_covered || "—"}</td>
+                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>
+                      {s.attendance_date}
+                    </td>
+                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>
+                      {s.batch_name || "—"}
+                    </td>
+                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>
+                      {s.medium_name || "—"}
+                    </td>
+                    <td className="p-3 text-primary-dark" style={{ fontFamily: bodyFont }}>
+                      {s.topic_covered || "—"}
+                    </td>
                     <td>
-                      {s.status === "Present" ? (
+                      {s.status?.toLowerCase() === "present" ? (
                         <span className="text-primary flex items-center gap-1" style={{ fontFamily: bodyFont }}>
                           <CheckCircle size={16} /> Present
                         </span>
@@ -185,6 +233,9 @@ export default function StudentAttendancePage({ studentId: propStudentId = null,
   }
 
   return (
-    <BackButton to="/student" label="My Dashboard" />
+    <div>
+      <BackButton to="/student" label="My Dashboard" />
+      {content}
+    </div>
   );
 }

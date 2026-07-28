@@ -1,4 +1,4 @@
-// src/pages/VoucherDetail.jsx (or wherever it lives)
+// src/pages/VoucherDetail.jsx
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -14,7 +14,7 @@ import {
 } from "../services/voucherService";
 import { getChartOfAccounts } from "../services/accountingService";
 import { useOrg } from "../context/OrganizationContext";
-import { useTheme } from "../context/ThemeContext";   // ✅ added
+import { useTheme } from "../context/ThemeContext";
 
 // ─── Rupee symbol helper ──────────────────────────────────
 function createRupeeSymbolImage() {
@@ -76,15 +76,11 @@ export default function VoucherDetail({ standalone = true }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { org, branch, selectedFinancialYear } = useOrg();   // ❌ removed theme from here
-  const { theme } = useTheme();                               // ✅ theme from context
+  const { org, branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();                               // theme from context
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
   const ctx = { branchId, financialYearId };
-
-  // Theme colours
-  const primaryColor = theme?.primary_color || "#0D47A1";
-  const accentColor = theme?.accent_color || "#FF1070";
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["chart-of-accounts", branchId, financialYearId],
@@ -219,7 +215,6 @@ export default function VoucherDetail({ standalone = true }) {
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 10;
 
-      // ── Load logo ──
       let logoBase64 = null;
       if (org?.logo_dark_url) {
         logoBase64 = await loadImageAsBase64(org.logo_dark_url);
@@ -233,10 +228,10 @@ export default function VoucherDetail({ standalone = true }) {
       const registrationType = org?.registration_type || "";
       const phone = org?.phone || "";
       const email = org?.email || "";
+      const primaryColor = theme?.primary_color || "#0D47A1";
 
       let y = 10;
 
-      // ── Header ──
       if (logoBase64) {
         doc.addImage(logoBase64, "PNG", margin, y, 30, 12);
         y += 14;
@@ -279,19 +274,16 @@ export default function VoucherDetail({ standalone = true }) {
 
       y = Math.max(y, detailY + 2);
 
-      // Separator line
       doc.setDrawColor(primaryColor);
       doc.line(margin, y, pageWidth - margin, y);
       y += 4;
 
-      // ── Voucher Title ──
       doc.setFont("helvetica", "bold");
       doc.setFontSize(16);
       doc.setTextColor(primaryColor);
       doc.text(`${voucher.voucher_types?.name || ""} Voucher`, pageWidth / 2, y, { align: "center" });
       y += 8;
 
-      // ── Voucher Meta ──
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
       doc.setTextColor("#333");
@@ -300,7 +292,6 @@ export default function VoucherDetail({ standalone = true }) {
       doc.text(`Ref: ${voucher.reference || "—"}`, pageWidth - margin, y, { align: "right" });
       y += 6;
 
-      // ── Table ──
       const lines = voucher.journal_entries?.journal_entry_lines || [];
       const tableRows = lines.map((line) => [
         line.account?.account_name || "—",
@@ -345,7 +336,6 @@ export default function VoucherDetail({ standalone = true }) {
 
       y = doc.lastAutoTable.finalY + 4;
 
-      // ── Totals with ₹ ──
       const rightEdge = pageWidth - margin;
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
@@ -357,7 +347,6 @@ export default function VoucherDetail({ standalone = true }) {
       drawCurrency(doc, totalCredit, rightEdge, y, 9, 'right', primaryColor);
       y += 8;
 
-      // ── Footer ──
       doc.setFont("helvetica", "italic");
       doc.setFontSize(7);
       doc.setTextColor("#888");
@@ -378,11 +367,11 @@ export default function VoucherDetail({ standalone = true }) {
 
   if (isLoading)
     return (
-      <div className="p-8 text-center">Loading…</div>
+      <div className="p-8 text-center text-gray-500 dark:text-gray-400">Loading…</div>
     );
   if (!isNew && !voucher)
     return (
-      <div className="p-8 text-center text-red-600">Voucher not found</div>
+      <div className="p-8 text-center text-accent-dark">Voucher not found</div>
     );
 
   const lines = form.lines;
@@ -391,11 +380,11 @@ export default function VoucherDetail({ standalone = true }) {
     : voucher?.journal_entries?.journal_entry_lines || [];
 
   return (
-    <>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
       {standalone && (
         <button
           onClick={() => navigate("/vouchers")}
-          className="inline-flex items-center gap-2 text-secondary hover:text-primary-dark mb-4 text-sm"
+          className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-primary-dark mb-4 text-sm font-body"
         >
           <ArrowLeft size={18} /> Back to Vouchers
         </button>
@@ -403,12 +392,12 @@ export default function VoucherDetail({ standalone = true }) {
 
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-righteous" style={{ color: primaryColor }}>
+          <h1 className="text-3xl font-heading text-primary-dark">
             {isNew
               ? "New Voucher"
               : `${voucher?.voucher_types?.name || ""} Voucher`}
           </h1>
-          <p className="text-sm text-secondary-dark">
+          <p className="text-sm text-gray-600 dark:text-gray-400 font-body">
             {isNew ? "Create a new accounting entry" : voucher?.voucher_no}
           </p>
         </div>
@@ -416,8 +405,7 @@ export default function VoucherDetail({ standalone = true }) {
           {!isNew && (
             <button
               onClick={handlePrint}
-              className="text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
-              style={{ backgroundColor: primaryColor }}
+              className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors"
             >
               <Printer size={16} /> PDF
             </button>
@@ -425,7 +413,7 @@ export default function VoucherDetail({ standalone = true }) {
           {!isNew && !editing && (
             <button
               onClick={handleEditToggle}
-              className="border px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+              className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
             >
               <Edit3 size={16} /> Edit
             </button>
@@ -436,14 +424,13 @@ export default function VoucherDetail({ standalone = true }) {
                 onClick={() =>
                   isNew ? navigate("/vouchers") : handleEditToggle()
                 }
-                className="border px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+                className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-accent text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
               >
                 <X size={16} /> Cancel
               </button>
               <button
                 onClick={handleSave}
-                className="text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
-                style={{ backgroundColor: primaryColor }}
+                className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors"
               >
                 <Save size={16} /> Save
               </button>
@@ -454,11 +441,13 @@ export default function VoucherDetail({ standalone = true }) {
 
       {isNew && (
         <div className="mb-4">
-          <label className="block text-sm font-medium mb-1">Voucher Type</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Voucher Type
+          </label>
           <select
             value={voucherTypeCode}
             onChange={(e) => setVoucherTypeCode(e.target.value)}
-            className="border rounded p-2.5 text-sm w-full max-w-xs"
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 text-sm w-full max-w-xs focus:ring-2 focus:ring-primary outline-none"
           >
             {voucherTypes.map((t) => (
               <option key={t.code} value={t.code}>
@@ -469,140 +458,163 @@ export default function VoucherDetail({ standalone = true }) {
         </div>
       )}
 
-      <div className="bg-white rounded-xl p-6 shadow-sm">
+      <div className="bg-white dark:bg-accent rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <div>
-            <label className="block text-sm text-secondary-dark mb-1">Date</label>
+            <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">
+              Date
+            </label>
             {editing ? (
               <input
                 type="date"
                 value={form.entry_date}
                 onChange={(e) => setForm({ ...form, entry_date: e.target.value })}
-                className="w-full border rounded p-2.5 text-sm"
+                className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
               />
             ) : (
-              <p className="text-sm font-medium">{voucher?.entry_date}</p>
+              <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                {voucher?.entry_date}
+              </p>
             )}
           </div>
           <div>
-            <label className="block text-sm text-secondary-dark mb-1">Reference</label>
+            <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">
+              Reference
+            </label>
             {editing ? (
               <input
                 type="text"
                 value={form.reference}
                 onChange={(e) => setForm({ ...form, reference: e.target.value })}
-                className="w-full border rounded p-2.5 text-sm"
+                className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
               />
             ) : (
-              <p className="text-sm font-medium">{voucher?.reference || "—"}</p>
+              <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                {voucher?.reference || "—"}
+              </p>
             )}
           </div>
           <div>
-            <label className="block text-sm text-secondary-dark mb-1">Description</label>
+            <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">
+              Description
+            </label>
             {editing ? (
               <input
                 type="text"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
-                className="w-full border rounded p-2.5 text-sm"
+                className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
               />
             ) : (
-              <p className="text-sm font-medium">{voucher?.description || "—"}</p>
+              <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                {voucher?.description || "—"}
+              </p>
             )}
           </div>
         </div>
 
-        <table className="w-full mb-4">
-          <thead className="bg-slate-100">
-            <tr>
-              <th className="p-3 text-left text-sm">Account</th>
-              <th className="p-3 text-left text-sm">Description</th>
-              <th className="p-3 text-right text-sm">Debit</th>
-              <th className="p-3 text-right text-sm">Credit</th>
-              {editing && <th></th>}
-            </tr>
-          </thead>
-          <tbody>
-            {editing
-              ? lines.map((line, idx) => (
-                  <tr key={idx} className="border-t">
-                    <td className="p-2">
-                      <select
-                        value={line.account_id}
-                        onChange={(e) => updateLine(idx, "account_id", e.target.value)}
-                        className="w-full border rounded p-2 text-sm"
-                      >
-                        <option value="">Select Account</option>
-                        {accounts.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.account_code} - {a.account_name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="p-2">
-                      <input
-                        type="text"
-                        value={line.description}
-                        onChange={(e) => updateLine(idx, "description", e.target.value)}
-                        className="w-full border rounded p-2 text-sm"
-                      />
-                    </td>
-                    <td className="p-2">
-                      <input
-                        type="number"
-                        value={line.debit}
-                        onChange={(e) => updateLine(idx, "debit", e.target.value)}
-                        className="w-full border rounded p-2 text-sm text-right"
-                      />
-                    </td>
-                    <td className="p-2">
-                      <input
-                        type="number"
-                        value={line.credit}
-                        onChange={(e) => updateLine(idx, "credit", e.target.value)}
-                        className="w-full border rounded p-2 text-sm text-right"
-                      />
-                    </td>
-                    <td className="p-1">
-                      <button
-                        type="button"
-                        onClick={() => removeLine(idx)}
-                        className="text-red-600"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              : displayLines.map((line, idx) => (
-                  <tr key={idx} className="border-t">
-                    <td className="p-3 text-sm">
-                      {line.account?.account_name || "—"}
-                    </td>
-                    <td className="p-3 text-sm">{line.description}</td>
-                    <td className="p-3 text-sm text-right">
-                      ₹{Number(line.debit).toLocaleString()}
-                    </td>
-                    <td className="p-3 text-sm text-right">
-                      ₹{Number(line.credit).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-          </tbody>
-        </table>
+        <div className="overflow-x-auto">
+          <table className="w-full mb-4">
+            <thead className="bg-gray-50 dark:bg-gray-700">
+              <tr>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Account
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Description
+                </th>
+                <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Debit
+                </th>
+                <th className="p-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Credit
+                </th>
+                {editing && <th></th>}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {editing
+                ? lines.map((line, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                      <td className="p-2">
+                        <select
+                          value={line.account_id}
+                          onChange={(e) => updateLine(idx, "account_id", e.target.value)}
+                          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm focus:ring-2 focus:ring-primary outline-none"
+                        >
+                          <option value="">Select Account</option>
+                          {accounts.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.account_code} - {a.account_name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="text"
+                          value={line.description}
+                          onChange={(e) => updateLine(idx, "description", e.target.value)}
+                          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm focus:ring-2 focus:ring-primary outline-none"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="number"
+                          value={line.debit}
+                          onChange={(e) => updateLine(idx, "debit", e.target.value)}
+                          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm text-right focus:ring-2 focus:ring-primary outline-none"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="number"
+                          value={line.credit}
+                          onChange={(e) => updateLine(idx, "credit", e.target.value)}
+                          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2 text-sm text-right focus:ring-2 focus:ring-primary outline-none"
+                        />
+                      </td>
+                      <td className="p-1">
+                        <button
+                          type="button"
+                          onClick={() => removeLine(idx)}
+                          className="text-accent-dark hover:text-accent-light"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                : displayLines.map((line, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                      <td className="p-3 text-sm text-gray-700 dark:text-gray-200">
+                        {line.account?.account_name || "—"}
+                      </td>
+                      <td className="p-3 text-sm text-gray-700 dark:text-gray-200">
+                        {line.description}
+                      </td>
+                      <td className="p-3 text-sm text-right text-gray-800 dark:text-gray-100">
+                        ₹{Number(line.debit).toLocaleString()}
+                      </td>
+                      <td className="p-3 text-sm text-right text-gray-800 dark:text-gray-100">
+                        ₹{Number(line.credit).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+            </tbody>
+          </table>
+        </div>
 
         {editing && (
           <button
             type="button"
             onClick={addLine}
-            className="flex items-center gap-1 text-sm mb-4"
-            style={{ color: primaryColor }}
+            className="flex items-center gap-1 text-sm font-body text-primary hover:text-primary-light"
           >
             <Plus size={16} /> Add Line
           </button>
         )}
       </div>
-    </>
+    </div>
   );
 }

@@ -1,20 +1,26 @@
-import { Dropdown, Avatar, Typography, Space } from "antd";
+import { Dropdown, Avatar, Typography, Space, ConfigProvider } from "antd";
 import {
   UserOutlined,
   LogoutOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 import { useNavigate } from "react-router-dom";
 
 const { Text } = Typography;
 
 export default function UserMenu() {
-  const { profile, signOut } = useAuth();          // 👈 use context's signOut
+  const { profile, signOut } = useAuth();
   const navigate = useNavigate();
+  const theme = useTheme();                                     // ✅ theme hook
+
+  const primaryColor = theme?.primary_color || "#0D47A1";
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const handleLogout = async () => {
-    await signOut();                                // clears everything + cache
+    await signOut();
     navigate("/login", { replace: true });
   };
 
@@ -52,26 +58,35 @@ export default function UserMenu() {
   ];
 
   return (
-    <Dropdown
-      menu={{ items: menuItems, onClick: handleMenuClick }}
-      placement="bottomRight"
-      trigger={["click"]}
+    <ConfigProvider
+      theme={{
+        token: {
+          colorPrimary: primaryColor,
+          fontFamily: bodyFont,
+        },
+      }}
     >
-      <Space size={8} style={{ cursor: "pointer" }}>
-        <Avatar
-          size={28}
-          src={profile?.avatar_url || undefined}
-          icon={!profile?.avatar_url && <UserOutlined />}
-        />
-        <span style={{ lineHeight: 1.2 }}>
-          <Text strong style={{ fontSize: 12, display: "block" }}>
-            {profile?.full_name || "User"}
-          </Text>
-          <Text type="secondary" style={{ fontSize: 10, display: "block" }}>
-            {profile?.role || "Admin"}
-          </Text>
-        </span>
-      </Space>
-    </Dropdown>
+      <Dropdown
+        menu={{ items: menuItems, onClick: handleMenuClick }}
+        placement="bottomRight"
+        trigger={["click"]}
+      >
+        <Space size={8} style={{ cursor: "pointer" }}>
+          <Avatar
+            size={28}
+            src={profile?.avatar_url || undefined}
+            icon={!profile?.avatar_url && <UserOutlined />}
+          />
+          <span style={{ lineHeight: 1.2 }}>
+            <Text strong style={{ fontSize: 12, display: "block", fontFamily: headingFont }}>
+              {profile?.full_name || "User"}
+            </Text>
+            <Text type="secondary" style={{ fontSize: 10, display: "block", fontFamily: bodyFont }}>
+              {profile?.role || "Admin"}
+            </Text>
+          </span>
+        </Space>
+      </Dropdown>
+    </ConfigProvider>
   );
 }

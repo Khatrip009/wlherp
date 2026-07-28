@@ -325,7 +325,7 @@ export const reportTypes = {
         const bid = r.attendance_sessions.batch_id;
         if (!map[bid]) map[bid] = { batch_id: bid, total: 0, present: 0 };
         map[bid].total++;
-        if (r.status === 'Present') map[bid].present++;
+        if (r.status === 'present') map[bid].present++;
       });
       return Object.values(map).map(b => ({
         batch: `Batch ${b.batch_id}`,
@@ -390,7 +390,7 @@ export const reportTypes = {
           };
         }
         map[sid].total++;
-        if (r.status === 'Present') map[sid].present++;
+        if (r.status === 'present') map[sid].present++;
       });
       return Object.values(map).map(s => ({
         admission_no: s.admission_no,

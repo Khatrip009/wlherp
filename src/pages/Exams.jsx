@@ -48,7 +48,7 @@ export default function Exams() {
   const navigate = useNavigate();
 
   const role = (profile?.role || "").toLowerCase().replace(/\s+/g, "_");
-  const isAdmin = role === "admin" || role === "super_admin";
+  const isAdmin = role === "admin" || role === "super_admin" || role === "organization_admin" || role === "branch_admin" || role === "teacher";
 
   const queryClient = useQueryClient();
 

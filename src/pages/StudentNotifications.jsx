@@ -1,3 +1,4 @@
+// src/pages/StudentNotifications.jsx
 import React, { useState } from "react";
 import {
   useInfiniteQuery,
@@ -8,16 +9,15 @@ import toast from "react-hot-toast";
 import { Search, Check, Bell } from "lucide-react";
 import { supabase } from "../api/supabase";
 import { useAuth } from "../context/AuthContext";
-import StudentLayout from "../layouts/AdminLayout"; // Reusing AdminLayout for now
-import { useOrg } from "../context/OrganizationContext";   // NEW
+import StudentLayout from "../layouts/AdminLayout";
+import { useOrg } from "../context/OrganizationContext";
 
 export default function StudentNotifications() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
 
-  // ── Branch & Financial Year context ──
-  const { branch, selectedFinancialYear } = useOrg();   // NEW
+  const { branch, selectedFinancialYear } = useOrg();
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
 
@@ -42,7 +42,6 @@ export default function StudentNotifications() {
         .order("created_at", { ascending: false })
         .range(from, to);
 
-      // Scope to current branch and financial year
       if (branchId) query = query.eq("branch_id", branchId);
       if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
@@ -70,14 +69,14 @@ export default function StudentNotifications() {
 
   const notifications = data?.pages.flatMap((page) => page.data) || [];
 
-  // Mark single as read – scoped update to prevent cross‑branch changes
+  // Mark single as read – scoped update
   const markReadMutation = useMutation({
     mutationFn: async (id) => {
       let query = supabase
         .from("notifications")
         .update({ is_read: true })
         .eq("id", id)
-        .eq("user_id", profile.id); // extra safety
+        .eq("user_id", profile.id);
 
       if (branchId) query = query.eq("branch_id", branchId);
       if (financialYearId) query = query.eq("financial_year_id", financialYearId);
@@ -117,15 +116,15 @@ export default function StudentNotifications() {
     <StudentLayout>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
-          <h1 className="text-3xl font-righteous text-primary-dark">My Notifications</h1>
-          <p className="text-sm text-secondary-dark font-montserrat mt-1">
+          <h1 className="text-3xl font-heading text-primary-dark">My Notifications</h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400 font-body mt-1">
             Stay updated with your announcements
           </p>
         </div>
-        {notifications.some(n => !n.is_read) && (
+        {notifications.some((n) => !n.is_read) && (
           <button
             onClick={() => markAllReadMutation.mutate()}
-            className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-montserrat text-sm flex items-center gap-2"
+            className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-lg transition font-body text-sm flex items-center gap-2"
           >
             <Check size={18} /> Mark All Read
           </button>
@@ -136,42 +135,54 @@ export default function StudentNotifications() {
       <div className="relative mb-6 max-w-md">
         <Search
           size={18}
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary"
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
         />
         <input
           type="text"
           placeholder="Search by title or message..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full border border-secondary-light rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none placeholder-gray-400 dark:placeholder-gray-500"
         />
       </div>
 
       {/* Notifications List */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-accent rounded-xl shadow-sm overflow-hidden border border-gray-200 dark:border-gray-700">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[600px]">
-            <thead className="bg-slate-100 border-b border-secondary-light">
+            <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <tr>
-                <th className="p-3 text-left text-sm font-montserrat text-secondary-dark">Title</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Message</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Date</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Status</th>
-                <th className="text-left text-sm font-montserrat text-secondary-dark">Action</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Title
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Message
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Date
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="p-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Action
+                </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="p-6 text-center text-secondary">Loading notifications…</td>
+                  <td colSpan={5} className="p-6 text-center text-gray-500 dark:text-gray-400">
+                    Loading notifications…
+                  </td>
                 </tr>
               ) : notifications.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-6 text-center text-secondary">
+                  <td colSpan={5} className="p-6 text-center text-gray-500 dark:text-gray-400">
                     <div className="flex flex-col items-center gap-2">
-                      <Bell size={32} className="text-secondary-light" />
+                      <Bell size={32} className="text-gray-400 dark:text-gray-500" />
                       <span>No notifications for you</span>
-                      <span className="text-xs text-secondary-light">
+                      <span className="text-xs text-gray-400 dark:text-gray-500">
                         {search ? "Try adjusting your search" : "You’re all caught up!"}
                       </span>
                     </div>
@@ -181,27 +192,31 @@ export default function StudentNotifications() {
                 notifications.map((n) => (
                   <tr
                     key={n.id}
-                    className={`border-b border-secondary-light hover:bg-primary-bg transition ${
-                      !n.is_read ? "bg-blue-50/50" : ""
+                    className={`hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                      !n.is_read ? "bg-primary-bg/30" : ""
                     }`}
                   >
-                    <td className="p-3 text-sm font-medium">{n.title}</td>
-                    <td className="text-sm max-w-xs truncate">{n.message}</td>
-                    <td className="text-sm">
+                    <td className="p-3 text-sm font-medium text-gray-800 dark:text-gray-100">
+                      {n.title}
+                    </td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200 max-w-xs truncate">
+                      {n.message}
+                    </td>
+                    <td className="p-3 text-sm text-gray-700 dark:text-gray-200">
                       {new Date(n.created_at).toLocaleDateString()}
                     </td>
-                    <td className="text-sm">
+                    <td className="p-3 text-sm">
                       {n.is_read ? (
-                        <span className="text-xs text-secondary">Read</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Read</span>
                       ) : (
                         <span className="text-xs text-accent font-medium">New</span>
                       )}
                     </td>
-                    <td className="text-sm">
+                    <td className="p-3 text-sm">
                       {!n.is_read && (
                         <button
                           onClick={() => markReadMutation.mutate(n.id)}
-                          className="text-green-600 hover:underline flex items-center gap-1"
+                          className="text-primary hover:underline flex items-center gap-1"
                           title="Mark as read"
                         >
                           <Check size={15} /> Mark Read
@@ -222,7 +237,7 @@ export default function StudentNotifications() {
           <button
             onClick={() => fetchNextPage()}
             disabled={isFetchingNextPage}
-            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat text-sm transition disabled:opacity-60"
+            className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-body text-sm transition disabled:opacity-60"
           >
             {isFetchingNextPage ? "Loading more…" : "Load More"}
           </button>

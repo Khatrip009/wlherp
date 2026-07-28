@@ -1,6 +1,6 @@
 // src/services/homeworkService.js
 import { supabase } from "../api/supabase";
-import { sendTemplateEmail } from "./emailService"; // 👈 Added
+import { sendTemplateEmail } from "./emailService";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -21,13 +21,9 @@ async function getOrganizationFromBranch(branchId) {
   return org;
 }
 
-/**
- * Send homework assignment emails to all active students in the batch.
- */
 async function sendHomeworkAssignmentEmails(homeworkId, context) {
   const { branchId, financialYearId } = context;
   try {
-    // 1. Fetch homework details with batch, subject, and teacher
     const { data: homework, error: hwError } = await supabase
       .from("homework")
       .select(`
@@ -40,7 +36,6 @@ async function sendHomeworkAssignmentEmails(homeworkId, context) {
       .single();
     if (hwError) throw hwError;
 
-    // 2. Fetch all active students in the batch
     let studentQuery = supabase
       .from("student_batches")
       .select("student_id, students(first_name, last_name, email, branch_id)")
@@ -51,21 +46,17 @@ async function sendHomeworkAssignmentEmails(homeworkId, context) {
 
     const { data: studentBatches, error: studentError } = await studentQuery;
     if (studentError) throw studentError;
-
     if (!studentBatches || studentBatches.length === 0) {
       console.log(`No active students found for batch ${homework.batch_id}, skipping emails.`);
       return;
     }
 
-    // 3. Fetch organization details
     const org = await getOrganizationFromBranch(branchId);
 
-    // 4. For each student, find parent email or fallback to student email
     for (const sb of studentBatches) {
       const student = sb.students;
       let recipientEmail = student.email;
 
-      // Try to find a parent
       const { data: parent, error: parentError } = await supabase
         .from("student_parents")
         .select("parents!inner(email, father_name, mother_name)")
@@ -75,7 +66,6 @@ async function sendHomeworkAssignmentEmails(homeworkId, context) {
         recipientEmail = parent.parents.email;
       }
 
-      // Build context for this student
       const contextEmail = {
         academyName: org.company_name,
         batch_name: homework.batches?.batch_name || '',
@@ -86,7 +76,6 @@ async function sendHomeworkAssignmentEmails(homeworkId, context) {
         attachment_url: homework.attachment_url || '',
       };
 
-      // Send email
       await sendTemplateEmail({
         to: recipientEmail,
         organizationId: org.id,
@@ -95,10 +84,8 @@ async function sendHomeworkAssignmentEmails(homeworkId, context) {
         branchId,
       });
     }
-
     console.log(`✅ Homework assignment emails sent to ${studentBatches.length} students for homework ${homeworkId}`);
   } catch (error) {
-    // Email failure should not block homework creation – log the error
     console.error("❌ Failed to send homework assignment emails:", error);
   }
 }
@@ -127,11 +114,9 @@ export async function getHomeworks({
     .order("assigned_date", { ascending: false })
     .range(from, to);
 
-  // Scope to current branch & FY – WITHOUT table prefix
   if (branchId) query = query.eq("branch_id", branchId);
   if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
-  // Apply filters
   if (filters.batchId) query = query.eq("batch_id", filters.batchId);
   if (filters.subjectId) query = query.eq("subject_id", filters.subjectId);
   if (filters.medium_id) {
@@ -157,7 +142,6 @@ export async function getHomeworks({
   const { data, error, count } = await query;
   if (error) throw error;
 
-  // Enrich with submission count and flatten medium name
   const enriched = await Promise.all(
     data.map(async (hw) => {
       let subCount = 0;
@@ -196,7 +180,6 @@ export async function getAllHomeworksForExport({
     )
     .order("assigned_date", { ascending: false });
 
-  // Scope to current branch & FY – WITHOUT table prefix
   if (branchId) query = query.eq("branch_id", branchId);
   if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
@@ -248,7 +231,6 @@ export async function getAllHomeworksForExport({
 
 // ─── CRUD ──────────────────────────────────────────────────────────────
 
-// context: { branchId, financialYearId }
 export async function createHomework(payload, context) {
   const { branchId, financialYearId } = context;
   const { data, error } = await supabase
@@ -258,13 +240,10 @@ export async function createHomework(payload, context) {
     .single();
   if (error) throw error;
 
-  // ─── Send homework assignment emails ──────────────────────────
   await sendHomeworkAssignmentEmails(data.id, context);
-
   return data;
 }
 
-// context: { branchId, financialYearId }
 export async function updateHomework(id, payload, context) {
   const { branchId, financialYearId } = context;
   const { data, error } = await supabase
@@ -277,7 +256,6 @@ export async function updateHomework(id, payload, context) {
   return data;
 }
 
-// context: { branchId, financialYearId }
 export async function deleteHomework(id, context) {
   const { branchId, financialYearId } = context;
   const { error } = await supabase
@@ -291,24 +269,40 @@ export async function deleteHomework(id, context) {
   if (error) throw error;
 }
 
-// ─── Submissions ──────────────────────────────────────────────────────
+// ─── Submissions (SAFE – no table prefix, no embedded join) ──────────
 
 export async function getSubmissionsByHomework(homeworkId, branchId, financialYearId) {
+  // 1. Fetch submissions (no student details)
   let query = supabase
     .from("homework_submissions")
-    .select(
-      `id, student_id, submission_file, submitted_at, remarks, marks, status,
-      students(first_name, last_name, admission_no)`
-    )
+    .select("id, student_id, submission_file, submitted_at, remarks, marks, status")
     .eq("homework_id", homeworkId)
     .order("submitted_at", { ascending: false });
 
-  if (branchId) query = query.eq("homework_submissions.branch_id", branchId);
-  if (financialYearId) query = query.eq("homework_submissions.financial_year_id", financialYearId);
+  // Use plain column names (no table prefix)
+  if (branchId) query = query.eq("branch_id", branchId);
+  if (financialYearId) query = query.eq("financial_year_id", financialYearId);
 
-  const { data, error } = await query;
+  const { data: submissions, error } = await query;
   if (error) throw error;
-  return data;
+  if (!submissions || submissions.length === 0) return [];
+
+  // 2. Fetch student details separately
+  const studentIds = [...new Set(submissions.map(s => s.student_id).filter(Boolean))];
+  let studentMap = {};
+  if (studentIds.length > 0) {
+    const { data: students } = await supabase
+      .from("students")
+      .select("id, first_name, last_name, admission_no")
+      .in("id", studentIds);
+    (students || []).forEach(s => { studentMap[s.id] = s; });
+  }
+
+  // 3. Merge student details into each submission
+  return submissions.map(sub => ({
+    ...sub,
+    students: studentMap[sub.student_id] || null,
+  }));
 }
 
 export async function updateSubmission(id, payload, context) {
@@ -367,20 +361,34 @@ export async function getTeacherOptions(branchId, financialYearId) {
   return data || [];
 }
 
+// ─── Batch Students (SAFE two‑step pattern) ─────────────────────────
+
 export async function getBatchStudents(batchId, branchId, financialYearId) {
-  let query = supabase
+  // 1. Get student IDs from the batch
+  let sbQuery = supabase
     .from("student_batches")
-    .select("student_id, students(id, first_name, last_name, admission_no)")
+    .select("student_id")
     .eq("batch_id", batchId)
     .eq("status", "active");
 
-  if (branchId) query = query.eq("student_batches.branch_id", branchId);
-  if (financialYearId) query = query.eq("student_batches.financial_year_id", financialYearId);
+  if (branchId) sbQuery = sbQuery.eq("branch_id", branchId);
+  if (financialYearId) sbQuery = sbQuery.eq("financial_year_id", financialYearId);
 
-  const { data, error } = await query;
-  if (error) throw error;
-  return data.map((item) => item.students);
+  const { data: studentBatches } = await sbQuery;
+  const studentIds = (studentBatches || []).map(sb => sb.student_id).filter(Boolean);
+
+  if (studentIds.length === 0) return [];
+
+  // 2. Fetch student details
+  const { data: students } = await supabase
+    .from("students")
+    .select("id, first_name, last_name, admission_no")
+    .in("id", studentIds);
+
+  return students || [];
 }
+
+// ─── Submit Homework ─────────────────────────────────────────────────
 
 export async function submitHomework({ homeworkId, studentId, file, remarks }, context) {
   const { branchId, financialYearId } = context;

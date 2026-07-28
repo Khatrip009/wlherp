@@ -12,13 +12,18 @@ import { useStudentId } from "../hooks/useStudentId";
 import { supabase } from "../api/supabase";
 import { submitPaymentRequest } from "../services/feeService";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";            // ✅ dynamic theme
 import { sendEmail } from "../services/emailService";
 
 export default function StudentFeesPage() {
   const { studentId, isLoading: idLoading } = useStudentId();
   const queryClient = useQueryClient();
   const { branch, selectedFinancialYear, org } = useOrg();
+  const theme = useTheme();                                  // ✅ theme hook
   const [sendingReport, setSendingReport] = useState(false);
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
@@ -302,7 +307,9 @@ export default function StudentFeesPage() {
     return (
       <>
         <BackButton to="/student" label="My Dashboard" />
-        <div className="p-8 text-center text-secondary">Loading your fees…</div>
+        <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+          Loading your fees…
+        </div>
       </>
     );
   }
@@ -312,13 +319,16 @@ export default function StudentFeesPage() {
       <BackButton to="/student" label="My Dashboard" />
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
-        <h1 className="text-3xl font-righteous text-primary-dark">My Fees</h1>
-        {/* 👇 Send Report button */}
+        <h1 className="text-3xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+          My Fees
+        </h1>
+        {/* Send Report button */}
         {fees.length > 0 && (
           <button
             onClick={sendReportEmail}
             disabled={sendingReport}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+            className="bg-accent hover:bg-accent-dark text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+            style={{ fontFamily: bodyFont }}
           >
             <Mail size={16} />
             {sendingReport ? "Sending..." : "Send Report"}
@@ -327,42 +337,42 @@ export default function StudentFeesPage() {
       </div>
 
       {fees.length === 0 ? (
-        <div className="bg-white rounded-xl p-8 shadow-sm border border-secondary-light text-center">
-          <FileText size={32} className="text-secondary-light mx-auto mb-2" />
-          <p className="text-secondary">No fee records found.</p>
+        <div className="bg-white rounded-xl p-8 shadow-sm border border-primary-bg text-center">
+          <FileText size={32} className="text-primary-dark/40 mx-auto mb-2" />
+          <p className="text-primary-dark/60" style={{ fontFamily: bodyFont }}>No fee records found.</p>
         </div>
       ) : (
         <div className="space-y-6">
           {fees.map((fee) => (
             <div
               key={fee.id}
-              className="bg-white rounded-xl shadow-sm border border-secondary-light overflow-hidden"
+              className="bg-white rounded-xl shadow-sm border border-primary-bg overflow-hidden"
             >
               <div className="p-5">
                 <div className="flex justify-between items-start">
                   <div>
-                    <h2 className="font-bold text-lg text-primary-dark">
+                    <h2 className="font-bold text-lg text-primary" style={{ fontFamily: headingFont }}>
                       {fee.fee_structures?.courses?.course_name}
                     </h2>
-                    <div className="flex flex-wrap gap-3 mt-2 text-sm">
+                    <div className="flex flex-wrap gap-3 mt-2 text-sm" style={{ fontFamily: bodyFont }}>
                       <div className="flex items-center gap-1">
-                        <IndianRupee size={16} className="text-secondary" />
+                        <IndianRupee size={16} className="text-primary-dark/60" />
                         <span className="font-medium">
                           Total: ₹{Number(fee.final_fee).toLocaleString("en-IN")}
                         </span>
                       </div>
                       {fee.total_paid > 0 && (
                         <div className="flex items-center gap-1">
-                          <CheckCircle size={16} className="text-green-600" />
-                          <span className="text-green-600 font-medium">
+                          <CheckCircle size={16} className="text-primary" />
+                          <span className="text-primary font-medium">
                             Paid: ₹{fee.total_paid.toLocaleString("en-IN")}
                           </span>
                         </div>
                       )}
                       {fee.pending > 0 && (
                         <div className="flex items-center gap-1">
-                          <AlertCircle size={16} className="text-red-500" />
-                          <span className="text-red-500 font-medium">
+                          <AlertCircle size={16} className="text-accent-dark" />
+                          <span className="text-accent-dark font-medium">
                             Pending: ₹{fee.pending.toLocaleString("en-IN")}
                           </span>
                         </div>
@@ -370,8 +380,8 @@ export default function StudentFeesPage() {
                       <span
                         className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                           fee.status === "Paid"
-                            ? "bg-green-100 text-green-700"
-                            : "bg-yellow-100 text-yellow-700"
+                            ? "bg-primary-bg text-primary-dark"
+                            : "bg-accent-bg text-accent-dark"
                         }`}
                       >
                         {fee.status}
@@ -384,6 +394,7 @@ export default function StudentFeesPage() {
                       <button
                         onClick={() => openPayModal(fee)}
                         className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg text-sm flex items-center gap-1"
+                        style={{ fontFamily: bodyFont }}
                       >
                         <Send size={16} /> Pay Now
                       </button>
@@ -391,6 +402,7 @@ export default function StudentFeesPage() {
                     <button
                       onClick={() => toggleExpand(fee.id)}
                       className="text-primary hover:underline text-sm flex items-center gap-1"
+                      style={{ fontFamily: bodyFont }}
                     >
                       {expandedFeeId === fee.id ? (
                         <>
@@ -408,37 +420,37 @@ export default function StudentFeesPage() {
 
               {/* Expanded details */}
               {expandedFeeId === fee.id && (
-                <div className="border-t border-secondary-light bg-gray-50 p-5 space-y-5">
+                <div className="border-t border-primary-bg bg-primary-bg/30 p-5 space-y-5">
                   {/* Installments */}
                   {fee.installments.length > 0 && (
                     <div>
-                      <h3 className="font-semibold text-sm text-secondary-dark mb-2 flex items-center gap-1">
+                      <h3 className="font-semibold text-sm text-primary-dark mb-2 flex items-center gap-1" style={{ fontFamily: headingFont }}>
                         <Calendar size={16} /> Installments
                       </h3>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
-                          <thead className="bg-slate-100">
+                          <thead className="bg-primary-bg">
                             <tr>
-                              <th className="text-left p-2">#</th>
-                              <th className="text-left p-2">Amount</th>
-                              <th className="text-left p-2">Due Date</th>
-                              <th className="text-left p-2">Status</th>
+                              <th className="text-left p-2 text-primary-dark" style={{ fontFamily: bodyFont }}>#</th>
+                              <th className="text-left p-2 text-primary-dark" style={{ fontFamily: bodyFont }}>Amount</th>
+                              <th className="text-left p-2 text-primary-dark" style={{ fontFamily: bodyFont }}>Due Date</th>
+                              <th className="text-left p-2 text-primary-dark" style={{ fontFamily: bodyFont }}>Status</th>
                             </tr>
                           </thead>
                           <tbody>
                             {fee.installments.map((inst) => (
-                              <tr key={inst.id} className="border-b border-secondary-light">
-                                <td className="p-2">{inst.installment_number}</td>
-                                <td className="p-2">
+                              <tr key={inst.id} className="border-b border-primary-bg">
+                                <td className="p-2 text-primary-dark" style={{ fontFamily: bodyFont }}>{inst.installment_number}</td>
+                                <td className="p-2 text-primary-dark" style={{ fontFamily: bodyFont }}>
                                   ₹{Number(inst.amount).toLocaleString("en-IN")}
                                 </td>
-                                <td className="p-2">{inst.due_date || "—"}</td>
+                                <td className="p-2 text-primary-dark" style={{ fontFamily: bodyFont }}>{inst.due_date || "—"}</td>
                                 <td className="p-2">
                                   <span
                                     className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                                       inst.status === "Paid"
-                                        ? "bg-green-100 text-green-700"
-                                        : "bg-yellow-100 text-yellow-700"
+                                        ? "bg-primary-bg text-primary-dark"
+                                        : "bg-accent-bg text-accent-dark"
                                     }`}
                                   >
                                     {inst.status}
@@ -454,38 +466,38 @@ export default function StudentFeesPage() {
 
                   {/* Payment History */}
                   <div>
-                    <h3 className="font-semibold text-sm text-secondary-dark mb-2 flex items-center gap-1">
+                    <h3 className="font-semibold text-sm text-primary-dark mb-2 flex items-center gap-1" style={{ fontFamily: headingFont }}>
                       <CreditCard size={16} /> Payment History
                     </h3>
                     {fee.payments.length === 0 ? (
-                      <p className="text-sm text-secondary">No payments recorded yet.</p>
+                      <p className="text-sm text-primary-dark/60" style={{ fontFamily: bodyFont }}>No payments recorded yet.</p>
                     ) : (
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
-                          <thead className="bg-slate-100">
+                          <thead className="bg-primary-bg">
                             <tr>
-                              <th className="text-left p-2">Date</th>
-                              <th className="text-left p-2">Amount</th>
-                              <th className="text-left p-2">Mode</th>
-                              <th className="text-left p-2">Transaction</th>
-                              <th className="text-left p-2">Status</th>
+                              <th className="text-left p-2 text-primary-dark" style={{ fontFamily: bodyFont }}>Date</th>
+                              <th className="text-left p-2 text-primary-dark" style={{ fontFamily: bodyFont }}>Amount</th>
+                              <th className="text-left p-2 text-primary-dark" style={{ fontFamily: bodyFont }}>Mode</th>
+                              <th className="text-left p-2 text-primary-dark" style={{ fontFamily: bodyFont }}>Transaction</th>
+                              <th className="text-left p-2 text-primary-dark" style={{ fontFamily: bodyFont }}>Status</th>
                             </tr>
                           </thead>
                           <tbody>
                             {fee.payments.map((p) => (
-                              <tr key={p.id} className="border-b border-secondary-light">
-                                <td className="p-2">{p.payment_date}</td>
-                                <td className="p-2 font-medium">
+                              <tr key={p.id} className="border-b border-primary-bg">
+                                <td className="p-2 text-primary-dark" style={{ fontFamily: bodyFont }}>{p.payment_date}</td>
+                                <td className="p-2 font-medium text-primary-dark" style={{ fontFamily: bodyFont }}>
                                   ₹{Number(p.amount).toLocaleString("en-IN")}
                                 </td>
-                                <td className="p-2">{p.payment_mode}</td>
-                                <td className="p-2">{p.transaction_no || "—"}</td>
+                                <td className="p-2 text-primary-dark" style={{ fontFamily: bodyFont }}>{p.payment_mode}</td>
+                                <td className="p-2 text-primary-dark" style={{ fontFamily: bodyFont }}>{p.transaction_no || "—"}</td>
                                 <td className="p-2">
                                   <span
                                     className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                                       p.status === "Approved"
-                                        ? "bg-green-100 text-green-700"
-                                        : "bg-blue-100 text-blue-700"
+                                        ? "bg-primary-bg text-primary-dark"
+                                        : "bg-accent-bg text-accent-dark"
                                     }`}
                                   >
                                     {p.status}
@@ -508,25 +520,27 @@ export default function StudentFeesPage() {
       {/* Pay Now Modal */}
       {payingFee && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-secondary-light px-6 py-4 flex items-center justify-between rounded-t-xl">
-              <h2 className="text-xl font-righteous text-primary-dark">Submit Payment</h2>
+          <div className="bg-white rounded-xl w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto border border-primary-bg">
+            <div className="sticky top-0 bg-white border-b border-primary-bg px-6 py-4 flex items-center justify-between rounded-t-xl">
+              <h2 className="text-xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+                Submit Payment
+              </h2>
               <button
                 onClick={() => setPayingFee(null)}
-                className="p-2 hover:bg-secondary-bg rounded-lg"
+                className="p-2 hover:bg-primary-bg rounded-lg text-primary-dark"
               >
                 ✕
               </button>
             </div>
             <form onSubmit={handleSubmitPayment} className="p-6 space-y-4">
               <div>
-                <p className="text-sm text-secondary-dark">
+                <p className="text-sm text-primary-dark" style={{ fontFamily: bodyFont }}>
                   <strong>Course:</strong> {payingFee.fee_structures?.courses?.course_name}
                 </p>
-                <p className="text-sm text-secondary">
+                <p className="text-sm text-primary-dark/80" style={{ fontFamily: bodyFont }}>
                   Total Fee: ₹{Number(payingFee.final_fee).toLocaleString("en-IN")}
                 </p>
-                <p className="text-sm text-green-600">
+                <p className="text-sm text-primary" style={{ fontFamily: bodyFont }}>
                   Already Paid (Approved): ₹{Number(payingFee.total_paid).toLocaleString("en-IN")}
                 </p>
               </div>
@@ -534,14 +548,15 @@ export default function StudentFeesPage() {
               {/* Installment selector */}
               {payingFee.installments.length > 0 && (
                 <div>
-                  <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+                  <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
                     <List size={14} className="inline mr-1" />
                     Select Installment (optional)
                   </label>
                   <select
                     value={paymentForm.installment_id}
                     onChange={handleInstallmentChange}
-                    className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary outline-none"
+                    className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary outline-none"
+                    style={{ fontFamily: bodyFont }}
                   >
                     <option value="">No specific installment</option>
                     {payingFee.installments.map((inst) => (
@@ -553,7 +568,7 @@ export default function StudentFeesPage() {
                     ))}
                   </select>
                   {selectedInstallment && (
-                    <p className="text-xs text-secondary mt-1">
+                    <p className="text-xs text-primary-dark/60 mt-1" style={{ fontFamily: bodyFont }}>
                       Amount auto‑filled with installment amount. You can change it.
                     </p>
                   )}
@@ -561,53 +576,58 @@ export default function StudentFeesPage() {
               )}
 
               <div>
-                <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+                <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
                   Amount to Pay *
                 </label>
                 <input
                   type="number"
                   value={paymentForm.amount}
                   onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
-                  className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary outline-none"
+                  className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary outline-none"
                   required
                   placeholder="Enter amount"
+                  style={{ fontFamily: bodyFont }}
                 />
               </div>
               <div>
-                <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+                <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
                   Transaction Reference / UTR
                 </label>
                 <input
                   type="text"
                   value={paymentForm.transaction_no}
                   onChange={(e) => setPaymentForm({ ...paymentForm, transaction_no: e.target.value })}
-                  className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary outline-none"
+                  className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary outline-none"
                   placeholder="e.g., UTR123456"
+                  style={{ fontFamily: bodyFont }}
                 />
               </div>
               <div>
-                <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+                <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
                   Remarks
                 </label>
                 <textarea
                   value={paymentForm.remarks}
                   onChange={(e) => setPaymentForm({ ...paymentForm, remarks: e.target.value })}
                   rows={2}
-                  className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary outline-none"
+                  className="w-full border border-primary-bg bg-white text-primary-dark rounded p-2.5 focus:ring-1 focus:ring-primary outline-none"
                   placeholder="Any additional note"
+                  style={{ fontFamily: bodyFont }}
                 />
               </div>
               <div className="flex flex-col sm:flex-row-reverse gap-3 pt-2">
                 <button
                   type="submit"
-                  className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat transition"
+                  className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-medium transition"
+                  style={{ fontFamily: bodyFont }}
                 >
                   Submit for Approval
                 </button>
                 <button
                   type="button"
                   onClick={() => setPayingFee(null)}
-                  className="w-full sm:w-auto border border-secondary-light text-secondary-dark hover:bg-secondary-bg px-6 py-2.5 rounded-lg font-montserrat transition"
+                  className="w-full sm:w-auto border border-primary-bg text-primary-dark hover:bg-primary-bg px-6 py-2.5 rounded-lg transition"
+                  style={{ fontFamily: bodyFont }}
                 >
                   Cancel
                 </button>

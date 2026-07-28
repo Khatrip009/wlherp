@@ -8,12 +8,17 @@ import {
 } from "../services/homeworkService";
 import { useOrgDarkLogo } from "../hooks/useOrgDarkLogo";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext";               // ✅ dynamic theme
 
 export default function ViewSubmissionsModal({ homework, onClose }) {
   const darkLogo = useOrgDarkLogo();
   const { branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();                                     // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const [students, setStudents] = useState([]);
   const [submissions, setSubmissions] = useState([]);
@@ -81,9 +86,9 @@ export default function ViewSubmissionsModal({ homework, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl w-full max-w-5xl max-h-[90vh] overflow-y-auto shadow-xl">
+      <div className="bg-white rounded-xl w-full max-w-5xl max-h-[90vh] overflow-y-auto shadow-xl border border-primary-bg">
         {/* Header with logo */}
-        <div className="sticky top-0 bg-white border-b border-secondary-light px-6 py-4 flex items-center justify-between rounded-t-xl z-10">
+        <div className="sticky top-0 bg-white border-b border-primary-bg px-6 py-4 flex items-center justify-between rounded-t-xl z-10">
           <div className="flex items-center gap-3">
             <img
               src={darkLogo}
@@ -91,24 +96,33 @@ export default function ViewSubmissionsModal({ homework, onClose }) {
               className="h-10 w-auto"
             />
             <div>
-              <h2 className="text-xl font-righteous text-primary-dark">
+              <h2
+                className="text-xl font-bold text-primary"
+                style={{ fontFamily: headingFont }}
+              >
                 Submissions
               </h2>
-              <p className="text-sm text-secondary-dark font-montserrat">
+              <p
+                className="text-sm text-primary-dark mt-1"
+                style={{ fontFamily: bodyFont }}
+              >
                 {homework.title}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-secondary-bg rounded-lg transition"
+            className="p-2 hover:bg-primary-bg rounded-lg transition"
           >
-            <X size={20} className="text-secondary-dark" />
+            <X size={20} className="text-primary-dark" />
           </button>
         </div>
 
         {/* Batch, Subject & Medium info */}
-        <div className="px-6 pt-4 flex flex-wrap gap-2 items-center text-sm text-secondary-dark font-montserrat">
+        <div
+          className="px-6 pt-4 flex flex-wrap gap-2 items-center text-sm text-primary-dark"
+          style={{ fontFamily: bodyFont }}
+        >
           <span className="flex items-center gap-1">
             <User size={14} /> {homework.batches?.batch_name}
           </span>
@@ -117,42 +131,44 @@ export default function ViewSubmissionsModal({ homework, onClose }) {
               {homework.batches.mediums.name}
             </span>
           )}
-          <span className="text-secondary-light">|</span>
+          <span className="text-primary-dark/40">|</span>
           <span className="flex items-center gap-1">
             <FileText size={14} /> {homework.subjects?.subject_name}
           </span>
         </div>
 
         {loading ? (
-          <div className="p-8 text-center text-secondary">Loading submissions...</div>
+          <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
+            Loading submissions...
+          </div>
         ) : students.length === 0 ? (
-          <div className="p-8 text-center text-secondary">
+          <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>
             No students enrolled in this batch.
           </div>
         ) : (
           <div className="overflow-x-auto p-4">
             <table className="w-full min-w-[800px]">
-              <thead className="bg-slate-50 border-b border-secondary-light">
+              <thead className="bg-primary-bg">
                 <tr>
-                  <th className="text-left p-3 text-sm font-montserrat text-secondary-dark">
+                  <th className="text-left p-3 text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
                     <User size={14} className="inline mr-1" /> Student
                   </th>
-                  <th className="text-left text-sm font-montserrat text-secondary-dark">
+                  <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
                     <Upload size={14} className="inline mr-1" /> File
                   </th>
-                  <th className="text-left text-sm font-montserrat text-secondary-dark">
+                  <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
                     <Clock size={14} className="inline mr-1" /> Submitted
                   </th>
-                  <th className="text-left text-sm font-montserrat text-secondary-dark">
+                  <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
                     Marks
                   </th>
-                  <th className="text-left text-sm font-montserrat text-secondary-dark">
+                  <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
                     Remarks
                   </th>
-                  <th className="text-left text-sm font-montserrat text-secondary-dark">
+                  <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
                     Status
                   </th>
-                  <th className="text-left text-sm font-montserrat text-secondary-dark">
+                  <th className="text-left text-sm font-medium text-primary-dark uppercase" style={{ fontFamily: bodyFont }}>
                     Action
                   </th>
                 </tr>
@@ -161,12 +177,20 @@ export default function ViewSubmissionsModal({ homework, onClose }) {
                 {students.map((student) => {
                   const sub = findSubmission(student.id);
                   return (
-                    <tr key={student.id} className="border-b border-secondary-light hover:bg-primary-bg transition">
+                    <tr key={student.id} className="border-b border-primary-bg hover:bg-primary-bg transition">
                       <td className="p-3">
-                        <p className="font-medium text-secondary-dark">
+                        <p
+                          className="font-medium text-primary-dark"
+                          style={{ fontFamily: bodyFont }}
+                        >
                           {student.first_name} {student.last_name}
                         </p>
-                        <p className="text-xs text-secondary-light">{student.admission_no}</p>
+                        <p
+                          className="text-xs text-primary-dark/60"
+                          style={{ fontFamily: bodyFont }}
+                        >
+                          {student.admission_no}
+                        </p>
                       </td>
                       <td>
                         {sub?.submission_file ? (
@@ -175,16 +199,23 @@ export default function ViewSubmissionsModal({ homework, onClose }) {
                             target="_blank"
                             rel="noreferrer"
                             className="text-primary hover:underline flex items-center gap-1"
+                            style={{ fontFamily: bodyFont }}
                           >
                             <FileText size={14} /> View
                           </a>
                         ) : (
-                          <span className="text-secondary-light flex items-center gap-1">
+                          <span
+                            className="text-primary-dark/60 flex items-center gap-1"
+                            style={{ fontFamily: bodyFont }}
+                          >
                             <AlertCircle size={14} /> No file
                           </span>
                         )}
                       </td>
-                      <td className="text-sm text-secondary-dark">
+                      <td
+                        className="text-sm text-primary-dark"
+                        style={{ fontFamily: bodyFont }}
+                      >
                         {sub?.submitted_at
                           ? new Date(sub.submitted_at).toLocaleDateString("en-IN", {
                               day: "numeric",
@@ -204,7 +235,8 @@ export default function ViewSubmissionsModal({ homework, onClose }) {
                               [student.id]: e.target.value,
                             }))
                           }
-                          className="border border-secondary-light rounded p-2 w-20 text-center focus:ring-1 focus:ring-primary focus:border-primary outline-none text-sm"
+                          className="border border-primary-bg rounded p-2 w-20 text-center focus:ring-1 focus:ring-primary focus:border-primary outline-none text-sm bg-white text-primary-dark"
+                          style={{ fontFamily: bodyFont }}
                           placeholder="0"
                         />
                       </td>
@@ -218,7 +250,8 @@ export default function ViewSubmissionsModal({ homework, onClose }) {
                               [student.id]: e.target.value,
                             }))
                           }
-                          className="border border-secondary-light rounded p-2 w-32 focus:ring-1 focus:ring-primary focus:border-primary outline-none text-sm"
+                          className="border border-primary-bg rounded p-2 w-32 focus:ring-1 focus:ring-primary focus:border-primary outline-none text-sm bg-white text-primary-dark"
+                          style={{ fontFamily: bodyFont }}
                           placeholder="Remark"
                         />
                       </td>
@@ -226,10 +259,10 @@ export default function ViewSubmissionsModal({ homework, onClose }) {
                         <span
                           className={`text-xs px-2 py-1 rounded-full font-medium ${
                             sub?.status === "Graded"
-                              ? "bg-green-100 text-green-700"
+                              ? "bg-primary-bg text-primary-dark"
                               : sub?.status === "Submitted"
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-gray-100 text-gray-600"
+                              ? "bg-accent-bg text-accent-dark"
+                              : "bg-primary-bg/50 text-primary-dark/60"
                           }`}
                         >
                           {sub?.status || "Not Submitted"}
@@ -239,7 +272,8 @@ export default function ViewSubmissionsModal({ homework, onClose }) {
                         {sub && (
                           <button
                             onClick={() => handleSaveMarks(sub)}
-                            className="bg-primary hover:bg-primary-light text-white px-3 py-1.5 rounded text-sm font-montserrat transition flex items-center gap-1"
+                            className="bg-primary hover:bg-primary-light text-white px-3 py-1.5 rounded text-sm font-medium transition flex items-center gap-1"
+                            style={{ fontFamily: bodyFont }}
                           >
                             <CheckCircle2 size={14} /> Save
                           </button>

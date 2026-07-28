@@ -115,18 +115,18 @@ export default function TeacherTimetable() {
 
   if (idLoading || idsLoading || batchesLoading) {
     return (
-      <>
-      <BackButton to="/teacher" label="My Dashboard" />
-        <div className="p-8 text-center">Loading your timetable…</div>
-      </>
+      <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+        <BackButton to="/teacher" label="My Dashboard" />
+        <div className="p-8 text-center text-gray-500 dark:text-gray-400">Loading your timetable…</div>
+      </div>
     );
   }
 
   return (
-    <>
+    <div className="space-y-6 px-4 sm:px-6 lg:px-0">
       <div className="mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">My Timetable</h1>
-        <p className="text-sm text-secondary-dark font-montserrat mt-1">
+        <h1 className="text-3xl font-heading text-primary">My Timetable</h1>
+        <p className="text-sm text-gray-600 dark:text-gray-400 font-body mt-1">
           Your weekly teaching schedule
         </p>
       </div>
@@ -134,13 +134,13 @@ export default function TeacherTimetable() {
       <div className="overflow-x-auto">
         <div className="min-w-[900px]">
           <div className="grid grid-cols-7 gap-1 mb-1">
-            <div className="p-2 font-semibold text-sm text-secondary-dark bg-slate-100 rounded">
+            <div className="p-2 font-semibold text-sm text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-700 rounded">
               Time
             </div>
             {DAYS.map((day) => (
               <div
                 key={day}
-                className="p-2 font-semibold text-sm text-secondary-dark bg-slate-100 rounded text-center"
+                className="p-2 font-semibold text-sm text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-700 rounded text-center"
               >
                 {day}
               </div>
@@ -151,7 +151,7 @@ export default function TeacherTimetable() {
             const hour = parseInt(hourStr);
             return (
               <div key={hourStr} className="grid grid-cols-7 gap-1 mb-1">
-                <div className="p-2 text-xs font-medium text-secondary bg-gray-50 rounded flex items-center justify-center">
+                <div className="p-2 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 rounded flex items-center justify-center">
                   <Clock size={14} className="mr-1" />
                   {hourStr}
                 </div>
@@ -160,25 +160,25 @@ export default function TeacherTimetable() {
                   return (
                     <div
                       key={`${day}-${hourStr}`}
-                      className="p-1 rounded border border-secondary-light min-h-[60px] bg-white hover:shadow-sm transition"
+                      className="p-1 rounded border border-gray-200 dark:border-gray-700 min-h-[60px] bg-white dark:bg-accent hover:shadow-sm transition"
                     >
                       {batchesInSlot.map((batch) => (
                         <div
                           key={batch.id}
-                          className="bg-primary-bg text-primary-dark p-2 rounded mb-1 text-xs"
+                          className="bg-primary-bg text-primary p-2 rounded mb-1 text-xs"
                         >
                           <div className="font-semibold">{batch.batch_name}</div>
-                          <div className="text-secondary">
+                          <div className="text-gray-600 dark:text-gray-400">
                             {batch.courses?.course_name}
                           </div>
                           {batch.mediums?.name && (
-                            <div className="text-secondary-dark text-xs">
+                            <div className="text-gray-600 dark:text-gray-400 text-xs">
                               Medium: {batch.mediums.name}
                             </div>
                           )}
                           <div className="mt-1 space-y-0.5">
                             {batch.batch_teachers.map((bt) => (
-                              <div key={bt.subject_id} className="text-secondary">
+                              <div key={bt.subject_id} className="text-gray-500 dark:text-gray-400">
                                 {bt.subjects?.subject_name}
                               </div>
                             ))}
@@ -193,6 +193,6 @@ export default function TeacherTimetable() {
           })}
         </div>
       </div>
-    </>
+    </div>
   );
 }

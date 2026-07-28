@@ -90,27 +90,27 @@ export default function AttendanceSessionForm({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
+      <div className="bg-white dark:bg-accent rounded-xl w-full max-w-lg shadow-xl border border-gray-200 dark:border-gray-700">
         {/* Header with dynamic logo */}
-        <div className="sticky top-0 bg-white border-b border-secondary-light px-6 py-4 flex items-center justify-between rounded-t-xl">
+        <div className="sticky top-0 bg-white dark:bg-accent border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-xl">
           <div className="flex items-center gap-3">
             <img src={darkLogo} alt={orgName} className="h-10 w-auto" />
-            <h2 className="text-xl font-righteous text-primary-dark">
+            <h2 className="text-xl font-heading text-primary">
               {initialData.id ? "Edit Session" : "New Attendance Session"}
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-secondary-bg rounded-lg transition"
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
           >
-            <X size={20} className="text-secondary-dark" />
+            <X size={20} className="text-gray-600 dark:text-gray-400" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {/* Batch */}
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
               <Layers size={14} className="inline mr-1" />
               Batch *
             </label>
@@ -118,7 +118,7 @@ export default function AttendanceSessionForm({
               name="batch_id"
               value={form.batch_id}
               onChange={handleChange}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary focus:border-primary outline-none"
               required
             >
               <option value="">Select Batch</option>
@@ -132,7 +132,7 @@ export default function AttendanceSessionForm({
 
           {/* Date */}
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
               <Calendar size={14} className="inline mr-1" />
               Date *
             </label>
@@ -141,14 +141,14 @@ export default function AttendanceSessionForm({
               name="attendance_date"
               value={form.attendance_date}
               onChange={handleChange}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary focus:border-primary outline-none"
               required
             />
           </div>
 
           {/* Topic */}
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label className="block text-sm font-body text-gray-700 dark:text-gray-300 mb-1">
               <BookOpen size={14} className="inline mr-1" />
               Topic Covered
             </label>
@@ -158,7 +158,7 @@ export default function AttendanceSessionForm({
               placeholder="E.g., Algebra - Introduction"
               value={form.topic_covered}
               onChange={handleChange}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary focus:border-primary outline-none placeholder-secondary-light"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded p-2.5 focus:ring-2 focus:ring-primary focus:border-primary outline-none placeholder-gray-400 dark:placeholder-gray-500"
             />
           </div>
 
@@ -167,7 +167,7 @@ export default function AttendanceSessionForm({
             <button
               type="submit"
               disabled={submitting}
-              className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat transition disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-body transition disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {submitting
                 ? "Saving..."
@@ -178,7 +178,7 @@ export default function AttendanceSessionForm({
             <button
               type="button"
               onClick={onClose}
-              className="w-full sm:w-auto border border-secondary-light text-secondary-dark hover:bg-secondary-bg px-6 py-2.5 rounded-lg font-montserrat transition"
+              className="w-full sm:w-auto border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 px-6 py-2.5 rounded-lg font-body transition"
             >
               Cancel
             </button>

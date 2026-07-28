@@ -5,6 +5,6 @@ import ReportPage from './ReportPage';
 
 export default function ReportPageWrapper() {
   const { reportId } = useParams();
-  const { theme } = useTheme();
+  const theme = useTheme();
   return <ReportPage reportId={reportId} theme={theme} />;
 }

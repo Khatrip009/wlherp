@@ -3,10 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import AdminLayout from "../layouts/AdminLayout";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";            // ✅ dynamic theme
 import { Clock, AlertCircle } from "lucide-react";
 
 export default function PersonalTimetable() {
   const { user } = useAuth();
+  const theme = useTheme();                                    // ✅ theme hook
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
+
   const [debug, setDebug] = useState({});
 
   useEffect(() => {
@@ -101,13 +106,13 @@ export default function PersonalTimetable() {
   if (allErrors.length > 0) {
     return (
       <AdminLayout>
-        <div className="p-8 text-red-600">
+        <div className="p-8 text-accent-dark">
           <AlertCircle size={32} className="mx-auto mb-2" />
-          <p>Something went wrong while loading your timetable.</p>
+          <p style={{ fontFamily: bodyFont }}>Something went wrong while loading your timetable.</p>
           {allErrors.map((err, i) => (
-            <p key={i} className="text-sm mt-1">{err.message}</p>
+            <p key={i} className="text-sm mt-1 text-primary-dark" style={{ fontFamily: bodyFont }}>{err.message}</p>
           ))}
-          <pre className="mt-4 bg-gray-100 p-4 rounded text-xs overflow-auto">
+          <pre className="mt-4 bg-primary-bg p-4 rounded text-xs overflow-auto text-primary-dark">
             {JSON.stringify(debug, null, 2)}
           </pre>
         </div>
@@ -118,7 +123,7 @@ export default function PersonalTimetable() {
   if (idLoading || batchesLoading || dataLoading) {
     return (
       <AdminLayout>
-        <div className="p-8 text-center">Loading timetable…</div>
+        <div className="p-8 text-center text-primary-dark/60" style={{ fontFamily: bodyFont }}>Loading timetable…</div>
       </AdminLayout>
     );
   }
@@ -126,7 +131,7 @@ export default function PersonalTimetable() {
   if (!studentId) {
     return (
       <AdminLayout>
-        <div className="p-8 text-center">
+        <div className="p-8 text-center text-primary-dark" style={{ fontFamily: bodyFont }}>
           <p>Your account is not linked to a student record.</p>
         </div>
       </AdminLayout>
@@ -136,9 +141,9 @@ export default function PersonalTimetable() {
   if (batchIds.length === 0) {
     return (
       <AdminLayout>
-        <div className="p-8 text-center">
-          <Clock size={32} className="text-secondary-light mx-auto mb-2" />
-          <p>You are not enrolled in any active batch.</p>
+        <div className="p-8 text-center" style={{ fontFamily: bodyFont }}>
+          <Clock size={32} className="text-primary-dark/40 mx-auto mb-2" />
+          <p className="text-primary-dark">You are not enrolled in any active batch.</p>
         </div>
       </AdminLayout>
     );
@@ -147,9 +152,9 @@ export default function PersonalTimetable() {
   if (batches.length === 0) {
     return (
       <AdminLayout>
-        <div className="p-8 text-center">
-          <p>No batch details found for your batches.</p>
-          <pre className="mt-4 text-xs">{JSON.stringify({ batchIds, batches }, null, 2)}</pre>
+        <div className="p-8 text-center" style={{ fontFamily: bodyFont }}>
+          <p className="text-primary-dark">No batch details found for your batches.</p>
+          <pre className="mt-4 text-xs text-primary-dark">{JSON.stringify({ batchIds, batches }, null, 2)}</pre>
         </div>
       </AdminLayout>
     );
@@ -184,34 +189,36 @@ export default function PersonalTimetable() {
   return (
     <AdminLayout>
       <div className="mb-6">
-        <h1 className="text-3xl font-righteous text-primary-dark">My Timetable</h1>
-        <p className="text-sm text-secondary-dark font-montserrat mt-1">
+        <h1 className="text-3xl font-bold text-primary" style={{ fontFamily: headingFont }}>
+          My Timetable
+        </h1>
+        <p className="text-sm text-primary-dark mt-1" style={{ fontFamily: bodyFont }}>
           Your weekly class schedule
         </p>
       </div>
       <div className="overflow-x-auto">
         <div className="min-w-[900px]">
           <div className="grid grid-cols-7 gap-1 mb-1">
-            <div className="p-2 font-semibold text-sm bg-slate-100 rounded">Time</div>
+            <div className="p-2 font-semibold text-sm bg-primary-bg text-primary rounded" style={{ fontFamily: headingFont }}>Time</div>
             {["Mon","Tue","Wed","Thu","Fri","Sat"].map(day => (
-              <div key={day} className="p-2 font-semibold text-sm bg-slate-100 rounded text-center">{day}</div>
+              <div key={day} className="p-2 font-semibold text-sm bg-primary-bg text-primary rounded text-center" style={{ fontFamily: headingFont }}>{day}</div>
             ))}
           </div>
           {Array.from({ length: 14 }, (_, i) => `${i + 7}:00`).map(hourStr => {
             const hour = parseInt(hourStr);
             return (
               <div key={hourStr} className="grid grid-cols-7 gap-1 mb-1">
-                <div className="p-2 text-xs font-medium bg-gray-50 rounded flex items-center justify-center">
+                <div className="p-2 text-xs font-medium bg-primary-bg text-primary-dark rounded flex items-center justify-center" style={{ fontFamily: bodyFont }}>
                   <Clock size={14} className="mr-1" />{hourStr}
                 </div>
                 {["Mon","Tue","Wed","Thu","Fri","Sat"].map(day => {
                   const slots = getBatchesForSlot(day, hour);
                   return (
-                    <div key={day + hourStr} className="p-1 rounded border border-secondary-light min-h-[60px] bg-white">
+                    <div key={day + hourStr} className="p-1 rounded border border-primary-bg min-h-[60px] bg-white">
                       {slots.map(batch => (
-                        <div key={batch.id} className="bg-primary-bg text-primary-dark p-2 rounded mb-1 text-xs">
-                          <div className="font-semibold">{batch.batch_name}</div>
-                          <div className="text-secondary">
+                        <div key={batch.id} className="bg-primary-bg text-primary-dark p-2 rounded mb-1 text-xs" style={{ fontFamily: bodyFont }}>
+                          <div className="font-semibold text-primary" style={{ fontFamily: headingFont }}>{batch.batch_name}</div>
+                          <div className="text-primary-dark/80">
                             {batch.courses?.course_name}
                             {batch.mediums?.name ? ` (${batch.mediums.name})` : ""}
                           </div>
@@ -222,8 +229,8 @@ export default function PersonalTimetable() {
                                   <span className="text-primary font-medium">
                                     {bt.teachers?.first_name} {bt.teachers?.last_name}
                                   </span>
-                                  <span className="text-secondary">-</span>
-                                  <span>{bt.subjects?.subject_name}</span>
+                                  <span className="text-primary-dark/60">-</span>
+                                  <span className="text-primary-dark">{bt.subjects?.subject_name}</span>
                                 </div>
                               ))}
                             </div>

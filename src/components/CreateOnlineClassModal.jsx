@@ -2,14 +2,19 @@ import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../api/supabase";
 import { useOrg } from "../context/OrganizationContext";
+import { useTheme } from "../context/ThemeContext"; // ✅ dynamic theme
 import toast from "react-hot-toast";
 import { X, Loader } from "lucide-react";
 
 export default function CreateOnlineClassModal({ isOpen, onClose, onSuccess, initialData = null }) {
   const queryClient = useQueryClient();
   const { branch, selectedFinancialYear } = useOrg();
+  const theme = useTheme();                                   // ✅ theme hook
   const branchId = branch?.id;
   const financialYearId = selectedFinancialYear?.id;
+
+  const headingFont = theme?.font_heading || "Righteous";
+  const bodyFont = theme?.font_body || "Montserrat";
 
   const isEditing = !!initialData?.id;
 
@@ -154,23 +159,23 @@ export default function CreateOnlineClassModal({ isOpen, onClose, onSuccess, ini
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-      <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl">
-        <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-secondary-light px-6 py-4 flex items-center justify-between rounded-t-xl">
-          <h2 className="text-xl font-righteous text-primary-dark">
+      <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl border border-primary-bg">
+        <div className="sticky top-0 bg-white border-b border-primary-bg px-6 py-4 flex items-center justify-between rounded-t-xl">
+          <h2 className="text-xl font-bold text-primary" style={{ fontFamily: headingFont }}>
             {isEditing ? "Edit Online Class" : "Create Online Class"}
           </h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-secondary-bg rounded-lg transition"
+            className="p-2 hover:bg-primary-bg rounded-lg transition"
           >
-            <X size={20} className="text-secondary-dark" />
+            <X size={20} className="text-primary-dark" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Title */}
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
               Title *
             </label>
             <input
@@ -178,15 +183,16 @@ export default function CreateOnlineClassModal({ isOpen, onClose, onSuccess, ini
               name="title"
               value={form.title}
               onChange={handleChange}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary outline-none"
+              className="w-full border border-primary-bg rounded p-2.5 focus:ring-1 focus:ring-primary outline-none bg-white text-primary-dark placeholder-primary-dark/40"
               placeholder="e.g., Algebra Basics"
               required
+              style={{ fontFamily: bodyFont }}
             />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
               Description
             </label>
             <textarea
@@ -194,18 +200,19 @@ export default function CreateOnlineClassModal({ isOpen, onClose, onSuccess, ini
               value={form.description}
               onChange={handleChange}
               rows={2}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary outline-none"
+              className="w-full border border-primary-bg rounded p-2.5 focus:ring-1 focus:ring-primary outline-none bg-white text-primary-dark placeholder-primary-dark/40"
               placeholder="Optional description"
+              style={{ fontFamily: bodyFont }}
             />
           </div>
 
           {/* Teacher */}
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
               Teacher *
             </label>
             {teachersLoading ? (
-              <div className="flex items-center gap-2 text-secondary">
+              <div className="flex items-center gap-2 text-primary-dark/60">
                 <Loader size={16} className="animate-spin" />
                 Loading teachers...
               </div>
@@ -214,7 +221,7 @@ export default function CreateOnlineClassModal({ isOpen, onClose, onSuccess, ini
                 name="teacher_id"
                 value={form.teacher_id}
                 onChange={handleChange}
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary outline-none"
+                className="w-full border border-primary-bg rounded p-2.5 focus:ring-1 focus:ring-primary outline-none bg-white text-primary-dark"
                 required
               >
                 <option value="">Select Teacher</option>
@@ -226,17 +233,19 @@ export default function CreateOnlineClassModal({ isOpen, onClose, onSuccess, ini
               </select>
             )}
             {!teachersLoading && teachers.length === 0 && (
-              <p className="text-xs text-red-500 mt-1">No teachers found for this branch.</p>
+              <p className="text-xs text-accent-dark mt-1" style={{ fontFamily: bodyFont }}>
+                No teachers found for this branch.
+              </p>
             )}
           </div>
 
           {/* Batch */}
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
               Batch *
             </label>
             {batchesLoading ? (
-              <div className="flex items-center gap-2 text-secondary">
+              <div className="flex items-center gap-2 text-primary-dark/60">
                 <Loader size={16} className="animate-spin" />
                 Loading batches...
               </div>
@@ -245,7 +254,7 @@ export default function CreateOnlineClassModal({ isOpen, onClose, onSuccess, ini
                 name="batch_id"
                 value={form.batch_id}
                 onChange={handleChange}
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary outline-none"
+                className="w-full border border-primary-bg rounded p-2.5 focus:ring-1 focus:ring-primary outline-none bg-white text-primary-dark"
                 required
               >
                 <option value="">Select Batch</option>
@@ -257,13 +266,15 @@ export default function CreateOnlineClassModal({ isOpen, onClose, onSuccess, ini
               </select>
             )}
             {!batchesLoading && batches.length === 0 && (
-              <p className="text-xs text-red-500 mt-1">No active batches found.</p>
+              <p className="text-xs text-accent-dark mt-1" style={{ fontFamily: bodyFont }}>
+                No active batches found.
+              </p>
             )}
           </div>
 
           {/* Start Time */}
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
               Start Time *
             </label>
             <input
@@ -271,14 +282,14 @@ export default function CreateOnlineClassModal({ isOpen, onClose, onSuccess, ini
               name="start_time"
               value={form.start_time}
               onChange={handleChange}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary outline-none"
+              className="w-full border border-primary-bg rounded p-2.5 focus:ring-1 focus:ring-primary outline-none bg-white text-primary-dark"
               required
             />
           </div>
 
           {/* Duration */}
           <div>
-            <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+            <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
               Duration (minutes) *
             </label>
             <input
@@ -286,7 +297,7 @@ export default function CreateOnlineClassModal({ isOpen, onClose, onSuccess, ini
               name="duration_minutes"
               value={form.duration_minutes}
               onChange={handleChange}
-              className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary outline-none"
+              className="w-full border border-primary-bg rounded p-2.5 focus:ring-1 focus:ring-primary outline-none bg-white text-primary-dark"
               min="5"
               max="240"
               required
@@ -296,14 +307,14 @@ export default function CreateOnlineClassModal({ isOpen, onClose, onSuccess, ini
           {/* Status (only for editing) */}
           {isEditing && (
             <div>
-              <label className="block text-sm font-montserrat text-secondary-dark mb-1">
+              <label className="block text-sm text-primary-dark mb-1" style={{ fontFamily: bodyFont }}>
                 Status
               </label>
               <select
                 name="status"
                 value={form.status}
                 onChange={handleChange}
-                className="w-full border border-secondary-light rounded p-2.5 focus:ring-1 focus:ring-primary outline-none"
+                className="w-full border border-primary-bg rounded p-2.5 focus:ring-1 focus:ring-primary outline-none bg-white text-primary-dark"
               >
                 <option value="scheduled">Scheduled</option>
                 <option value="live">Live</option>
@@ -313,11 +324,12 @@ export default function CreateOnlineClassModal({ isOpen, onClose, onSuccess, ini
           )}
 
           {/* Buttons */}
-          <div className="flex flex-col sm:flex-row-reverse gap-3 pt-2 border-t">
+          <div className="flex flex-col sm:flex-row-reverse gap-3 pt-2 border-t border-primary-bg">
             <button
               type="submit"
               disabled={mutation.isPending}
-              className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-montserrat transition disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full sm:w-auto bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg transition disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{ fontFamily: bodyFont }}
             >
               {mutation.isPending ? (
                 <>
@@ -331,7 +343,8 @@ export default function CreateOnlineClassModal({ isOpen, onClose, onSuccess, ini
             <button
               type="button"
               onClick={onClose}
-              className="w-full sm:w-auto border border-secondary-light text-secondary-dark hover:bg-secondary-bg px-6 py-2.5 rounded-lg font-montserrat transition"
+              className="w-full sm:w-auto border border-primary-bg text-primary-dark hover:bg-primary-bg px-6 py-2.5 rounded-lg transition"
+              style={{ fontFamily: bodyFont }}
             >
               Cancel
             </button>
